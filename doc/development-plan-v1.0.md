@@ -39,16 +39,17 @@
 - Python：`>= 3.10`（由 uv 管理）
 - Tauri CLI：2.x
 
-## 1.2 Node 生态国内源配置（npm/pnpm/yarn）
+## 1.2 Node 生态国内源配置（pnpm 为主，npm 备选）
 ```bash
-npm config set registry https://registry.npmmirror.com
+# pnpm 为主
 pnpm config set registry https://registry.npmmirror.com
-yarn config set registry https://registry.npmmirror.com
+
+# npm 作为备选
+npm config set registry https://registry.npmmirror.com
 
 # 验证
-npm config get registry
 pnpm config get registry
-yarn config get registry
+npm config get registry
 ```
 
 ## 1.3 Rust 生态国内源配置（rustup/cargo）
@@ -117,10 +118,10 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebr
 ```
 
 ## 1.7 环境验收（DoD）
-- [ ] `npm/pnpm/yarn` registry 全部指向国内源。
+- [ ] `pnpm`（及备选 `npm`）registry 指向国内源（不要求 yarn）。
 - [ ] `cargo fetch` 不走默认 crates.io 公网慢链路。
 - [ ] `uv python install` 可在可接受时长内完成。
-- [ ] `pnpm tauri info` 成功执行。
+- [ ] `pnpm tauri info` 成功执行 → 延后至 M1 E-002 验收。
 - [ ] 形成《环境初始化记录》文档（机器、系统、版本、源配置、验证截图/日志）。
 
 ---
@@ -129,7 +130,7 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebr
 
 ## 2.1 仓库与工程骨架
 - [ ] E-001 创建目录骨架：`apps/desktop`、`packages/*`、`doc/`。
-- [ ] E-002 初始化 Tauri 2 + React + TypeScript 工程。
+- [ ] E-002 初始化 Tauri 2 + React + TypeScript 工程（验收项：`pnpm tauri info` 成功执行）。
 - [ ] E-003 统一 lint/format 配置（ESLint/Prettier/Rustfmt/Clippy）。
 - [ ] E-004 约定分支策略与提交规范（不在本文定义 Git 细则，仅落地模板）。
 
