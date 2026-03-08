@@ -1,3 +1,8 @@
+/**
+ * 底部状态栏组件
+ * 显示系统状态、本地优先模式和版本号
+ */
+
 import React from 'react';
 import { Activity, CheckCircle2 } from 'lucide-react';
 

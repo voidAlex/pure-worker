@@ -1,3 +1,8 @@
+/**
+ * 学生档案列表页面组件
+ * 展示学生列表，支持按班级筛选，点击可进入详情页
+ */
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';

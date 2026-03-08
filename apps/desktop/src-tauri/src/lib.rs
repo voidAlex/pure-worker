@@ -1,3 +1,7 @@
+//! PureWorker 核心库模块
+//! 
+//! 包含所有业务模块的导出：命令、数据库、错误定义、数据模型、服务层
+
 pub mod commands;
 pub mod database;
 pub mod error;

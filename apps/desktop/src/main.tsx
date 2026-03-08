@@ -1,3 +1,8 @@
+/**
+ * 应用入口文件
+ * 负责初始化 React 应用并将其挂载到 DOM 中
+ */
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 

@@ -1,3 +1,8 @@
+/**
+ * 数据导入页面组件
+ * 通过 Excel 文件批量导入学生数据，支持重复数据处理策略
+ */
+
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { commands, ImportStudentsInput, ImportDuplicateStrategy, ImportStudentsResult } from '@/bindings';

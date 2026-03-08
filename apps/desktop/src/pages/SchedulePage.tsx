@@ -1,3 +1,8 @@
+/**
+ * 课表日程页面组件
+ * 展示班级日程列表，支持创建、编辑、删除日程事件
+ */
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands, ScheduleEvent, CreateScheduleEventInput, UpdateScheduleEventInput } from '@/bindings';

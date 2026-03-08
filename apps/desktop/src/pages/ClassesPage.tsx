@@ -1,3 +1,8 @@
+/**
+ * 班级管理页面组件
+ * 展示班级列表，支持创建、编辑、删除班级
+ */
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commands, Classroom, CreateClassroomInput, UpdateClassroomInput } from '@/bindings';

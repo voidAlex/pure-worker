@@ -1,3 +1,8 @@
+/**
+ * Toast 通知状态管理 Hook
+ * 使用 Zustand 管理全局 Toast 通知状态，提供便捷的添加/移除方法
+ */
+
 import { create } from 'zustand';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';

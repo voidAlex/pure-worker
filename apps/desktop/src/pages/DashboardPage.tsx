@@ -1,3 +1,8 @@
+/**
+ * 工作台页面组件
+ * 显示系统状态概览、待办任务数量和最近任务列表
+ */
+
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { commands } from '@/bindings';

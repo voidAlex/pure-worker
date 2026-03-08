@@ -1,3 +1,8 @@
+/**
+ * AI 助手面板组件
+ * 右侧可展开的 AI 交互面板，提供教务助手功能
+ */
+
 import React from 'react';
 import { Bot, X, Sparkles } from 'lucide-react';
 

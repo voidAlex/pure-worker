@@ -1,3 +1,8 @@
+/**
+ * 确认对话框组件
+ * 模态框形式的确认弹窗，用于危险操作的二次确认
+ */
+
 import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 

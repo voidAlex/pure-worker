@@ -1,3 +1,8 @@
+/**
+ * 空状态占位组件
+ * 用于列表为空时显示的友好提示，包含图标、标题、描述和可选的操作按钮
+ */
+
 import React from 'react';
 import { Inbox } from 'lucide-react';
 

@@ -1,3 +1,8 @@
+/**
+ * 应用根组件
+ * 配置 TanStack Query 客户端和 React Router 路由
+ */
+
 import { type ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes } from 'react-router';

@@ -1,3 +1,8 @@
+/**
+ * 学生详情页面组件
+ * 展示单个学生的详细信息，包含标签、成绩、观察记录、家校沟通等 tab 页签
+ */
+
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

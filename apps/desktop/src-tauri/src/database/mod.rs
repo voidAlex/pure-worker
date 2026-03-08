@@ -1,11 +1,11 @@
-//! Database module for PureWorker
+//! 数据库模块 - PureWorker
 //!
-//! Provides SQLite connection pool with:
-//! - WAL journal mode for concurrent read/write
-//! - Synchronous NORMAL for balanced performance
-//! - 5000ms busy timeout for high concurrency
-//! - Foreign key enforcement on every connection
-//! - Automatic migrations on startup
+//! 提供 SQLite 连接池配置：
+//! - WAL 日志模式，支持并发读写
+//! - Synchronous NORMAL，平衡性能与安全
+//! - 5000ms 忙等待超时，高并发支持
+//! - 强制外键约束，每个连接生效
+//! - 启动时自动执行数据库迁移
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;

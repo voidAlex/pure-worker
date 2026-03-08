@@ -1,3 +1,8 @@
+/**
+ * Toast 通知容器组件
+ * 从 Zustand store 读取通知列表并渲染，支持 success/error/info/warning 四种类型
+ */
+
 import React from 'react';
 import { useToastStore } from '@/hooks/useToast';
 import { CheckCircle, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';

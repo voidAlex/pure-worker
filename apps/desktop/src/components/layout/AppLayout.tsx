@@ -1,3 +1,8 @@
+/**
+ * 应用布局组件
+ * 实现三栏布局：左侧导航栏、可折叠主内容区、右侧AI面板
+ */
+
 import React, { useState } from 'react';
 import { Outlet } from 'react-router';
 import { Sidebar } from './Sidebar';

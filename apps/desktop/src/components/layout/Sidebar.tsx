@@ -1,3 +1,8 @@
+/**
+ * 侧边栏导航组件
+ * 可折叠的左侧导航菜单，包含工作台、班级管理、学生档案、数据导入、课表日程入口
+ */
+
 import React from 'react';
 import { NavLink } from 'react-router';
 import { 
