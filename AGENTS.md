@@ -1,22 +1,27 @@
 # AGENTS.md — PureWorker
 
+**Updated:** 2026-03-08
+**Commit:** da81777
+**Branch:** master
+
 > 面向教师场景的本地优先桌面 AI 助手（Tauri 2.x + Rust + React/TypeScript + SQLite）。
 > 许可证：AGPL-3.0，所有贡献必须遵守。
 
 ## 项目状态
 
-当前处于编码前阶段。`doc/` 目录包含 PRD、技术方案和开发计划。
-代码落地后，计划的目录结构如下：
+代码已落地，M1 工程底座开发中。
+
+## 目录结构
 
 ```
 pure-worker/
 ├── apps/desktop/          # Tauri 2 应用（React 前端 + Rust 后端）
-│   ├── src/               # React + TypeScript UI
-│   └── src-tauri/         # Rust 后端（Rig Agent 核心）
-├── packages/              # 共享包
-│   └── prompt-templates/  # 版本化提示词模板
+│   ├── src/               # React + TypeScript UI（6页面 + 组件）
+│   ├── src-tauri/         # Rust 后端（30+ IPC 命令）
+│   └── AGENTS.md          # 应用级详细文档
+├── packages/prompt-templates/  # 版本化提示词模板（待实现）
 ├── doc/                   # PRD、技术方案、开发计划
-└── AGENTS.md
+└── AGENTS.md              # 本文件
 ```
 
 ## 构建与运行命令
@@ -149,9 +154,12 @@ pnpm eslint src/ && pnpm prettier --check src/ && pnpm tsc --noEmit
 
 ## 关键参考文档
 
-- 产品需求：`doc/prd-v1.0.md`
-- 技术方案：`doc/tech-solution-v1.0.md`
-- 开发计划：`doc/development-plan-v1.0.md`
+| 文档 | 路径 | 说明 |
+|------|------|------|
+| 产品需求 | `doc/prd-v1.0.md` | 功能需求、UI 规范 |
+| 技术方案 | `doc/tech-solution-v1.0.md` | 架构设计、技术选型 |
+| 开发计划 | `doc/development-plan-v1.0.md` | 里程碑任务分解 |
+
 - 里程碑顺序：M1（工程底座）→ M2（教务管理）→ M3（家校沟通）→ M4（作业考评）→ M5（扩展收口）
 
 ## Git 规范
