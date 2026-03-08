@@ -118,49 +118,49 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebr
 ```
 
 ## 1.7 环境验收（DoD）
-- [ ] `pnpm`（及备选 `npm`）registry 指向国内源（不要求 yarn）。
-- [ ] `cargo fetch` 不走默认 crates.io 公网慢链路。
-- [ ] `uv python install` 可在可接受时长内完成。
-- [ ] `pnpm tauri info` 成功执行 → 延后至 M1 E-002 验收。
-- [ ] 形成《环境初始化记录》文档（机器、系统、版本、源配置、验证截图/日志）。
+- [x] `pnpm`（及备选 `npm`）registry 指向国内源（不要求 yarn）。
+- [x] `cargo fetch` 不走默认 crates.io 公网慢链路。
+- [x] `uv python install` 可在可接受时长内完成。
+- [x] `pnpm tauri info` 成功执行 → 延后至 M1 E-002 验收。
+- [x] 形成《环境初始化记录》文档（机器、系统、版本、源配置、验证截图/日志）。
 
 ---
 
 ## 2. M1（第 1-2 周）：工程底座
 
 ## 2.1 仓库与工程骨架
-- [ ] E-001 创建目录骨架：`apps/desktop`、`packages/*`、`doc/`。
-- [ ] E-002 初始化 Tauri 2 + React + TypeScript 工程（验收项：`pnpm tauri info` 成功执行）。
-- [ ] E-003 统一 lint/format 配置（ESLint/Prettier/Rustfmt/Clippy）。
-- [ ] E-004 约定分支策略与提交规范（不在本文定义 Git 细则，仅落地模板）。
+- [x] E-001 创建目录骨架：`apps/desktop`、`packages/*`、`doc/`。
+- [x] E-002 初始化 Tauri 2 + React + TypeScript 工程（验收项：`pnpm tauri info` 成功执行）。
+- [x] E-003 统一 lint/format 配置（ESLint/Prettier/Rustfmt/Clippy）。
+- [x] E-004 约定分支策略与提交规范（不在本文定义 Git 细则，仅落地模板）。
 
 验收：本地可启动 UI 与 Tauri 外壳，静态检查可运行。
 
 ## 2.2 IPC 与后端命令框架
-- [ ] E-010 建立 `command` 分层：设置、档案、任务、审批、导出。
-- [ ] E-011 统一错误模型（业务错误码 + 中文可读错误）。
-- [ ] E-012 前后端类型契约方案（建议 `specta` 或等效机制）。
-- [ ] E-013 IPC 命令权限清单与最小暴露。
+- [x] E-010 建立 `command` 分层：设置、档案、任务、审批、导出。
+- [x] E-011 统一错误模型（业务错误码 + 中文可读错误）。
+- [x] E-012 前后端类型契约方案（建议 `specta` 或等效机制）。
+- [x] E-013 IPC 命令权限清单与最小暴露。
 
 验收：前端可调用后端健康检查命令并返回结构化响应。
 
 ## 2.3 SQLite 与迁移体系
-- [ ] E-020 接入 SQLite 连接池（sqlx 或同类）。
-- [ ] E-021 连接初始化强制执行：
+- [x] E-020 接入 SQLite 连接池（sqlx 或同类）。
+- [x] E-021 连接初始化强制执行：
   - `PRAGMA journal_mode=WAL;`
   - `PRAGMA synchronous=NORMAL;`
   - `PRAGMA busy_timeout=5000;`
   - `PRAGMA foreign_keys=ON;`（逐连接生效）
-- [ ] E-022 首批迁移：核心表 + 索引 + FTS + 触发器。
-- [ ] E-023 迁移失败阻断启动（禁止降级到默认模式）。
+- [x] E-022 首批迁移：核心表 + 索引 + FTS + 触发器。
+- [x] E-023 迁移失败阻断启动（禁止降级到默认模式）。
 
 验收：新库初始化成功；迁移脚本可重复执行且幂等。
 
 ## 2.4 任务状态机与审计底座
-- [ ] E-030 任务状态机：`queued/running/waiting_human/recovering/completed/failed/cancelled`。
-- [ ] E-031 异步任务持久化字段落地（checkpoint、lease、heartbeat）。
-- [ ] E-032 审计日志统一写入接口。
-- [ ] E-033 任务进度白盒结构（步骤、百分比、剩余时间）。
+- [x] E-030 任务状态机：`queued/running/waiting_human/recovering/completed/failed/cancelled`。
+- [x] E-031 异步任务持久化字段落地（checkpoint、lease、heartbeat）。
+- [x] E-032 审计日志统一写入接口。
+- [x] E-033 任务进度白盒结构（步骤、百分比、剩余时间）。
 
 验收：模拟长任务中断后可恢复；审计日志可查询。
 
