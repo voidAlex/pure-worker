@@ -13,6 +13,9 @@ import { StudentsPage } from '@/pages/StudentsPage';
 import { StudentDetailPage } from '@/pages/StudentDetailPage';
 import { ImportPage } from '@/pages/ImportPage';
 import { SchedulePage } from '@/pages/SchedulePage';
+import { SettingsPage } from '@/pages/SettingsPage';
+import { SemesterCommentsPage } from '@/pages/SemesterCommentsPage';
+import { ActivityAnnouncementsPage } from '@/pages/ActivityAnnouncementsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +38,9 @@ export const App = (): ReactElement => {
             <Route path="/students/:id" element={<StudentDetailPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/semester-comments" element={<SemesterCommentsPage />} />
+            <Route path="/announcements" element={<ActivityAnnouncementsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

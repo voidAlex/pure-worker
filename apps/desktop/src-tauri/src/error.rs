@@ -1,5 +1,5 @@
 //! 应用错误定义模块
-//! 
+//!
 //! 定义所有业务错误类型，包含数据库、配置、文件操作、任务执行等错误
 
 use serde::Serialize;
@@ -35,8 +35,6 @@ pub enum AppError {
     #[error("内部错误：{0}")]
     Internal(String),
 }
-
-
 
 impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> Self {

@@ -1,11 +1,17 @@
+pub mod activity_announcement;
+pub mod ai_config;
+pub mod async_task;
 pub mod audit_log;
 pub mod classroom;
+pub mod memory_search;
 pub mod observation_note;
 pub mod parent_communication;
 pub mod schedule_event;
 pub mod schedule_file;
 pub mod score_record;
+pub mod semester_comment;
 pub mod student;
 pub mod student_import;
+pub mod student_memory;
 pub mod student_tag;
 pub mod teacher_profile;

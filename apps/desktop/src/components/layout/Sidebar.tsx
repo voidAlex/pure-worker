@@ -12,7 +12,10 @@ import {
   UploadCloud, 
   CalendarDays,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Settings,
+  FileText,
+  Megaphone,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,6 +30,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse })
     { path: '/students', icon: GraduationCap, label: '学生档案' },
     { path: '/import', icon: UploadCloud, label: '数据导入' },
     { path: '/schedule', icon: CalendarDays, label: '课表日程' },
+    { path: '/semester-comments', icon: FileText, label: '期末评语' },
+    { path: '/announcements', icon: Megaphone, label: '班会活动' },
+    { path: '/settings', icon: Settings, label: 'AI 配置' },
   ];
 
   return (

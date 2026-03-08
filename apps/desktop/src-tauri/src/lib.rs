@@ -1,5 +1,5 @@
 //! PureWorker 核心库模块
-//! 
+//!
 //! 包含所有业务模块的导出：命令、数据库、错误定义、数据模型、服务层
 
 pub mod commands;
@@ -14,6 +14,10 @@ use tauri_specta::{collect_commands, Builder};
 pub fn run() {
     let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
         commands::settings::get_app_settings,
+        commands::ai_config::list_ai_configs,
+        commands::ai_config::create_ai_config,
+        commands::ai_config::update_ai_config,
+        commands::ai_config::delete_ai_config,
         commands::profile::get_teacher_profile,
         commands::task::list_tasks,
         commands::approval::list_pending_approvals,
@@ -53,7 +57,29 @@ pub fn run() {
         commands::schedule_file::list_schedule_files,
         commands::schedule_file::create_schedule_file,
         commands::schedule_file::delete_schedule_file,
+        commands::semester_comment::list_semester_comments,
+        commands::semester_comment::create_semester_comment,
+        commands::semester_comment::update_semester_comment,
+        commands::semester_comment::delete_semester_comment,
+        commands::semester_comment::batch_adopt_semester_comments,
+        commands::activity_announcement::list_activity_announcements,
+        commands::activity_announcement::create_activity_announcement,
+        commands::activity_announcement::update_activity_announcement,
+        commands::activity_announcement::delete_activity_announcement,
+        commands::ai_generation::generate_parent_communication,
+        commands::ai_generation::regenerate_parent_communication,
+        commands::ai_generation::generate_semester_comment,
+        commands::ai_generation::generate_semester_comments_batch,
+        commands::ai_generation::get_batch_task_progress,
+        commands::ai_generation::generate_activity_announcement,
         commands::student::get_student_profile_360,
+        commands::memory_search::search_evidence,
+        commands::student_memory::init_student_memory,
+        commands::student_memory::read_student_memory_timeline,
+        commands::student_memory::read_student_memory_by_topic,
+        commands::student_memory::read_student_comment_materials,
+        commands::student_memory::append_student_memory_note,
+        commands::student_memory::check_sensitive_content,
     ]);
 
     #[cfg(debug_assertions)]
