@@ -44,6 +44,271 @@ async healthCheck() : Promise<Result<HealthCheckResponse, AppError>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async importStudents(input: ImportStudentsInput) : Promise<Result<ImportStudentsResult, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("import_students", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listClassrooms() : Promise<Result<Classroom[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_classrooms") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClassroom(id: string) : Promise<Result<Classroom, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_classroom", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createClassroom(input: CreateClassroomInput) : Promise<Result<Classroom, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_classroom", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateClassroom(input: UpdateClassroomInput) : Promise<Result<Classroom, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_classroom", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteClassroom(input: DeleteClassroomInput) : Promise<Result<DeleteClassroomResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_classroom", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listStudents(input: ListStudentsInput) : Promise<Result<Student[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_students", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getStudent(id: string) : Promise<Result<Student, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_student", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createStudent(input: CreateStudentInput) : Promise<Result<Student, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_student", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateStudent(input: UpdateStudentInput) : Promise<Result<Student, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_student", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteStudent(input: DeleteStudentInput) : Promise<Result<DeleteStudentResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_student", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listStudentTags(input: ListStudentTagsInput) : Promise<Result<StudentTag[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_student_tags", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addStudentTag(input: AddStudentTagInput) : Promise<Result<StudentTag, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_student_tag", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeStudentTag(input: RemoveStudentTagInput) : Promise<Result<RemoveStudentTagResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_student_tag", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateStudentTag(input: UpdateStudentTagInput) : Promise<Result<StudentTag, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_student_tag", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listStudentScores(input: ListStudentScoresInput) : Promise<Result<ScoreRecord[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_student_scores", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createScoreRecord(input: CreateScoreRecordInput) : Promise<Result<ScoreRecord, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_score_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateScoreRecord(input: UpdateScoreRecordInput) : Promise<Result<ScoreRecord, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_score_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteScoreRecord(input: DeleteScoreRecordInput) : Promise<Result<DeleteScoreRecordResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_score_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listStudentObservations(input: ListStudentObservationsInput) : Promise<Result<ObservationNote[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_student_observations", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createObservationNote(input: CreateObservationNoteInput) : Promise<Result<ObservationNote, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_observation_note", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateObservationNote(input: UpdateObservationNoteInput) : Promise<Result<ObservationNote, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_observation_note", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteObservationNote(input: DeleteObservationNoteInput) : Promise<Result<DeleteObservationNoteResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_observation_note", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listParentCommunications(input: ListParentCommunicationsInput) : Promise<Result<ParentCommunication[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_parent_communications", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createParentCommunication(input: CreateParentCommunicationInput) : Promise<Result<ParentCommunication, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_parent_communication", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateParentCommunication(input: UpdateParentCommunicationInput) : Promise<Result<ParentCommunication, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_parent_communication", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteParentCommunication(input: DeleteParentCommunicationInput) : Promise<Result<DeleteParentCommunicationResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_parent_communication", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listScheduleEvents(input: ListScheduleEventsInput) : Promise<Result<ScheduleEvent[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_schedule_events", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getScheduleEvent(id: string) : Promise<Result<ScheduleEvent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_schedule_event", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createScheduleEvent(input: CreateScheduleEventInput) : Promise<Result<ScheduleEvent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_schedule_event", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateScheduleEvent(input: UpdateScheduleEventInput) : Promise<Result<ScheduleEvent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_schedule_event", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteScheduleEvent(input: DeleteScheduleEventInput) : Promise<Result<DeleteScheduleEventResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_schedule_event", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+}
+,
+async getStudentProfile360(id: string) : Promise<Result<StudentProfile360, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_student_profile_360", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -63,6 +328,52 @@ export type ApprovalRequest = { id: string; request_type: string; action_summary
 export type HealthCheckResponse = { status: string; version: string; db_connected: boolean }
 export type TaskSummary = { id: string; task_type: string; status: string; created_at: string }
 export type TeacherProfile = { id: string; name: string; stage: string; subject: string }
+export type Classroom = { id: string; grade: string; class_name: string; subject: string; teacher_id: string; is_deleted: number; created_at: string; updated_at: string }
+export type CreateClassroomInput = { grade: string; class_name: string; subject: string; teacher_id: string }
+export type UpdateClassroomInput = { id: string; grade: string | null; class_name: string | null; subject: string | null; teacher_id: string | null }
+export type DeleteClassroomInput = { id: string }
+export type DeleteClassroomResponse = { success: boolean }
+export type Student = { id: string; student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null; folder_path: string; is_deleted: number; created_at: string; updated_at: string }
+export type CreateStudentInput = { student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null }
+export type UpdateStudentInput = { id: string; student_no: string | null; name: string | null; gender: string | null; class_id: string | null; meta_json: string | null }
+export type ListStudentsInput = { class_id: string | null }
+export type DeleteStudentInput = { id: string }
+export type DeleteStudentResponse = { success: boolean }
+export type StudentTag = { id: string; student_id: string; tag_name: string; is_deleted: number; created_at: string }
+export type AddStudentTagInput = { student_id: string; tag_name: string }
+export type ListStudentTagsInput = { student_id: string }
+export type RemoveStudentTagInput = { id: string }
+export type RemoveStudentTagResponse = { success: boolean }
+export type UpdateStudentTagInput = { id: string; tag_name: string }
+export type ScoreRecord = { id: string; student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string; is_deleted: number; updated_at: string }
+export type CreateScoreRecordInput = { student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string }
+export type UpdateScoreRecordInput = { id: string; exam_name: string | null; subject: string | null; score: number | null; full_score: number | null; rank_in_class: number | null; exam_date: string | null }
+export type ListStudentScoresInput = { student_id: string; subject: string | null; from_date: string | null; to_date: string | null }
+export type DeleteScoreRecordInput = { id: string }
+export type DeleteScoreRecordResponse = { success: boolean }
+export type ObservationNote = { id: string; student_id: string; content: string; source: string | null; created_at: string; is_deleted: number; updated_at: string }
+export type CreateObservationNoteInput = { student_id: string; content: string; source: string | null }
+export type UpdateObservationNoteInput = { id: string; content: string | null; source: string | null }
+export type ListStudentObservationsInput = { student_id: string; limit: number | null; offset: number | null }
+export type DeleteObservationNoteInput = { id: string }
+export type DeleteObservationNoteResponse = { success: boolean }
+export type ParentCommunication = { id: string; student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; created_at: string; is_deleted: number; updated_at: string }
+export type CreateParentCommunicationInput = { student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null }
+export type UpdateParentCommunicationInput = { id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null }
+export type ListParentCommunicationsInput = { student_id: string }
+export type DeleteParentCommunicationInput = { id: string }
+export type DeleteParentCommunicationResponse = { success: boolean }
+export type ScheduleEvent = { id: string; class_id: string; title: string; start_at: string; end_at: string | null; linked_file_id: string | null; is_deleted: number; created_at: string }
+export type CreateScheduleEventInput = { class_id: string; title: string; start_at: string; end_at: string | null; linked_file_id: string | null }
+export type UpdateScheduleEventInput = { id: string; title: string | null; start_at: string | null; end_at: string | null; linked_file_id: string | null }
+export type ListScheduleEventsInput = { class_id: string }
+export type DeleteScheduleEventInput = { id: string }
+export type DeleteScheduleEventResponse = { success: boolean }
+export type ImportDuplicateStrategy = "Skip" | "Update" | "Add"
+export type ImportStudentsInput = { file_path: string; class_id: string; duplicate_strategy: ImportDuplicateStrategy }
+export type ImportRowError = { row_number: number; field: string; reason: string; suggestion: string }
+export type ImportStudentsResult = { total_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: ImportRowError[] }
+export type StudentProfile360 = { student: Student; tags: StudentTag[]; recent_scores: ScoreRecord[]; recent_observations: ObservationNote[]; recent_communications: ParentCommunication[] }
 
 /** tauri-specta globals **/
 
