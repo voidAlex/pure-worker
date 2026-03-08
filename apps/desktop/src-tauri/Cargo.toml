@@ -23,3 +23,4 @@ specta-typescript = "0.0.9"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
+calamine = { version = "0.26", features = ["dates"] }
