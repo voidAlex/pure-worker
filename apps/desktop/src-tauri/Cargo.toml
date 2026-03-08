@@ -30,3 +30,4 @@ rig-core = { version = "0.32.0", default-features = false, features = ["reqwest-
 schemars = "1.0"
 futures = "0.3"
 base64 = "0.22"
+rust_xlsxwriter = "0.79"

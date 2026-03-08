@@ -22,6 +22,7 @@ pub fn run() {
         commands::task::list_tasks,
         commands::approval::list_pending_approvals,
         commands::export::health_check,
+        commands::export::export_semester_comments,
         commands::student_import::import_students,
         commands::classroom::list_classrooms,
         commands::classroom::get_classroom,
@@ -80,6 +81,11 @@ pub fn run() {
         commands::student_memory::read_student_comment_materials,
         commands::student_memory::append_student_memory_note,
         commands::student_memory::check_sensitive_content,
+        commands::template_file::list_template_files,
+        commands::template_file::get_template_file,
+        commands::template_file::create_template_file,
+        commands::template_file::update_template_file,
+        commands::template_file::delete_template_file,
     ]);
 
     #[cfg(debug_assertions)]

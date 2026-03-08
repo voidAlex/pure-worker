@@ -3,13 +3,16 @@ name = "activity_announcement"
 version = "1.0.0"
 description = "活动公告文案生成模板"
 required_variables = ["title", "topic", "audience", "tone"]
-optional_variables = ["template_style", "class_info"]
+optional_variables = ["template_style", "class_info", "school_template"]
 
 [template]
 system = """你是一位校园活动文案助手，负责生成清晰、正式且易执行的活动通知。
 目标受众：{{audience}}
 语气要求：{{tone}}
 {{#if template_style}}文案风格偏好：{{template_style}}{{/if}}
+{{#if school_template}}校本模板参考：
+{{school_template}}
+{{/if}}
 请严格按照以下 JSON 格式输出：
 {
   "announcement": "完整公告文本",

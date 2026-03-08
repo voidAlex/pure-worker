@@ -15,3 +15,4 @@ pub mod student_import;
 pub mod student_memory;
 pub mod student_tag;
 pub mod teacher_profile;
+pub mod template_file;

@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, type Classroom, type ActivityAnnouncement } from '@/bindings';
+import { commands, type Classroom, type ActivityAnnouncement, type TemplateFile } from '@/bindings';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -44,6 +44,7 @@ export const ActivityAnnouncementsPage: React.FC = () => {
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
   const [audience, setAudience] = useState<string>('parent');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   // 草稿状态
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
@@ -60,6 +61,16 @@ export const ActivityAnnouncementsPage: React.FC = () => {
     queryKey: ['classrooms'],
     queryFn: async () => {
       const result = await commands.listClassrooms();
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+  });
+
+  /** 查询校本模板列表 */
+  const { data: templates } = useQuery({
+    queryKey: ['templateFiles', 'activity_announcement'],
+    queryFn: async () => {
+      const result = await commands.listTemplateFiles({ type: 'activity_announcement', enabled: 1 });
       if (result.status === 'error') throw new Error(JSON.stringify(result.error));
       return result.data;
     },
@@ -88,6 +99,7 @@ export const ActivityAnnouncementsPage: React.FC = () => {
         title: title.trim(),
         topic: topic.trim() || null,
         audience,
+        template_id: selectedTemplateId || null,
       });
       if (result.status === 'error') throw new Error(JSON.stringify(result.error));
       return result.data;
@@ -265,6 +277,23 @@ export const ActivityAnnouncementsPage: React.FC = () => {
               disabled={isGenerating}
             />
           </div>
+        </div>
+        {/* 校本模板选择 */}
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">校本模板 (可选)</label>
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow bg-white"
+            disabled={isGenerating}
+          >
+            <option value="">不使用模板</option>
+            {templates?.map((tpl: TemplateFile) => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.school_scope ? `${tpl.school_scope} - ` : ''}{tpl.file_path}{tpl.version ? ` (${tpl.version})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100">
           <div>

@@ -25,6 +25,7 @@ import {
   Copy,
   AlertTriangle,
   CheckCheck,
+  Download,
 } from 'lucide-react';
 
 /** 状态徽章颜色映射 */
@@ -274,6 +275,23 @@ export const SemesterCommentsPage: React.FC = () => {
     }
   }, [semesterComments, studentMap, success, error]);
 
+  /** 导出评语到 Excel */
+  const handleExport = useCallback(async () => {
+    if (!currentTaskId) return;
+    try {
+      const fileName = `期末评语_${term || '未知学期'}_${Date.now()}.xlsx`;
+      const result = await commands.exportSemesterComments({
+        task_id: currentTaskId,
+        term: term || null,
+        file_path: fileName,
+      });
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      success(`已导出 ${result.data.exported_count} 条评语到 ${result.data.file_path}`);
+    } catch (err) {
+      error(`导出失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    }
+  }, [currentTaskId, term, success, error]);
+
   /** 获取学生姓名 */
   const getStudentName = useCallback(
     (studentId: string): string => {
@@ -402,6 +420,14 @@ export const SemesterCommentsPage: React.FC = () => {
             >
               <Copy className="w-4 h-4" />
               复制全部评语
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={!semesterComments || semesterComments.filter(c => c.status === 'adopted').length === 0}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              导出评语
             </button>
             <button
               onClick={() => setShowBatchAdoptConfirm(true)}

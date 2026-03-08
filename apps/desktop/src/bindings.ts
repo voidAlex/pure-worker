@@ -66,6 +66,13 @@ export const commands = {
 			return { status: "error", error: e as any };
 		}
 	},
+	async exportSemesterComments(input: ExportSemesterCommentsInput): Promise<Result<ExportSemesterCommentsResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("export_semester_comments", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
 	async importStudents(input: ImportStudentsInput): Promise<Result<ImportStudentsResult, AppError>> {
 		try {
 			return { status: "ok", data: await TAURI_INVOKE("import_students", { input }) };
@@ -498,6 +505,41 @@ export const commands = {
 	async checkSensitiveContent(input: CheckSensitiveInput): Promise<Result<SensitiveInfoResult, AppError>> {
 		try {
 			return { status: "ok", data: await TAURI_INVOKE("check_sensitive_content", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listTemplateFiles(input: ListTemplateFilesInput): Promise<Result<TemplateFile[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_template_files", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getTemplateFile(id: string): Promise<Result<TemplateFile, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_template_file", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createTemplateFile(input: CreateTemplateFileInput): Promise<Result<TemplateFile, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_template_file", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateTemplateFile(input: UpdateTemplateFileInput): Promise<Result<TemplateFile, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_template_file", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteTemplateFile(input: DeleteTemplateFileInput): Promise<Result<DeleteTemplateFileResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_template_file", { input }) };
 		} catch (e) {
 			return { status: "error", error: e as any };
 		}
@@ -974,7 +1016,43 @@ export type GenerateActivityAnnouncementInput = {
 	title: string;
 	topic: string | null;
 	audience: string;
+	template_id: string | null;
 };
+export type ExportSemesterCommentsInput = { task_id: string | null; term: string | null; file_path: string };
+export type ExportSemesterCommentsResponse = { file_path: string; exported_count: number };
+
+/** 校本模板文件 */
+export type TemplateFile = {
+	id: string;
+	type: string;
+	school_scope: string | null;
+	version: string | null;
+	file_path: string;
+	enabled: number;
+	is_deleted: number;
+	created_at: string;
+};
+export type CreateTemplateFileInput = {
+	type: string;
+	school_scope: string | null;
+	version: string | null;
+	file_path: string;
+	enabled: number | null;
+};
+export type UpdateTemplateFileInput = {
+	id: string;
+	type: string | null;
+	school_scope: string | null;
+	version: string | null;
+	file_path: string | null;
+	enabled: number | null;
+};
+export type ListTemplateFilesInput = {
+	type: string | null;
+	enabled: number | null;
+};
+export type DeleteTemplateFileInput = { id: string };
+export type DeleteTemplateFileResponse = { success: boolean };
 
 /** tauri-specta globals **/
 
