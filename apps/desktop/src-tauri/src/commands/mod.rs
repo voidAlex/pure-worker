@@ -1,5 +1,13 @@
 pub mod approval;
+pub mod classroom;
 pub mod export;
+pub mod observation_note;
+pub mod parent_communication;
 pub mod profile;
+pub mod schedule_event;
+pub mod score_record;
 pub mod settings;
+pub mod student;
+pub mod student_import;
+pub mod student_tag;
 pub mod task;
