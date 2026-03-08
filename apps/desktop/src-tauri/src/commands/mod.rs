@@ -5,6 +5,7 @@ pub mod observation_note;
 pub mod parent_communication;
 pub mod profile;
 pub mod schedule_event;
+pub mod schedule_file;
 pub mod score_record;
 pub mod settings;
 pub mod student;

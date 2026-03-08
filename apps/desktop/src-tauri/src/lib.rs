@@ -50,6 +50,9 @@ pub fn run() {
         commands::schedule_event::create_schedule_event,
         commands::schedule_event::update_schedule_event,
         commands::schedule_event::delete_schedule_event,
+        commands::schedule_file::list_schedule_files,
+        commands::schedule_file::create_schedule_file,
+        commands::schedule_file::delete_schedule_file,
         commands::student::get_student_profile_360,
     ]);
 

@@ -183,7 +183,18 @@ impl StudentImportService {
             }
         }
 
-        AuditService::log(
+        // 记录审计日志，包含文件路径和导入统计
+        let detail = serde_json::json!({
+            "file_path": input.file_path,
+            "class_id": input.class_id,
+            "total_rows": total_rows,
+            "created_count": created_count,
+            "updated_count": updated_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+        });
+
+        AuditService::log_with_detail(
             pool,
             "system",
             "import_students",
@@ -191,6 +202,7 @@ impl StudentImportService {
             None,
             "high",
             false,
+            Some(&detail.to_string()),
         )
         .await?;
 

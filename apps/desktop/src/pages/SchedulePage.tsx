@@ -9,7 +9,7 @@ import { commands, ScheduleEvent, CreateScheduleEventInput, UpdateScheduleEventI
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { Plus, Edit2, Trash2, CalendarDays, Clock, Filter } from 'lucide-react';
+import { Plus, Edit2, Trash2, CalendarDays, Clock, Filter, FileText } from 'lucide-react';
 
 export const SchedulePage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -47,6 +47,17 @@ export const SchedulePage: React.FC = () => {
     enabled: !!selectedClassId,
   });
 
+  // 获取班级文件列表（用于文件关联选择）
+  const { data: scheduleFiles } = useQuery({
+    queryKey: ['scheduleFiles', selectedClassId],
+    queryFn: async () => {
+      if (!selectedClassId) return [];
+      const result = await commands.listScheduleFiles({ class_id: selectedClassId });
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+    enabled: !!selectedClassId,
+  });
   const createMutation = useMutation({
     mutationFn: async (input: CreateScheduleEventInput) => {
       const result = await commands.createScheduleEvent(input);
@@ -225,6 +236,12 @@ export const SchedulePage: React.FC = () => {
                       </div>
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900">{event.title}</h3>
+                    {event.linked_file_id && (
+                      <div className="flex items-center gap-1.5 mt-2 text-sm text-gray-500">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>已关联文件</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -291,8 +308,22 @@ export const SchedulePage: React.FC = () => {
                   type="datetime-local"
                   value={formData.end_at ? formData.end_at.slice(0, 16) : ''}
                   onChange={(e) => setFormData({ ...formData, end_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">关联文件 (可选)</label>
+                <select
+                  value={formData.linked_file_id || ''}
+                  onChange={(e) => setFormData({ ...formData, linked_file_id: e.target.value || null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow bg-white"
+                >
+                  <option value="">不关联文件</option>
+                  {scheduleFiles?.map((file) => (
+                    <option key={file.id} value={file.id}>
+                      {file.file_name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="pt-4 flex justify-end gap-3">
                 <button

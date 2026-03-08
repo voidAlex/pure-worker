@@ -10,6 +10,8 @@ pub struct AuditLog {
     pub target_id: Option<String>,
     pub risk_level: String,
     pub confirmed_by_user: i32,
+    /// 结构化详细信息（JSON格式），如导入统计、文件路径等
+    pub detail_json: Option<String>,
     pub created_at: String,
 }
 
