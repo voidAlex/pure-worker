@@ -3,6 +3,10 @@
 //! 提供错题检索、题目模板化、参数扰动生成变体题和 Word 练习卷导出能力。
 
 use std::path::Path;
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+};
 
 use chrono::Utc;
 use docx_rs::{Docx, Paragraph, Run};
@@ -31,6 +35,23 @@ struct AnswerItem {
     number: i32,
     answer: String,
     explanation: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TemplateParamsConfig {
+    params: Vec<TemplateParam>,
+    formula: Option<String>,
+    stem_template: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TemplateParam {
+    name: String,
+    #[serde(rename = "type")]
+    param_type: String,
+    value: serde_json::Value,
+    min: Option<f64>,
+    max: Option<f64>,
 }
 
 /// 练习卷生成服务，负责错题重组和专属练习卷的生成与导出。
@@ -73,7 +94,7 @@ impl PracticeSheetService {
 
         let build_result = async {
             let wrong_answers = sqlx::query_as::<_, WrongAnswerRecord>(
-                "SELECT id, student_id, job_id, ocr_result_id, question_no, knowledge_point, difficulty, student_answer, correct_answer, score, full_score, error_type, is_resolved, is_deleted, created_at, updated_at FROM wrong_answer_record WHERE student_id = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT ?",
+                "SELECT id, student_id, job_id, ocr_result_id, question_no, knowledge_point, difficulty, student_answer, correct_answer, score, full_score, error_type, is_resolved, is_deleted, created_at, updated_at FROM wrong_answer_record WHERE student_id = ? AND is_deleted = 0 AND created_at >= datetime('now', '-30 days') ORDER BY created_at DESC LIMIT ?",
             )
             .bind(&input.student_id)
             .bind(question_count)
@@ -383,17 +404,197 @@ impl PracticeSheetService {
         Ok(rows)
     }
 
-    /// 题目参数扰动桩实现：目前仅克隆并设置 parent_id。
+    /// 基于模板参数生成题目变体。
+    ///
+    /// 逻辑说明：
+    /// 1. 优先解析 `template_params_json`，若缺失或解析失败则退化为克隆题目；
+    /// 2. 对 int/float 数值参数执行 ±10%~30% 的扰动，并强制约束在 [min, max]；
+    /// 3. 用新参数替换 `stem_template` 中 `{param}` 占位符生成新题干；
+    /// 4. 若存在 `formula`，按“从左到右”的基础四则运算重新计算答案；
+    /// 5. 无论是否成功扰动，都保持 `parent_id=原题ID` 且重新生成变体题 ID。
     fn perturb_question(question: &QuestionBankItem) -> QuestionBankItem {
-        // TODO: M4 Phase 2 — 参数扰动生成变体题
-        // 1. 解析 template_params_json 中的可变参数
-        // 2. 在合理范围内随机扰动数值参数
-        // 3. 重新计算正确答案
-        // 4. 返回变体题目
         let mut cloned = question.clone();
         cloned.parent_id = Some(question.id.clone());
         cloned.id = Uuid::new_v4().to_string();
+
+        let Some(raw_template) = question.template_params_json.as_deref() else {
+            return cloned;
+        };
+
+        let Ok(config) = serde_json::from_str::<TemplateParamsConfig>(raw_template) else {
+            return cloned;
+        };
+
+        let now_seed = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let mut numeric_values: HashMap<String, f64> = HashMap::new();
+        let mut display_values: HashMap<String, String> = HashMap::new();
+
+        for param in &config.params {
+            let Some(original_value) = Self::json_to_f64(&param.value) else {
+                continue;
+            };
+
+            let min = param.min.unwrap_or(original_value);
+            let max = param.max.unwrap_or(original_value);
+            if min > max {
+                continue;
+            }
+
+            let mut hasher = DefaultHasher::new();
+            question.id.hash(&mut hasher);
+            param.name.hash(&mut hasher);
+            now_seed.hash(&mut hasher);
+            let hashed = hasher.finish();
+
+            let pct_bucket = (hashed % 21) as f64;
+            let ratio = 0.10 + pct_bucket / 100.0;
+            let direction = if ((hashed >> 8) & 1) == 0 { 1.0 } else { -1.0 };
+            let perturbed = (original_value * (1.0 + direction * ratio)).clamp(min, max);
+
+            match param.param_type.as_str() {
+                "int" => {
+                    let rounded = perturbed.round();
+                    let int_value = if rounded.is_finite() {
+                        if rounded > i64::MAX as f64 {
+                            i64::MAX
+                        } else if rounded < i64::MIN as f64 {
+                            i64::MIN
+                        } else {
+                            rounded as i64
+                        }
+                    } else {
+                        continue;
+                    };
+                    numeric_values.insert(param.name.clone(), int_value as f64);
+                    display_values.insert(param.name.clone(), int_value.to_string());
+                }
+                "float" => {
+                    let float_value = (perturbed * 100.0).round() / 100.0;
+                    numeric_values.insert(param.name.clone(), float_value);
+                    display_values.insert(param.name.clone(), format!("{float_value:.2}"));
+                }
+                _ => {
+                    continue;
+                }
+            }
+        }
+
+        if let Some(stem_template) = config.stem_template.as_deref() {
+            let mut new_stem = stem_template.to_string();
+            for (name, value) in &display_values {
+                let placeholder = format!("{{{name}}}");
+                new_stem = new_stem.replace(&placeholder, value);
+            }
+            cloned.stem = new_stem;
+        }
+
+        if let Some(formula) = config.formula.as_deref() {
+            if let Some(result) = Self::evaluate_formula(formula, &numeric_values) {
+                let answer = if (result.fract()).abs() < f64::EPSILON {
+                    (result as i64).to_string()
+                } else {
+                    let rounded = (result * 100.0).round() / 100.0;
+                    format!("{rounded:.2}")
+                };
+                cloned.answer = Some(answer);
+            }
+        }
+
         cloned
+    }
+
+    fn json_to_f64(value: &serde_json::Value) -> Option<f64> {
+        if let Some(v) = value.as_f64() {
+            return Some(v);
+        }
+        if let Some(text) = value.as_str() {
+            return text.parse::<f64>().ok();
+        }
+        None
+    }
+
+    fn evaluate_formula(formula: &str, values: &HashMap<String, f64>) -> Option<f64> {
+        #[derive(Debug)]
+        enum Token {
+            Number(f64),
+            Op(char),
+        }
+
+        let mut tokens: Vec<Token> = Vec::new();
+        let chars: Vec<char> = formula.chars().collect();
+        let mut idx = 0usize;
+
+        while idx < chars.len() {
+            let ch = chars[idx];
+            if ch.is_whitespace() {
+                idx += 1;
+                continue;
+            }
+
+            if matches!(ch, '+' | '-' | '*' | '/') {
+                tokens.push(Token::Op(ch));
+                idx += 1;
+                continue;
+            }
+
+            if ch.is_ascii_digit() || ch == '.' {
+                let start = idx;
+                idx += 1;
+                while idx < chars.len() && (chars[idx].is_ascii_digit() || chars[idx] == '.') {
+                    idx += 1;
+                }
+                let text: String = chars[start..idx].iter().collect();
+                let number = text.parse::<f64>().ok()?;
+                tokens.push(Token::Number(number));
+                continue;
+            }
+
+            if ch.is_alphabetic() || ch == '_' {
+                let start = idx;
+                idx += 1;
+                while idx < chars.len() && (chars[idx].is_alphanumeric() || chars[idx] == '_') {
+                    idx += 1;
+                }
+                let name: String = chars[start..idx].iter().collect();
+                let number = values.get(&name).copied()?;
+                tokens.push(Token::Number(number));
+                continue;
+            }
+
+            return None;
+        }
+
+        let mut iter = tokens.into_iter();
+        let mut acc = match iter.next() {
+            Some(Token::Number(v)) => v,
+            _ => return None,
+        };
+
+        while let Some(token) = iter.next() {
+            let op = match token {
+                Token::Op(c) => c,
+                Token::Number(_) => return None,
+            };
+            let rhs = match iter.next() {
+                Some(Token::Number(v)) => v,
+                _ => return None,
+            };
+
+            acc = match op {
+                '+' => acc + rhs,
+                '-' => acc - rhs,
+                '*' => acc * rhs,
+                '/' => {
+                    if rhs.abs() < f64::EPSILON {
+                        return None;
+                    }
+                    acc / rhs
+                }
+                _ => return None,
+            };
+        }
+
+        Some(acc)
     }
 
     /// 查询学生错题记录，支持知识点/任务 ID/是否解决等筛选条件。
@@ -402,7 +603,7 @@ impl PracticeSheetService {
         input: crate::models::assignment_grading::ListWrongAnswersInput,
     ) -> Result<Vec<WrongAnswerRecord>, AppError> {
         let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
-            "SELECT id, student_id, job_id, ocr_result_id, question_no, knowledge_point, difficulty, student_answer, correct_answer, score, full_score, error_type, is_resolved, is_deleted, created_at, updated_at FROM wrong_answer_record WHERE is_deleted = 0",
+            "SELECT id, student_id, job_id, ocr_result_id, question_no, knowledge_point, difficulty, student_answer, correct_answer, score, full_score, error_type, is_resolved, is_deleted, created_at, updated_at FROM wrong_answer_record WHERE is_deleted = 0 AND created_at >= datetime('now', '-30 days')",
         );
 
         if let Some(student_id) = &input.student_id {
@@ -412,7 +613,8 @@ impl PracticeSheetService {
             qb.push(" AND job_id = ").push_bind(job_id);
         }
         if let Some(knowledge_point) = &input.knowledge_point {
-            qb.push(" AND knowledge_point = ").push_bind(knowledge_point);
+            qb.push(" AND knowledge_point = ")
+                .push_bind(knowledge_point);
         }
         if input.unresolved_only.unwrap_or(false) {
             qb.push(" AND is_resolved = 0");

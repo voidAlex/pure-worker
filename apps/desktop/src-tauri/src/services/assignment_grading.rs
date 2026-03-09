@@ -1,7 +1,7 @@
 //! 作业批改服务模块
 //! 负责 M4 作业批改场景下的核心 CRUD 能力：批改任务、作业素材、OCR 结果、错题记录、题库与导出。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use rust_xlsxwriter::Workbook;
@@ -13,8 +13,7 @@ use crate::models::assignment_grading::{
     AddAssignmentAssetsInput, AssignmentAsset, AssignmentOcrResult, BatchReviewOcrResultsInput,
     CreateGradingJobInput, CreateQuestionBankInput, ExportGradingResultsInput,
     ExportGradingResultsResponse, GradingJob, ListQuestionBankInput, ListWrongAnswersInput,
-    QuestionBankItem, ReviewOcrResultInput, UpdateGradingJobInput,
-    WrongAnswerRecord,
+    QuestionBankItem, ReviewOcrResultInput, UpdateGradingJobInput, WrongAnswerRecord,
 };
 use crate::services::audit::AuditService;
 
@@ -22,6 +21,152 @@ use crate::services::audit::AuditService;
 pub struct AssignmentGradingService;
 
 impl AssignmentGradingService {
+    /// 规范化文件路径，统一为绝对路径并清理 `.`、`..` 片段。
+    fn normalize_file_path(file_path: &str) -> Result<PathBuf, AppError> {
+        let raw_path = Path::new(file_path);
+        let absolute_path = if raw_path.is_absolute() {
+            raw_path.to_path_buf()
+        } else {
+            let current_dir = std::env::current_dir()
+                .map_err(|e| AppError::FileOperation(format!("获取当前目录失败: {e}")))?;
+            current_dir.join(raw_path)
+        };
+
+        let mut normalized = PathBuf::new();
+        for component in absolute_path.components() {
+            match component {
+                std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+                std::path::Component::RootDir => normalized.push(component.as_os_str()),
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    normalized.pop();
+                }
+                std::path::Component::Normal(part) => normalized.push(part),
+            }
+        }
+
+        Ok(std::fs::canonicalize(&normalized).unwrap_or(normalized))
+    }
+
+    /// 校验文件路径是否落在白名单目录内。
+    fn validate_file_path_whitelist(
+        file_path: &str,
+        workspace_path: Option<&str>,
+    ) -> Result<(), AppError> {
+        let normalized_file_path = Self::normalize_file_path(file_path)?;
+
+        let mut allowed_dirs: Vec<PathBuf> = Vec::new();
+        let home_dir = std::env::var("HOME")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
+            .or_else(|| {
+                let home_drive = std::env::var("HOMEDRIVE").ok();
+                let home_path = std::env::var("HOMEPATH").ok();
+                match (home_drive, home_path) {
+                    (Some(drive), Some(path)) => Some(PathBuf::from(format!("{drive}{path}"))),
+                    _ => None,
+                }
+            });
+
+        if let Some(home) = home_dir {
+            let normalized_home = Self::normalize_file_path(home.to_string_lossy().as_ref())?;
+            allowed_dirs.push(normalized_home.clone());
+            allowed_dirs.push(normalized_home.join("Documents"));
+            allowed_dirs.push(normalized_home.join("Desktop"));
+            allowed_dirs.push(normalized_home.join("Downloads"));
+            allowed_dirs.push(normalized_home.join("Pictures"));
+        }
+
+        if let Some(workspace) = workspace_path.filter(|path| !path.trim().is_empty()) {
+            allowed_dirs.push(Self::normalize_file_path(workspace)?);
+        }
+
+        let in_whitelist = allowed_dirs
+            .iter()
+            .any(|allowed_dir| normalized_file_path.starts_with(allowed_dir));
+
+        if in_whitelist {
+            return Ok(());
+        }
+
+        Err(AppError::PermissionDenied(format!(
+            "文件路径不在允许访问范围内: {}",
+            normalized_file_path.display()
+        )))
+    }
+
+    /// 从 OCR 文本中提取学号（6-12 位数字）。
+    fn extract_student_no_from_text(text: &str) -> Option<String> {
+        let marker = "学号";
+        let start = text.find(marker)? + marker.len();
+        let mut seen_digits = false;
+        let mut digits = String::new();
+
+        for ch in text[start..].chars() {
+            if !seen_digits {
+                if ch == '：' || ch == ':' || ch.is_whitespace() {
+                    continue;
+                }
+                if ch.is_ascii_digit() {
+                    seen_digits = true;
+                    digits.push(ch);
+                    continue;
+                }
+                break;
+            }
+
+            if ch.is_ascii_digit() {
+                digits.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        if (6..=12).contains(&digits.len()) {
+            Some(digits)
+        } else {
+            None
+        }
+    }
+
+    /// 从 OCR 文本中提取姓名（2-4 位中文字符）。
+    fn extract_student_name_from_text(text: &str) -> Option<String> {
+        let marker = "姓名";
+        let start = text.find(marker)? + marker.len();
+        let mut seen_name = false;
+        let mut name = String::new();
+
+        for ch in text[start..].chars() {
+            if !seen_name {
+                if ch == '：' || ch == ':' || ch.is_whitespace() {
+                    continue;
+                }
+                if ('\u{4e00}'..='\u{9fa5}').contains(&ch) {
+                    seen_name = true;
+                    name.push(ch);
+                    continue;
+                }
+                break;
+            }
+
+            if ('\u{4e00}'..='\u{9fa5}').contains(&ch) {
+                if name.chars().count() >= 4 {
+                    break;
+                }
+                name.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        if (2..=4).contains(&name.chars().count()) {
+            Some(name)
+        } else {
+            None
+        }
+    }
+
     /// 创建批改任务。
     pub async fn create_grading_job(
         pool: &SqlitePool,
@@ -179,6 +324,8 @@ impl AssignmentGradingService {
         let mut created_ids = Vec::with_capacity(input.file_paths.len());
 
         for file_path in &input.file_paths {
+            Self::validate_file_path_whitelist(file_path, None)?;
+
             let metadata = tokio::fs::metadata(file_path)
                 .await
                 .map_err(|e| AppError::FileOperation(format!("读取文件信息失败: {e}")))?;
@@ -305,7 +452,84 @@ impl AssignmentGradingService {
         .bind(job_id)
         .fetch_all(pool)
         .await
-        .map_err(|e| AppError::Database(format!("查询 OCR 结果失败: {e}")))
+            .map_err(|e| AppError::Database(format!("查询 OCR 结果失败: {e}")))
+    }
+
+    /// 从 OCR 文本中匹配学生信息并回填 student_id。
+    pub async fn match_student_from_ocr(pool: &SqlitePool, job_id: &str) -> Result<i32, AppError> {
+        let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+            "SELECT id, ocr_raw_text, answer_text \
+             FROM assignment_ocr_result \
+             WHERE job_id = ? AND student_id IS NULL AND is_deleted = 0",
+        )
+        .bind(job_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::Database(format!("查询待匹配 OCR 记录失败: {e}")))?;
+
+        let mut matched_count = 0_i32;
+
+        for (ocr_id, ocr_raw_text, answer_text) in rows {
+            let mut student_no: Option<String> = None;
+            let mut student_name: Option<String> = None;
+
+            for text in [ocr_raw_text.as_deref(), answer_text.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                if student_no.is_none() {
+                    student_no = Self::extract_student_no_from_text(text);
+                }
+                if student_name.is_none() {
+                    student_name = Self::extract_student_name_from_text(text);
+                }
+                if student_no.is_some() || student_name.is_some() {
+                    break;
+                }
+            }
+
+            if student_no.is_none() && student_name.is_none() {
+                continue;
+            }
+
+            let matched_student_id = sqlx::query_scalar::<_, String>(
+                "SELECT id FROM student \
+                 WHERE (student_no = ? OR name = ?) AND is_deleted = 0 \
+                 ORDER BY created_at ASC \
+                 LIMIT 1",
+            )
+            .bind(student_no.as_deref().unwrap_or(""))
+            .bind(student_name.as_deref().unwrap_or(""))
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| AppError::Database(format!("查询学生匹配失败: {e}")))?;
+
+            if let Some(student_id) = matched_student_id {
+                sqlx::query(
+                    "UPDATE assignment_ocr_result SET student_id = ?, updated_at = ? WHERE id = ?",
+                )
+                .bind(&student_id)
+                .bind(Utc::now().to_rfc3339())
+                .bind(&ocr_id)
+                .execute(pool)
+                .await
+                .map_err(|e| AppError::Database(format!("更新 OCR 学生匹配失败: {e}")))?;
+                matched_count += 1;
+            }
+        }
+
+        AuditService::log(
+            pool,
+            "system",
+            "match_student_from_ocr",
+            "assignment_ocr_result",
+            Some(job_id),
+            "low",
+            false,
+        )
+        .await?;
+
+        Ok(matched_count)
     }
 
     /// 复核单条 OCR 结果。
@@ -415,7 +639,7 @@ impl AssignmentGradingService {
         input: ListWrongAnswersInput,
     ) -> Result<Vec<WrongAnswerRecord>, AppError> {
         let mut qb = QueryBuilder::<sqlx::Sqlite>::new(
-            "SELECT * FROM wrong_answer_record WHERE is_deleted = 0",
+            "SELECT * FROM wrong_answer_record WHERE is_deleted = 0 AND created_at >= datetime('now', '-30 days')",
         );
 
         if let Some(job_id) = &input.job_id {
@@ -579,12 +803,12 @@ impl AssignmentGradingService {
         pool: &SqlitePool,
         input: ExportGradingResultsInput,
     ) -> Result<ExportGradingResultsResponse, AppError> {
-        let rows = sqlx::query_as::<_, (String, String, String, Option<f64>, Option<f64>, String)>(
-            "SELECT COALESCE(ps.student_name, ''), aor.question_no, COALESCE(aor.answer_text, ''), aor.score, aor.final_score, COALESCE(aor.review_status, 'pending') \
+        let rows = sqlx::query_as::<_, (String, String, String, String, Option<f64>, Option<f64>, i32, Option<f64>, String)>(
+            "SELECT COALESCE(s.name, ''), COALESCE(s.student_no, ''), COALESCE(aor.question_no, ''), COALESCE(aor.answer_text, ''), aor.score, aor.confidence, aor.conflict_flag, aor.final_score, COALESCE(aor.review_status, 'pending') \
              FROM assignment_ocr_result aor \
-             LEFT JOIN practice_sheet ps ON ps.id = aor.student_id AND ps.is_deleted = 0 \
+             LEFT JOIN student s ON s.id = aor.student_id AND s.is_deleted = 0 \
              WHERE aor.job_id = ? AND aor.is_deleted = 0 \
-             ORDER BY ps.student_name ASC, aor.question_no ASC",
+             ORDER BY s.name ASC, aor.question_no ASC",
         )
         .bind(&input.job_id)
         .fetch_all(pool)
@@ -598,19 +822,28 @@ impl AssignmentGradingService {
             .write_string(0, 0, "学生姓名")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         worksheet
-            .write_string(0, 1, "题号")
+            .write_string(0, 1, "学号")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         worksheet
-            .write_string(0, 2, "答案文本")
+            .write_string(0, 2, "题号")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         worksheet
-            .write_string(0, 3, "OCR得分")
+            .write_string(0, 3, "答案文本")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         worksheet
-            .write_string(0, 4, "最终得分")
+            .write_string(0, 4, "OCR得分")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         worksheet
-            .write_string(0, 5, "复核状态")
+            .write_string(0, 5, "置信度")
+            .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+        worksheet
+            .write_string(0, 6, "冲突标记")
+            .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+        worksheet
+            .write_string(0, 7, "最终得分")
+            .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+        worksheet
+            .write_string(0, 8, "复核状态")
             .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
 
         for (index, row) in rows.iter().enumerate() {
@@ -625,18 +858,29 @@ impl AssignmentGradingService {
             worksheet
                 .write_string(line, 2, &row.2)
                 .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
-            if let Some(score) = row.3 {
+            worksheet
+                .write_string(line, 3, &row.3)
+                .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+            if let Some(score) = row.4 {
                 worksheet
-                    .write_number(line, 3, score)
+                    .write_number(line, 4, score)
                     .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
             }
-            if let Some(final_score) = row.4 {
+            if let Some(confidence) = row.5 {
                 worksheet
-                    .write_number(line, 4, final_score)
+                    .write_number(line, 5, confidence)
                     .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
             }
             worksheet
-                .write_string(line, 5, &row.5)
+                .write_number(line, 6, f64::from(row.6))
+                .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+            if let Some(final_score) = row.7 {
+                worksheet
+                    .write_number(line, 7, final_score)
+                    .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
+            }
+            worksheet
+                .write_string(line, 8, &row.8)
                 .map_err(|e| AppError::TaskExecution(format!("写入 Excel 失败: {e}")))?;
         }
 
