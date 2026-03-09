@@ -2,6 +2,7 @@ pub mod activity_announcement;
 pub mod ai_config;
 pub mod ai_param_preset;
 pub mod app_settings;
+pub mod approval_request;
 pub mod assignment_grading;
 pub mod async_task;
 pub mod audit_log;

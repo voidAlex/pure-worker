@@ -43,3 +43,34 @@ pub struct BatchProgress {
     pub failed: i32,
     pub current_student_name: Option<String>,
 }
+
+/// 任务检查点条目记录（分片提交 + 幂等去重）。
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
+pub struct TaskCheckpointItem {
+    pub id: String,
+    pub task_id: String,
+    pub item_id: String,
+    pub status: String,
+    pub result_json: Option<String>,
+    pub created_at: String,
+}
+
+/// 恢复任务输入。
+#[derive(Debug, Deserialize, Type)]
+pub struct RecoverTaskInput {
+    pub task_id: String,
+    /// true = 继续执行, false = 终止任务
+    pub resume: bool,
+}
+
+/// 任务恢复信息（启动时查询到的可恢复任务摘要）。
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
+pub struct RecoverableTask {
+    pub id: String,
+    pub task_type: String,
+    pub status: String,
+    pub checkpoint_cursor: Option<String>,
+    pub completed_items_count: i32,
+    pub attempt_count: i32,
+    pub created_at: String,
+}
