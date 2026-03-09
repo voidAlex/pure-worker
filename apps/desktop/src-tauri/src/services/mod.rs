@@ -1,3 +1,4 @@
+pub mod assignment_grading;
 pub mod activity_announcement;
 pub mod ai_generation;
 pub mod async_task;
@@ -5,9 +6,12 @@ pub mod audit;
 pub mod classroom;
 pub mod llm_provider;
 pub mod memory_search;
+pub mod multimodal_grading;
 pub mod observation_note;
+pub mod ocr;
 pub mod parent_communication;
 pub mod prompt_template;
+pub mod practice_sheet;
 pub mod schedule_event;
 pub mod schedule_file;
 pub mod score_record;

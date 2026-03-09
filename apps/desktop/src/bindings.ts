@@ -544,6 +544,165 @@ export const commands = {
 			return { status: "error", error: e as any };
 		}
 	},
+	/** M4: 作业批改 — 批改任务管理 */
+	async createGradingJob(input: CreateGradingJobInput): Promise<Result<GradingJob, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_grading_job", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getGradingJob(input: GetGradingJobInput): Promise<Result<GradingJob, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_grading_job", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listGradingJobs(input: ListGradingJobsInput): Promise<Result<GradingJob[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_grading_jobs", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateGradingJob(input: UpdateGradingJobInput): Promise<Result<GradingJob, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_grading_job", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteGradingJob(input: DeleteGradingJobInput): Promise<Result<DeleteGradingJobResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_grading_job", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M4: 作业批改 — 素材管理 */
+	async addAssignmentAssets(input: AddAssignmentAssetsInput): Promise<Result<AssignmentAsset[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("add_assignment_assets", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listJobAssets(input: ListJobAssetsInput): Promise<Result<AssignmentAsset[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_job_assets", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteAssignmentAsset(input: DeleteAssetInput): Promise<Result<DeleteAssetResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_assignment_asset", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M4: 作业批改 — 批改执行与结果 */
+	async startGrading(input: StartGradingInput): Promise<Result<AsyncTask, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("start_grading", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listJobOcrResults(input: ListJobOcrResultsInput): Promise<Result<AssignmentOcrResult[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_job_ocr_results", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async reviewOcrResult(input: ReviewOcrResultInput): Promise<Result<AssignmentOcrResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("review_ocr_result", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async batchReviewOcrResults(input: BatchReviewOcrResultsInput): Promise<Result<AssignmentOcrResult[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("batch_review_ocr_results", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listConflictResults(input: ListConflictResultsInput): Promise<Result<AssignmentOcrResult[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_conflict_results", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M4: 错题与练习卷 */
+	async listWrongAnswers(input: ListWrongAnswersInput): Promise<Result<WrongAnswerRecord[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_wrong_answers", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async resolveWrongAnswer(input: ResolveWrongAnswerCommandInput): Promise<Result<WrongAnswerRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("resolve_wrong_answer", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getPracticeSheet(input: GetPracticeSheetInput): Promise<Result<PracticeSheet, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_practice_sheet", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listStudentPracticeSheets(input: ListStudentPracticeSheetsInput): Promise<Result<PracticeSheet[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_student_practice_sheets", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async generatePracticeSheet(input: GeneratePracticeSheetInput): Promise<Result<PracticeSheet, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("generate_practice_sheet", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deletePracticeSheet(input: DeletePracticeSheetInput): Promise<Result<DeletePracticeSheetResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_practice_sheet", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M4: 导出与题库 */
+	async exportGradingResults(input: ExportGradingResultsInput): Promise<Result<ExportGradingResultsResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("export_grading_results", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async listQuestionBank(input: ListQuestionBankInput): Promise<Result<QuestionBankItem[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_question_bank", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createQuestionBankItem(input: CreateQuestionBankInput): Promise<Result<QuestionBankItem, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_question_bank_item", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
 };
 
 /** user-defined types **/
@@ -1054,6 +1213,221 @@ export type ListTemplateFilesInput = {
 export type DeleteTemplateFileInput = { id: string };
 export type DeleteTemplateFileResponse = { success: boolean };
 
+/** M4: 作业批改与错题练习类型 */
+
+export type GradingJob = {
+	id: string;
+	class_id: string;
+	title: string;
+	grading_mode: string;
+	status: string;
+	answer_key_json: string | null;
+	scoring_rules_json: string | null;
+	total_assets: number;
+	processed_assets: number;
+	failed_assets: number;
+	conflict_count: number;
+	task_id: string | null;
+	output_path: string | null;
+	is_deleted: number;
+	created_at: string;
+	updated_at: string;
+};
+export type AssignmentAsset = {
+	id: string;
+	class_id: string;
+	file_path: string;
+	hash: string | null;
+	captured_at: string | null;
+	is_deleted: number;
+	created_at: string;
+	job_id: string | null;
+	original_filename: string | null;
+	file_size: number | null;
+	mime_type: string | null;
+	image_width: number | null;
+	image_height: number | null;
+	preprocess_status: string;
+	preprocessed_path: string | null;
+	updated_at: string;
+};
+export type AssignmentOcrResult = {
+	id: string;
+	asset_id: string;
+	job_id: string | null;
+	student_id: string | null;
+	question_no: string | null;
+	answer_text: string | null;
+	confidence: number | null;
+	score: number | null;
+	created_at: string;
+	ocr_raw_text: string | null;
+	multimodal_score: number | null;
+	multimodal_feedback: string | null;
+	conflict_flag: number;
+	review_status: string;
+	reviewed_by: string | null;
+	reviewed_at: string | null;
+	final_score: number | null;
+	is_deleted: number;
+	updated_at: string;
+};
+export type WrongAnswerRecord = {
+	id: string;
+	student_id: string;
+	job_id: string;
+	ocr_result_id: string;
+	question_no: string;
+	knowledge_point: string | null;
+	difficulty: string | null;
+	student_answer: string | null;
+	correct_answer: string | null;
+	score: number | null;
+	full_score: number | null;
+	error_type: string | null;
+	is_resolved: number;
+	is_deleted: number;
+	created_at: string;
+	updated_at: string;
+};
+export type PracticeSheet = {
+	id: string;
+	student_id: string;
+	title: string;
+	knowledge_points_json: string | null;
+	difficulty: string | null;
+	question_count: number;
+	questions_json: string | null;
+	answers_json: string | null;
+	file_path: string | null;
+	answer_file_path: string | null;
+	status: string;
+	task_id: string | null;
+	is_deleted: number;
+	created_at: string;
+	updated_at: string;
+};
+export type QuestionBankItem = {
+	id: string;
+	source: string | null;
+	knowledge_point: string | null;
+	difficulty: string | null;
+	stem: string;
+	answer: string | null;
+	explanation: string | null;
+	is_deleted: number;
+	created_at: string;
+	updated_at: string;
+	question_type: string | null;
+	subject: string | null;
+	grade: string | null;
+	tags_json: string | null;
+	template_params_json: string | null;
+	parent_id: string | null;
+};
+export type GradingProgress = {
+	total: number;
+	processed: number;
+	failed: number;
+	conflicts: number;
+	current_filename: string | null;
+};
+
+/** M4: 批改任务输入类型 */
+export type CreateGradingJobInput = {
+	class_id: string;
+	title: string;
+	grading_mode: string | null;
+	answer_key_json: string | null;
+	scoring_rules_json: string | null;
+	task_id: string | null;
+	output_path: string | null;
+};
+export type UpdateGradingJobInput = {
+	id: string;
+	title: string | null;
+	grading_mode: string | null;
+	status: string | null;
+	answer_key_json: string | null;
+	scoring_rules_json: string | null;
+	task_id: string | null;
+	output_path: string | null;
+};
+export type ListGradingJobsInput = { class_id: string };
+export type GetGradingJobInput = { id: string };
+export type DeleteGradingJobInput = { id: string };
+export type DeleteGradingJobResponse = { success: boolean };
+
+/** M4: 素材管理输入类型 */
+export type AddAssignmentAssetsInput = { job_id: string; class_id: string; file_paths: string[] };
+export type ListJobAssetsInput = { job_id: string };
+export type DeleteAssetInput = { id: string };
+export type DeleteAssetResponse = { success: boolean };
+
+/** M4: 批改执行与审核输入类型 */
+export type StartGradingInput = { job_id: string };
+export type ListJobOcrResultsInput = { job_id: string };
+export type ReviewOcrResultInput = {
+	id: string;
+	review_status: string;
+	final_score: number | null;
+	reviewed_by: string;
+};
+export type BatchReviewOcrResultsInput = {
+	ids: string[];
+	review_status: string;
+	reviewed_by: string;
+	final_score: number | null;
+};
+export type ListConflictResultsInput = { job_id: string };
+
+/** M4: 错题与练习卷输入类型 */
+export type ListWrongAnswersInput = {
+	student_id: string | null;
+	job_id: string | null;
+	knowledge_point: string | null;
+	unresolved_only: boolean | null;
+	limit: number | null;
+};
+export type ResolveWrongAnswerCommandInput = { id: string };
+export type GetPracticeSheetInput = { id: string };
+export type ListStudentPracticeSheetsInput = { student_id: string };
+export type GeneratePracticeSheetInput = {
+	student_id: string;
+	title: string;
+	knowledge_points: string[] | null;
+	difficulty: string | null;
+	question_count: number | null;
+};
+export type DeletePracticeSheetInput = { id: string };
+export type DeletePracticeSheetResponse = { success: boolean };
+
+/** M4: 导出与题库输入类型 */
+export type ExportGradingResultsInput = { job_id: string; output_path: string };
+export type ExportGradingResultsResponse = { output_path: string; total_rows: number };
+export type ListQuestionBankInput = {
+	source: string | null;
+	knowledge_point: string | null;
+	question_type: string | null;
+	subject: string | null;
+	difficulty: string | null;
+	grade: string | null;
+	limit: number | null;
+};
+export type CreateQuestionBankInput = {
+	source: string | null;
+	knowledge_point: string | null;
+	difficulty: string | null;
+	stem: string;
+	answer: string | null;
+	explanation: string | null;
+	question_type: string | null;
+	subject: string | null;
+	grade: string | null;
+	tags_json: string | null;
+	template_params_json: string | null;
+	parent_id: string | null;
+};
 /** tauri-specta globals **/
 
 import {

@@ -1,6 +1,6 @@
 /**
  * 侧边栏导航组件
- * 可折叠的左侧导航菜单，包含工作台、班级管理、学生档案、数据导入、课表日程入口
+ * 可折叠的左侧导航菜单，包含工作台、班级管理、学生档案、数据导入、课表日程、作业批改、错题练习入口
  */
 
 import React from 'react';
@@ -16,6 +16,8 @@ import {
   Settings,
   FileText,
   Megaphone,
+  ClipboardCheck,
+  BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,6 +34,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse })
     { path: '/schedule', icon: CalendarDays, label: '课表日程' },
     { path: '/semester-comments', icon: FileText, label: '期末评语' },
     { path: '/announcements', icon: Megaphone, label: '班会活动' },
+    { path: '/assignment-grading', icon: ClipboardCheck, label: '作业批改' },
+    { path: '/practice-sheets', icon: BookOpen, label: '错题练习' },
     { path: '/settings', icon: Settings, label: 'AI 配置' },
   ];
 

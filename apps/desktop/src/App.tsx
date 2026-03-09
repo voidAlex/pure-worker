@@ -1,6 +1,6 @@
 /**
  * 应用根组件
- * 配置 TanStack Query 客户端和 React Router 路由
+ * 配置 TanStack Query 客户端和 React Router 路由，注册所有页面路由
  */
 
 import { type ReactElement } from 'react';
@@ -16,6 +16,8 @@ import { SchedulePage } from '@/pages/SchedulePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { SemesterCommentsPage } from '@/pages/SemesterCommentsPage';
 import { ActivityAnnouncementsPage } from '@/pages/ActivityAnnouncementsPage';
+import { AssignmentGradingPage } from '@/pages/AssignmentGradingPage';
+import { PracticeSheetsPage } from '@/pages/PracticeSheetsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +43,8 @@ export const App = (): ReactElement => {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/semester-comments" element={<SemesterCommentsPage />} />
             <Route path="/announcements" element={<ActivityAnnouncementsPage />} />
+            <Route path="/assignment-grading" element={<AssignmentGradingPage />} />
+            <Route path="/practice-sheets" element={<PracticeSheetsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

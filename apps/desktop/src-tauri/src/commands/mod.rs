@@ -1,3 +1,4 @@
+pub mod assignment_grading;
 pub mod activity_announcement;
 pub mod ai_config;
 pub mod ai_generation;
