@@ -153,7 +153,7 @@ export const SchedulePage: React.FC = () => {
         hour: '2-digit',
         minute: '2-digit',
       }).format(date);
-    } catch (e) {
+    } catch {
       return isoString;
     }
   };

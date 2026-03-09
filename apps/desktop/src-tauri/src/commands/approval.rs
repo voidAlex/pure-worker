@@ -17,6 +17,15 @@ pub async fn list_pending_approvals(
     ApprovalService::list_pending(pool.inner()).await
 }
 
+/// 启动恢复时查询待处理审批列表（仅返回未超时记录）。
+#[tauri::command]
+#[specta::specta]
+pub async fn list_pending_approvals_for_restore(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<ApprovalRequest>, AppError> {
+    ApprovalService::list_pending_for_restore(pool.inner()).await
+}
+
 /// 解决审批请求（批准或拒绝）。
 #[tauri::command]
 #[specta::specta]

@@ -12,7 +12,6 @@ import {
   type AssignmentAsset,
   type AssignmentOcrResult,
   type AsyncTask,
-  type GradingProgress,
   type Student,
   type CreateGradingJobInput,
   type AddAssignmentAssetsInput,
@@ -46,6 +45,14 @@ const REVIEW_STATUS_STYLES: Record<string, { bg: string; text: string; label: st
   pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: '待审核' },
   approved: { bg: 'bg-green-100', text: 'text-green-700', label: '已确认' },
   rejected: { bg: 'bg-red-100', text: 'text-red-600', label: '已拒绝' },
+};
+
+type GradingProgress = {
+  total: number;
+  processed: number;
+  failed: number;
+  conflicts: number;
+  current_filename: string | null;
 };
 
 export const AssignmentGradingPage: React.FC = () => {

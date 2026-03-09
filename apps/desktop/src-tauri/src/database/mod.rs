@@ -52,6 +52,7 @@ pub async fn init_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, AppE
     // These are applied on each new connection
     let options = SqliteConnectOptions::new()
         .filename(&db_path)
+        .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_millis(5000))

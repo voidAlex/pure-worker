@@ -22,7 +22,7 @@ export const DashboardPage: React.FC = () => {
   const { data: tasksData } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
-      const result = await commands.listTasks();
+      const result = await commands.listTasks(null);
       if (result.status === 'error') throw new Error(JSON.stringify(result.error));
       return result.data;
     },

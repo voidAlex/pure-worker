@@ -8,6 +8,7 @@ pub mod error;
 pub mod models;
 pub mod services;
 
+use specta_typescript::BigIntExportBehavior;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
@@ -34,6 +35,7 @@ pub fn run() {
         commands::task::list_recoverable_tasks,
         commands::task::renew_task_lease,
         commands::approval::list_pending_approvals,
+        commands::approval::list_pending_approvals_for_restore,
         commands::approval::resolve_approval,
         commands::approval::cleanup_expired_approvals,
         commands::approval::list_task_approvals,
@@ -160,7 +162,7 @@ pub fn run() {
     #[cfg(debug_assertions)]
     builder
         .export(
-            specta_typescript::Typescript::default(),
+            specta_typescript::Typescript::default().bigint(BigIntExportBehavior::Number),
             "../src/bindings.ts",
         )
         .expect("Failed to export TypeScript bindings");

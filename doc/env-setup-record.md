@@ -116,9 +116,9 @@ export TAURI_BUNDLER_TOOLS_GITHUB_MIRROR="https://ghproxy.com/https://github.com
 - [x] `uv` PyPI 源指向阿里云/清华镜像
 - [x] `UV_PYTHON_INSTALL_MIRROR` 已配置 GitHub 加速代理
 - [x] `TAURI_BUNDLER_TOOLS_GITHUB_MIRROR` 已配置 GitHub 加速代理
-- [ ] `pnpm tauri info` 成功执行（待工程初始化后验证）
+- [x] `pnpm tauri info` 成功执行（已于 2026-03-09 在 `apps/desktop` 目录验证）
 
-> 注：`pnpm tauri info` 需要在 Tauri 项目初始化后才能执行，将在 M1 E-002 任务中验证。
+> 注：`pnpm tauri info` 已完成验证，详见本次执行日志输出。
 
 ---
 

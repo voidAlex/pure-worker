@@ -10,7 +10,6 @@ import {
   type Classroom,
   type SemesterComment,
   type AsyncTask,
-  type BatchProgress,
   type Student,
 } from '@/bindings';
 import { useToast } from '@/hooks/useToast';
@@ -33,6 +32,13 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   draft: { bg: 'bg-gray-100', text: 'text-gray-600', label: '草稿' },
   adopted: { bg: 'bg-green-100', text: 'text-green-700', label: '已采纳' },
   rejected: { bg: 'bg-red-100', text: 'text-red-600', label: '已拒绝' },
+};
+
+type BatchProgress = {
+  total: number;
+  completed: number;
+  failed: number;
+  current_student_name: string | null;
 };
 
 export const SemesterCommentsPage: React.FC = () => {
