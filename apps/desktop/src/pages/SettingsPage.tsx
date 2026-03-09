@@ -1,18 +1,11 @@
 /**
  * 系统设置页面
- *
- * 包含五个标签页：
- * 1. AI 配置 - AI 服务商/模型管理、参数预设
- * 2. 安全隐私 - 存储生命周期、脱敏开关
- * 3. 模板导出 - 模板文件管理、默认导出格式
- * 4. 快捷键 - 全局快捷键管理
- * 5. Skills 与 MCP - 技能管理、uv 环境、MCP 服务器管理
+ * 包含 5 个主标签页：AI配置、安全隐私、模板导出、快捷键、Skills与MCP。
  */
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   commands,
-  type AppError,
   type AiConfigSafe,
   type CreateAiConfigInput,
   type UpdateAiConfigInput,
@@ -32,6 +25,19 @@ import {
   type CreateTemplateFileInput,
   type StorageStats,
   type UvHealthResult,
+  type AppError,
+  type DeleteAiConfigInput,
+  type DeleteAiParamPresetInput,
+  type ActivateAiParamPresetInput,
+  type ExportWorkspaceInput,
+  type ArchiveWorkspaceInput,
+  type EraseWorkspaceInput,
+  type ListTemplateFilesInput,
+  type DeleteTemplateFileInput,
+  type DeleteGlobalShortcutInput,
+  type DeleteSkillInput,
+  type DeleteMcpServerInput,
+  type CreateSkillEnvInput,
 } from '@/bindings';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -58,529 +64,711 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
-/* ───────────────────────── 工具函数 ───────────────────────── */
-
 /** 从 AppError 联合类型中提取错误信息字符串 */
-const getErrMsg = (err: AppError): string => {
+const getErrorMessage = (err: AppError): string => {
   const values = Object.values(err as Record<string, string>);
   return values[0] ?? '未知错误';
 };
 
-/* ───────────────────────── 标签页定义 ───────────────────────── */
+/** 将 Tauri Result 统一解包为数据或抛错 */
+const unwrapResult = <T,>(res: { status: 'ok'; data: T } | { status: 'error'; error: AppError }): T => {
+  if (res.status === 'ok') {
+    return res.data;
+  }
+  throw new Error(getErrorMessage(res.error));
+};
 
-/** 标签页配置项 */
-interface TabDef {
-  key: string;
-  label: string;
-  icon: React.ReactNode;
-}
+/** 将输入框文本转为可空 number */
+const toNullableNumber = (value: string): number | null => {
+  if (value.trim() === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
 
-/** 五个标签页配置 */
-const TABS: TabDef[] = [
-  { key: 'ai', label: 'AI 配置', icon: <Cpu size={16} /> },
-  { key: 'security', label: '安全隐私', icon: <Shield size={16} /> },
-  { key: 'template', label: '模板导出', icon: <FileText size={16} /> },
-  { key: 'shortcut', label: '快捷键', icon: <Keyboard size={16} /> },
-  { key: 'skills', label: 'Skills 与 MCP', icon: <Puzzle size={16} /> },
-];
+type TabKey = 'ai' | 'security' | 'template' | 'shortcut' | 'skills';
 
-/* ═══════════════════════════════════════════════════════════════
-   1. AI 配置标签页
-   ═══════════════════════════════════════════════════════════════ */
+const INITIAL_AI_FORM: CreateAiConfigInput = {
+  provider_name: '',
+  display_name: '',
+  base_url: '',
+  api_key: '',
+  default_model: '',
+  is_active: null,
+  config_json: null,
+};
 
-/** AI 配置标签页 — 服务商/模型管理 + 参数预设 */
+const INITIAL_PRESET_FORM: CreatePresetInput = {
+  name: '',
+  display_name: '',
+  temperature: 0.7,
+  top_p: null,
+  max_tokens: null,
+  is_default: null,
+  is_active: null,
+};
+
+const INITIAL_TEMPLATE_FORM: CreateTemplateFileInput = {
+  type: '',
+  school_scope: null,
+  version: null,
+  file_path: '',
+  enabled: 1,
+};
+
+const INITIAL_SHORTCUT_FORM: CreateGlobalShortcutInput = {
+  action: '',
+  key_combination: '',
+  enabled: 1,
+  description: null,
+};
+
+const INITIAL_SKILL_FORM: CreateSkillInput = {
+  name: '',
+  version: null,
+  source: null,
+  permission_scope: null,
+  display_name: null,
+  description: null,
+  skill_type: 'builtin',
+  config_json: null,
+};
+
+const INITIAL_MCP_FORM: CreateMcpServerInput = {
+  name: '',
+  transport: 'stdio',
+  command: null,
+  args_json: null,
+  env_json: null,
+  permission_scope: null,
+  display_name: null,
+  description: null,
+};
+
+/** AI 配置标签页组件 */
 const AiConfigTab: React.FC = () => {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const { success, error } = useToast();
 
-  /* ── AI 配置表单 ── */
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    provider_name: '',
-    display_name: '',
-    base_url: '',
-    api_key: '',
-    default_model: '',
-    is_active: true,
-    config_json: '',
-  });
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showConfigForm, setShowConfigForm] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<AiConfigSafe | null>(null);
+  const [configForm, setConfigForm] = useState<CreateAiConfigInput>(INITIAL_AI_FORM);
 
-  /* ── 预设表单 ── */
   const [showPresetForm, setShowPresetForm] = useState(false);
-  const [editPresetId, setEditPresetId] = useState<string | null>(null);
-  const [presetForm, setPresetForm] = useState({
-    name: '',
-    display_name: '',
-    temperature: 0.7,
-    top_p: 0.9 as number | null,
-    max_tokens: 2048 as number | null,
-  });
+  const [editingPreset, setEditingPreset] = useState<AiParamPreset | null>(null);
+  const [presetForm, setPresetForm] = useState<CreatePresetInput>(INITIAL_PRESET_FORM);
 
-  /* ── 删除确认 ── */
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'config' | 'preset'; id: string; name: string } | null>(null);
 
-  /* ── 数据查询 ── */
   const configsQuery = useQuery({
-    queryKey: ['ai-configs'],
-    queryFn: async () => {
-      const r = await commands.listAiConfigs();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
+    queryKey: ['settings', 'ai-configs'],
+    queryFn: async () => unwrapResult(await commands.listAiConfigs()),
   });
 
   const presetsQuery = useQuery({
-    queryKey: ['ai-presets'],
-    queryFn: async () => {
-      const r = await commands.listAiParamPresets();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
+    queryKey: ['settings', 'ai-presets'],
+    queryFn: async () => unwrapResult(await commands.listAiParamPresets()),
   });
 
-  /* ── Mutations: AI 配置 ── */
-  const createConfig = useMutation({
-    mutationFn: async (input: CreateAiConfigInput) => {
-      const r = await commands.createAiConfig(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const createConfigMutation = useMutation({
+    mutationFn: async (input: CreateAiConfigInput) => unwrapResult(await commands.createAiConfig(input)),
+    onSuccess: () => {
+      success('AI 配置已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
+      setShowConfigForm(false);
+      setEditingConfig(null);
+      setConfigForm(INITIAL_AI_FORM);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-configs'] }); success('AI 配置已创建'); resetForm(); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  const updateConfig = useMutation({
-    mutationFn: async (input: UpdateAiConfigInput) => {
-      const r = await commands.updateAiConfig(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const updateConfigMutation = useMutation({
+    mutationFn: async (input: UpdateAiConfigInput) => unwrapResult(await commands.updateAiConfig(input)),
+    onSuccess: () => {
+      success('AI 配置已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
+      setShowConfigForm(false);
+      setEditingConfig(null);
+      setConfigForm(INITIAL_AI_FORM);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-configs'] }); success('AI 配置已更新'); resetForm(); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  const deleteConfig = useMutation({
+  const deleteConfigMutation = useMutation({
     mutationFn: async (id: string) => {
-      const r = await commands.deleteAiConfig({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: DeleteAiConfigInput = { id };
+      return unwrapResult(await commands.deleteAiConfig(input));
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-configs'] }); success('AI 配置已删除'); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: () => {
+      success('AI 配置已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  /* ── Mutations: 参数预设 ── */
-  const createPreset = useMutation({
-    mutationFn: async (input: CreatePresetInput) => {
-      const r = await commands.createAiParamPreset(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const createPresetMutation = useMutation({
+    mutationFn: async (input: CreatePresetInput) => unwrapResult(await commands.createAiParamPreset(input)),
+    onSuccess: () => {
+      success('参数预设已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
+      setShowPresetForm(false);
+      setEditingPreset(null);
+      setPresetForm(INITIAL_PRESET_FORM);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-presets'] }); success('参数预设已创建'); resetPresetForm(); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  const updatePreset = useMutation({
-    mutationFn: async (input: UpdatePresetInput) => {
-      const r = await commands.updateAiParamPreset(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const updatePresetMutation = useMutation({
+    mutationFn: async (input: UpdatePresetInput) => unwrapResult(await commands.updateAiParamPreset(input)),
+    onSuccess: () => {
+      success('参数预设已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
+      setShowPresetForm(false);
+      setEditingPreset(null);
+      setPresetForm(INITIAL_PRESET_FORM);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-presets'] }); success('参数预设已更新'); resetPresetForm(); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  const deletePreset = useMutation({
+  const deletePresetMutation = useMutation({
     mutationFn: async (id: string) => {
-      const r = await commands.deleteAiParamPreset({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: DeleteAiParamPresetInput = { id };
+      return unwrapResult(await commands.deleteAiParamPreset(input));
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-presets'] }); success('参数预设已删除'); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: () => {
+      success('参数预设已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  const activatePreset = useMutation({
+  const activatePresetMutation = useMutation({
     mutationFn: async (id: string) => {
-      const r = await commands.activateAiParamPreset({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: ActivateAiParamPresetInput = { id };
+      return unwrapResult(await commands.activateAiParamPreset(input));
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ai-presets'] }); success('预设已激活'); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: () => {
+      success('预设已激活');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 重置 AI 配置表单 */
-  const resetForm = () => {
-    setShowForm(false);
-    setEditId(null);
-    setForm({ provider_name: '', display_name: '', base_url: '', api_key: '', default_model: '', is_active: true, config_json: '' });
-    setShowApiKey(false);
+  /** 打开 AI 配置创建表单 */
+  const openCreateConfigForm = () => {
+    setEditingConfig(null);
+    setConfigForm(INITIAL_AI_FORM);
+    setShowConfigForm(true);
   };
 
-  /** 重置预设表单 */
-  const resetPresetForm = () => {
-    setShowPresetForm(false);
-    setEditPresetId(null);
-    setPresetForm({ name: '', display_name: '', temperature: 0.7, top_p: 0.9, max_tokens: 2048 });
-  };
-
-  /** 进入编辑 AI 配置模式 */
-  const startEditConfig = (cfg: AiConfigSafe) => {
-    setEditId(cfg.id);
-    setForm({
-      provider_name: cfg.provider_name,
-      display_name: cfg.display_name,
-      base_url: cfg.base_url,
+  /** 打开 AI 配置编辑表单 */
+  const openEditConfigForm = (item: AiConfigSafe) => {
+    setEditingConfig(item);
+    setConfigForm({
+      provider_name: item.provider_name,
+      display_name: item.display_name,
+      base_url: item.base_url,
       api_key: '',
-      default_model: cfg.default_model,
-      is_active: cfg.is_active === 1,
-      config_json: cfg.config_json ?? '',
+      default_model: item.default_model,
+      is_active: item.is_active === 1,
+      config_json: item.config_json,
     });
-    setShowForm(true);
+    setShowConfigForm(true);
   };
 
-  /** 进入编辑预设模式 */
-  const startEditPreset = (p: AiParamPreset) => {
-    setEditPresetId(p.id);
+  /** 提交 AI 配置表单 */
+  const submitConfigForm = () => {
+    if (editingConfig) {
+      const input: UpdateAiConfigInput = {
+        id: editingConfig.id,
+        display_name: configForm.display_name.trim() === '' ? null : configForm.display_name,
+        base_url: configForm.base_url.trim() === '' ? null : configForm.base_url,
+        api_key: configForm.api_key.trim() === '' ? null : configForm.api_key,
+        default_model: configForm.default_model.trim() === '' ? null : configForm.default_model,
+        is_active: configForm.is_active,
+        config_json: configForm.config_json,
+      };
+      updateConfigMutation.mutate(input);
+      return;
+    }
+    createConfigMutation.mutate(configForm);
+  };
+
+  /** 打开参数预设创建表单 */
+  const openCreatePresetForm = () => {
+    setEditingPreset(null);
+    setPresetForm(INITIAL_PRESET_FORM);
+    setShowPresetForm(true);
+  };
+
+  /** 打开参数预设编辑表单 */
+  const openEditPresetForm = (item: AiParamPreset) => {
+    setEditingPreset(item);
     setPresetForm({
-      name: p.name,
-      display_name: p.display_name,
-      temperature: p.temperature,
-      top_p: p.top_p,
-      max_tokens: p.max_tokens,
+      name: item.name,
+      display_name: item.display_name,
+      temperature: item.temperature,
+      top_p: item.top_p,
+      max_tokens: item.max_tokens,
+      is_default: item.is_default === 1,
+      is_active: item.is_active === 1,
     });
     setShowPresetForm(true);
   };
 
-  /** 提交 AI 配置 */
-  const handleSubmitConfig = () => {
-    if (editId) {
-      updateConfig.mutate({
-        id: editId,
-        display_name: form.display_name || null,
-        base_url: form.base_url || null,
-        api_key: form.api_key || null,
-        default_model: form.default_model || null,
-        is_active: form.is_active,
-        config_json: form.config_json || null,
-      });
-    } else {
-      createConfig.mutate({
-        provider_name: form.provider_name,
-        display_name: form.display_name,
-        base_url: form.base_url,
-        api_key: form.api_key,
-        default_model: form.default_model,
-        is_active: form.is_active,
-        config_json: form.config_json || null,
-      });
+  /** 提交参数预设表单 */
+  const submitPresetForm = () => {
+    if (editingPreset) {
+      const input: UpdatePresetInput = {
+        id: editingPreset.id,
+        name: presetForm.name.trim() === '' ? null : presetForm.name,
+        display_name: presetForm.display_name.trim() === '' ? null : presetForm.display_name,
+        temperature: presetForm.temperature,
+        top_p: presetForm.top_p,
+        max_tokens: presetForm.max_tokens,
+        is_default: presetForm.is_default,
+        is_active: presetForm.is_active,
+      };
+      updatePresetMutation.mutate(input);
+      return;
     }
+    createPresetMutation.mutate(presetForm);
   };
 
-  /** 提交预设 */
-  const handleSubmitPreset = () => {
-    if (editPresetId) {
-      updatePreset.mutate({
-        id: editPresetId,
-        name: presetForm.name || null,
-        display_name: presetForm.display_name || null,
-        temperature: presetForm.temperature,
-        top_p: presetForm.top_p,
-        max_tokens: presetForm.max_tokens,
-        is_default: null,
-        is_active: null,
-      });
-    } else {
-      createPreset.mutate({
-        name: presetForm.name,
-        display_name: presetForm.display_name,
-        temperature: presetForm.temperature,
-        top_p: presetForm.top_p,
-        max_tokens: presetForm.max_tokens,
-        is_default: null,
-        is_active: null,
-      });
+  /** 执行删除动作 */
+  const confirmDelete = () => {
+    if (!deleteTarget) {
+      return;
     }
+    if (deleteTarget.type === 'config') {
+      deleteConfigMutation.mutate(deleteTarget.id);
+    } else {
+      deletePresetMutation.mutate(deleteTarget.id);
+    }
+    setDeleteTarget(null);
   };
 
   return (
     <div className="space-y-6">
-      {/* ── AI 服务商/模型列表 ── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold">AI 服务商 / 模型</h3>
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => { resetForm(); setShowForm(true); }}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">AI 服务配置</h3>
+          <button
+            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            onClick={openCreateConfigForm}
+          >
             <Plus size={14} /> 添加配置
           </button>
         </div>
 
-        {/* 内联表单 */}
-        {showForm && (
-          <div className="p-4 mb-4 border rounded-lg bg-gray-50 space-y-3">
+        {showConfigForm && (
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
             <div className="grid grid-cols-2 gap-3">
-              <input className="border rounded px-3 py-2 text-sm" placeholder="服务商标识（如 deepseek）" value={form.provider_name} onChange={(e) => setForm({ ...form, provider_name: e.target.value })} disabled={!!editId} />
-              <input className="border rounded px-3 py-2 text-sm" placeholder="显示名称（如 DeepSeek V3）" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-              <input className="border rounded px-3 py-2 text-sm" placeholder="API 地址" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} />
-              <div className="relative">
-                <input className="w-full border rounded px-3 py-2 text-sm pr-8" type={showApiKey ? 'text' : 'password'} placeholder={editId ? 'API 密钥（留空不修改）' : 'API 密钥'} value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />
-                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => setShowApiKey(!showApiKey)}>
-                  {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="provider_name"
+                value={configForm.provider_name}
+                disabled={editingConfig !== null}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, provider_name: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="display_name"
+                value={configForm.display_name}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="base_url"
+                value={configForm.base_url}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                type="password"
+                placeholder={editingConfig ? 'api_key（留空不修改）' : 'api_key'}
+                value={configForm.api_key}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, api_key: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="default_model"
+                value={configForm.default_model}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, default_model: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="config_json（可选）"
+                value={configForm.config_json ?? ''}
+                onChange={(e) =>
+                  setConfigForm((prev) => ({
+                    ...prev,
+                    config_json: e.target.value.trim() === '' ? null : e.target.value,
+                  }))
+                }
+              />
             </div>
-            <input className="w-full border rounded px-3 py-2 text-sm" placeholder="默认模型（如 deepseek-chat）" value={form.default_model} onChange={(e) => setForm({ ...form, default_model: e.target.value })} />
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
-              启用
+              <input
+                type="checkbox"
+                checked={configForm.is_active === true}
+                onChange={(e) => setConfigForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+              />
+              设为激活
             </label>
             <div className="flex gap-2">
-              <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={handleSubmitConfig}>{editId ? '更新' : '创建'}</button>
-              <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={resetForm}>取消</button>
+              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitConfigForm}>
+                {editingConfig ? '更新' : '创建'}
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => {
+                  setShowConfigForm(false);
+                  setEditingConfig(null);
+                }}
+              >
+                取消
+              </button>
             </div>
           </div>
         )}
 
-        {/* 配置列表 */}
-        {configsQuery.data?.length ? (
+        {configsQuery.data && configsQuery.data.length > 0 ? (
           <div className="space-y-2">
-            {configsQuery.data.map((cfg) => (
-              <div key={cfg.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+            {configsQuery.data.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
                 <div>
-                  <span className="font-medium">{cfg.display_name}</span>
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">{cfg.provider_name}</span>
-                  <span className="ml-2 text-xs text-gray-400">{cfg.default_model}</span>
-                  {cfg.is_active === 1 && <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">激活</span>}
-                  {cfg.has_api_key && <span className="ml-2 text-xs text-green-600">密钥已配置</span>}
+                  <div className="font-medium">
+                    {item.provider_name} / {item.display_name}
+                    {item.is_active === 1 && (
+                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">激活</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">默认模型：{item.default_model}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="p-1.5 hover:bg-gray-200 rounded" title="编辑配置" onClick={() => startEditConfig(cfg)}><Edit2 size={14} /></button>
-                  <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除配置" onClick={() => setDeleteTarget({ type: 'config', id: cfg.id, name: cfg.display_name })}><Trash2 size={14} /></button>
+                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditConfigForm(item)} title="编辑配置">
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() => setDeleteTarget({ type: 'config', id: item.id, name: item.display_name })}
+                    title="删除配置"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无 AI 配置" description={'点击「添加配置」添加您的第一个 AI 服务商'} icon={<Cpu size={32} className="text-gray-400" />} />
+          <EmptyState title="暂无 AI 配置" description="请先添加至少一个服务配置" icon={<Cpu size={32} className="text-gray-400" />} />
         )}
       </section>
 
-      {/* ── 参数预设 ── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-semibold">参数预设</h3>
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => { resetPresetForm(); setShowPresetForm(true); }}>
+          <button
+            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            onClick={openCreatePresetForm}
+          >
             <Plus size={14} /> 添加预设
           </button>
         </div>
 
         {showPresetForm && (
-          <div className="p-4 mb-4 border rounded-lg bg-gray-50 space-y-3">
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
             <div className="grid grid-cols-2 gap-3">
-              <input className="border rounded px-3 py-2 text-sm" placeholder="预设标识（如 strict）" value={presetForm.name} onChange={(e) => setPresetForm({ ...presetForm, name: e.target.value })} />
-              <input className="border rounded px-3 py-2 text-sm" placeholder="显示名称（如 严谨模式）" value={presetForm.display_name} onChange={(e) => setPresetForm({ ...presetForm, display_name: e.target.value })} />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="name"
+                value={presetForm.name}
+                onChange={(e) => setPresetForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="display_name"
+                value={presetForm.display_name}
+                onChange={(e) => setPresetForm((prev) => ({ ...prev, display_name: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                type="number"
+                step={0.1}
+                min={0}
+                max={2}
+                placeholder="temperature"
+                value={presetForm.temperature}
+                onChange={(e) =>
+                  setPresetForm((prev) => ({
+                    ...prev,
+                    temperature: Number.isNaN(Number(e.target.value)) ? 0.7 : Number(e.target.value),
+                  }))
+                }
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                type="number"
+                step={0.1}
+                min={0}
+                max={1}
+                placeholder="top_p"
+                value={presetForm.top_p ?? ''}
+                onChange={(e) => setPresetForm((prev) => ({ ...prev, top_p: toNullableNumber(e.target.value) }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                type="number"
+                min={1}
+                placeholder="max_tokens"
+                value={presetForm.max_tokens ?? ''}
+                onChange={(e) => setPresetForm((prev) => ({ ...prev, max_tokens: toNullableNumber(e.target.value) }))}
+              />
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="text-sm">
-                Temperature
-                <input className="w-full border rounded px-3 py-2 text-sm mt-1" type="number" step={0.1} min={0} max={2} value={presetForm.temperature} onChange={(e) => setPresetForm({ ...presetForm, temperature: parseFloat(e.target.value) || 0 })} />
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={presetForm.is_default === true}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, is_default: e.target.checked }))}
+                />
+                默认
               </label>
-              <label className="text-sm">
-                Top P
-                <input className="w-full border rounded px-3 py-2 text-sm mt-1" type="number" step={0.1} min={0} max={1} value={presetForm.top_p ?? ''} onChange={(e) => setPresetForm({ ...presetForm, top_p: e.target.value ? parseFloat(e.target.value) : null })} />
-              </label>
-              <label className="text-sm">
-                Max Tokens
-                <input className="w-full border rounded px-3 py-2 text-sm mt-1" type="number" step={256} min={256} max={128000} value={presetForm.max_tokens ?? ''} onChange={(e) => setPresetForm({ ...presetForm, max_tokens: e.target.value ? parseInt(e.target.value) : null })} />
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={presetForm.is_active === true}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                />
+                激活
               </label>
             </div>
             <div className="flex gap-2">
-              <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={handleSubmitPreset}>{editPresetId ? '更新' : '创建'}</button>
-              <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={resetPresetForm}>取消</button>
+              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitPresetForm}>
+                {editingPreset ? '更新' : '创建'}
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => {
+                  setShowPresetForm(false);
+                  setEditingPreset(null);
+                }}
+              >
+                取消
+              </button>
             </div>
           </div>
         )}
 
-        {presetsQuery.data?.length ? (
+        {presetsQuery.data && presetsQuery.data.length > 0 ? (
           <div className="space-y-2">
-            {presetsQuery.data.map((p) => (
-              <div key={p.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+            {presetsQuery.data.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
                 <div>
-                  <span className="font-medium">{p.display_name}</span>
-                  <span className="ml-2 text-xs text-gray-400">({p.name})</span>
-                  <span className="ml-3 text-xs text-gray-500">T={p.temperature} P={p.top_p ?? '-'} MaxTok={p.max_tokens ?? '-'}</span>
-                  {p.is_active === 1 && <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">激活中</span>}
-                  {p.is_default === 1 && <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">默认</span>}
+                  <div className="font-medium">
+                    {item.display_name}
+                    {item.is_active === 1 && (
+                      <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">激活</span>
+                    )}
+                    {item.is_default === 1 && (
+                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">默认</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">{item.name}</div>
+                  <div className="text-xs text-gray-500">
+                    T={item.temperature} / P={item.top_p ?? '-'} / MaxTok={item.max_tokens ?? '-'}
+                  </div>
                 </div>
                 <div className="flex gap-2">
-                  {p.is_active !== 1 && (
-                    <button className="p-1.5 hover:bg-blue-100 rounded text-blue-600" title="激活预设" onClick={() => activatePreset.mutate(p.id)}><Play size={14} /></button>
+                  {item.is_active !== 1 && (
+                    <button
+                      className="rounded p-1.5 text-blue-600 hover:bg-blue-100"
+                      onClick={() => activatePresetMutation.mutate(item.id)}
+                      title="激活预设"
+                    >
+                      <Play size={14} />
+                    </button>
                   )}
-                  <button className="p-1.5 hover:bg-gray-200 rounded" title="编辑预设" onClick={() => startEditPreset(p)}><Edit2 size={14} /></button>
-                  <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除预设" onClick={() => setDeleteTarget({ type: 'preset', id: p.id, name: p.display_name })}><Trash2 size={14} /></button>
+                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditPresetForm(item)} title="编辑预设">
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() => setDeleteTarget({ type: 'preset', id: item.id, name: item.display_name })}
+                    title="删除预设"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无参数预设" description="添加严谨/创意/均衡等预设以快速切换 AI 参数" icon={<Settings size={32} className="text-gray-400" />} />
+          <EmptyState title="暂无参数预设" description="请创建参数预设用于快速切换" icon={<Settings size={32} className="text-gray-400" />} />
         )}
       </section>
 
-      {/* 删除确认弹窗 */}
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         title="确认删除"
-        message={`确定要删除「${deleteTarget?.name ?? ''}」吗？此操作不可撤销。`}
+        message={`确定要删除「${deleteTarget?.name ?? ''}」吗？`}
         confirmText="删除"
         isDestructive
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          if (deleteTarget.type === 'config') deleteConfig.mutate(deleteTarget.id);
-          else deletePreset.mutate(deleteTarget.id);
-          setDeleteTarget(null);
-        }}
+        onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   2. 安全隐私标签页
-   ═══════════════════════════════════════════════════════════════ */
-
-/** 安全隐私标签页 — 存储生命周期 + 脱敏开关 */
+/** 安全隐私标签页组件 */
 const SecurityTab: React.FC = () => {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const { success, error } = useToast();
   const [confirmAction, setConfirmAction] = useState<'export' | 'archive' | 'erase' | null>(null);
 
-  /** 存储统计查询 */
   const statsQuery = useQuery({
-    queryKey: ['storage-stats'],
-    queryFn: async () => {
-      const r = await commands.getStorageStats();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
+    queryKey: ['settings', 'storage-stats'],
+    queryFn: async (): Promise<StorageStats> => unwrapResult(await commands.getStorageStats()),
   });
 
-  /** 脱敏开关查询 */
   const desensitizeQuery = useQuery({
-    queryKey: ['setting', 'desensitize_enabled'],
+    queryKey: ['settings', 'desensitize_enabled'],
     queryFn: async () => {
-      const r = await commands.getSetting('desensitize_enabled');
-      if (r.status === 'ok') return r.data.value === 'true';
+      const res = await commands.getSetting('desensitize_enabled');
+      if (res.status === 'ok') {
+        return res.data.value === 'true';
+      }
       return true;
     },
   });
 
-  /** 切换脱敏开关 */
-  const toggleDesensitize = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const r = await commands.updateSetting('desensitize_enabled', String(enabled), 'security', '外发前脱敏开关');
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const toggleDesensitizeMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      unwrapResult(await commands.updateSetting('desensitize_enabled', String(enabled), 'security', '外发前脱敏开关')),
+    onSuccess: () => {
+      success('脱敏设置已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'desensitize_enabled'] });
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['setting', 'desensitize_enabled'] }); success('脱敏设置已更新'); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 导出工作区 */
-  const exportWs = useMutation({
+  const exportMutation = useMutation({
     mutationFn: async () => {
-      const r = await commands.exportWorkspace({ output_path: 'workspace_export.zip', approved: true });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: ExportWorkspaceInput = { output_path: 'workspace_export.zip', approved: true };
+      return unwrapResult(await commands.exportWorkspace(input));
     },
-    onSuccess: (data) => { success(`工作区已导出至 ${data.output_path}`); queryClient.invalidateQueries({ queryKey: ['storage-stats'] }); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: (data) => {
+      success(`导出成功：${data.output_path}`);
+      queryClient.invalidateQueries({ queryKey: ['settings', 'storage-stats'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 归档工作区 */
-  const archiveWs = useMutation({
+  const archiveMutation = useMutation({
     mutationFn: async () => {
-      const r = await commands.archiveWorkspace({ archive_name: null });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: ArchiveWorkspaceInput = { archive_name: null };
+      return unwrapResult(await commands.archiveWorkspace(input));
     },
-    onSuccess: (data) => { success(`工作区已归档至 ${data.archive_path}`); queryClient.invalidateQueries({ queryKey: ['storage-stats'] }); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: (data) => {
+      success(`归档成功：${data.archive_path}`);
+      queryClient.invalidateQueries({ queryKey: ['settings', 'storage-stats'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 清除工作区数据 */
-  const eraseWs = useMutation({
+  const eraseMutation = useMutation({
     mutationFn: async () => {
-      const r = await commands.eraseWorkspace({ approved: true });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: EraseWorkspaceInput = { approved: true };
+      return unwrapResult(await commands.eraseWorkspace(input));
     },
-    onSuccess: () => { success('工作区数据已清除'); queryClient.invalidateQueries({ queryKey: ['storage-stats'] }); },
-    onError: (e: Error) => showError(e.message),
+    onSuccess: () => {
+      success('工作区数据已清除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'storage-stats'] });
+    },
+    onError: (err: Error) => error(err.message),
   });
 
-  const stats = statsQuery.data;
+  /** 执行高危确认动作 */
+  const onConfirmAction = () => {
+    if (confirmAction === 'export') {
+      exportMutation.mutate();
+    }
+    if (confirmAction === 'archive') {
+      archiveMutation.mutate();
+    }
+    if (confirmAction === 'erase') {
+      eraseMutation.mutate();
+    }
+    setConfirmAction(null);
+  };
 
   return (
     <div className="space-y-6">
-      {/* ── 存储统计 ── */}
       <section>
-        <h3 className="text-lg font-semibold mb-3">存储统计</h3>
-        {stats ? (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 border rounded-lg">
+        <h3 className="mb-3 text-lg font-semibold">存储统计</h3>
+        {statsQuery.data ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-lg border p-4">
               <div className="text-sm text-gray-500">工作区路径</div>
-              <div className="font-mono text-sm mt-1 truncate" title={stats.workspace_path}>{stats.workspace_path}</div>
+              <div className="mt-1 truncate font-mono text-sm" title={statsQuery.data.workspace_path}>
+                {statsQuery.data.workspace_path}
+              </div>
             </div>
-            <div className="p-4 border rounded-lg">
-              <div className="text-sm text-gray-500">文件数 / 总大小</div>
-              <div className="text-lg font-semibold mt-1">{stats.total_files} 个文件 / {stats.total_size_display}</div>
+            <div className="rounded-lg border p-4">
+              <div className="text-sm text-gray-500">文件总量</div>
+              <div className="mt-1 text-lg font-semibold">{statsQuery.data.total_files}</div>
             </div>
-            <div className="p-4 border rounded-lg">
-              <div className="text-sm text-gray-500">归档数量</div>
-              <div className="text-lg font-semibold mt-1">{stats.archive_count}</div>
+            <div className="rounded-lg border p-4">
+              <div className="text-sm text-gray-500">总大小 / 归档数</div>
+              <div className="mt-1 text-lg font-semibold">
+                {statsQuery.data.total_size_display} / {statsQuery.data.archive_count}
+              </div>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-gray-400">加载中...</div>
+          <div className="text-sm text-gray-500">加载中...</div>
         )}
       </section>
 
-      {/* ── 脱敏开关 ── */}
       <section>
-        <h3 className="text-lg font-semibold mb-3">发送前脱敏</h3>
-        <div className="flex items-center gap-3 p-4 border rounded-lg">
+        <h3 className="mb-3 text-lg font-semibold">发送前脱敏</h3>
+        <div className="flex items-center gap-3 rounded-lg border p-4">
           <button
-            className={`relative w-12 h-6 rounded-full transition-colors ${desensitizeQuery.data ? 'bg-blue-600' : 'bg-gray-300'}`}
-            onClick={() => toggleDesensitize.mutate(!desensitizeQuery.data)}
-            title={desensitizeQuery.data ? '点击关闭脱敏' : '点击开启脱敏'}
+            className={`relative h-6 w-12 rounded-full ${desensitizeQuery.data ? 'bg-blue-600' : 'bg-gray-300'}`}
+            onClick={() => toggleDesensitizeMutation.mutate(!(desensitizeQuery.data ?? true))}
           >
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${desensitizeQuery.data ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                desensitizeQuery.data ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
           </button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium">
               {desensitizeQuery.data ? <Eye size={16} className="text-blue-600" /> : <EyeOff size={16} className="text-gray-400" />}
-              <span className="text-sm font-medium">{desensitizeQuery.data ? '脱敏已开启' : '脱敏已关闭'}</span>
+              {desensitizeQuery.data ? '脱敏已开启' : '脱敏已关闭'}
             </div>
-            <p className="text-xs text-gray-500 mt-1">开启后，发送给 AI 的内容会自动替换手机号、身份证号、邮箱等敏感信息</p>
+            <div className="mt-1 text-xs text-gray-500">开启后，外发内容将优先进行敏感信息脱敏。</div>
           </div>
         </div>
       </section>
 
-      {/* ── 数据生命周期 ── */}
       <section>
-        <h3 className="text-lg font-semibold mb-3">数据生命周期</h3>
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm" onClick={() => setConfirmAction('export')}>
+        <h3 className="mb-3 text-lg font-semibold">数据生命周期</h3>
+        <div className="flex flex-wrap gap-3">
+          <button className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50" onClick={() => setConfirmAction('export')}>
             <Download size={16} /> 导出工作区
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm" onClick={() => setConfirmAction('archive')}>
+          <button className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50" onClick={() => setConfirmAction('archive')}>
             <Archive size={16} /> 归档工作区
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border border-red-200 rounded-lg hover:bg-red-50 text-sm text-red-600" onClick={() => setConfirmAction('erase')}>
+          <button
+            className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={() => setConfirmAction('erase')}
+          >
             <AlertTriangle size={16} /> 清除数据
           </button>
         </div>
@@ -588,783 +776,264 @@ const SecurityTab: React.FC = () => {
 
       <ConfirmDialog
         isOpen={confirmAction !== null}
-        title={confirmAction === 'erase' ? '确认清除所有数据' : confirmAction === 'archive' ? '确认归档工作区' : '确认导出工作区'}
+        title={confirmAction === 'erase' ? '⚠️ 确认清除所有数据' : '确认操作'}
         message={
           confirmAction === 'erase'
-            ? '此操作将永久删除工作区中的所有数据，且不可恢复。请确认您已做好备份。'
+            ? '此操作将永久删除工作区数据，且不可恢复。'
             : confirmAction === 'archive'
-              ? '归档会将当前工作区数据打包存档，您可以稍后恢复。'
-              : '导出会将工作区数据打包为 ZIP 文件。'
+              ? '归档会打包当前工作区数据。'
+              : '导出会生成工作区备份文件。'
         }
         confirmText={confirmAction === 'erase' ? '确认清除' : '确认'}
         isDestructive={confirmAction === 'erase'}
-        onConfirm={() => {
-          if (confirmAction === 'export') exportWs.mutate();
-          else if (confirmAction === 'archive') archiveWs.mutate();
-          else if (confirmAction === 'erase') eraseWs.mutate();
-          setConfirmAction(null);
-        }}
+        onConfirm={onConfirmAction}
         onCancel={() => setConfirmAction(null)}
       />
     </div>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   3. 模板导出标签页
-   ═══════════════════════════════════════════════════════════════ */
-
-/** 模板导出标签页 — 模板文件管理 + 默认导出格式 */
+/** 模板导出标签页组件 */
 const TemplateTab: React.FC = () => {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const { success, error } = useToast();
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    type: 'docx',
-    school_scope: '' as string | null,
-    version: '' as string | null,
-    file_path: '',
-  });
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateFile | null>(null);
+  const [form, setForm] = useState<CreateTemplateFileInput>(INITIAL_TEMPLATE_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<TemplateFile | null>(null);
 
-  /** 模板列表查询 */
   const templatesQuery = useQuery({
-    queryKey: ['template-files'],
+    queryKey: ['settings', 'templates'],
     queryFn: async () => {
-      const r = await commands.listTemplateFiles({ type: null, enabled: null });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+      const input: ListTemplateFilesInput = { type: null, enabled: null };
+      return unwrapResult(await commands.listTemplateFiles(input));
     },
   });
 
-  /** 默认导出格式查询 */
   const exportFormatQuery = useQuery({
-    queryKey: ['setting', 'default_export_format'],
+    queryKey: ['settings', 'default_export_format'],
     queryFn: async () => {
-      const r = await commands.getSetting('default_export_format');
-      if (r.status === 'ok') return r.data.value;
+      const res = await commands.getSetting('default_export_format');
+      if (res.status === 'ok') {
+        return res.data.value;
+      }
       return 'docx';
     },
   });
 
-  /** 更新默认导出格式 */
-  const updateExportFormat = useMutation({
-    mutationFn: async (fmt: string) => {
-      const r = await commands.updateSetting('default_export_format', fmt, 'export', '默认导出格式');
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const updateExportFormatMutation = useMutation({
+    mutationFn: async (format: string) =>
+      unwrapResult(await commands.updateSetting('default_export_format', format, 'export', '默认导出格式')),
+    onSuccess: () => {
+      success('默认导出格式已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'default_export_format'] });
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['setting', 'default_export_format'] }); success('默认导出格式已更新'); },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 创建模板 */
-  const createTemplate = useMutation({
-    mutationFn: async (input: CreateTemplateFileInput) => {
-      const r = await commands.createTemplateFile(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
+  const createTemplateMutation = useMutation({
+    mutationFn: async (input: CreateTemplateFileInput) => unwrapResult(await commands.createTemplateFile(input)),
+    onSuccess: () => {
+      success('模板已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'templates'] });
+      setShowForm(false);
+      setForm(INITIAL_TEMPLATE_FORM);
+      setEditingTemplate(null);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (payload: { id: string; input: CreateTemplateFileInput }) =>
+      unwrapResult(
+        await commands.updateTemplateFile({
+          id: payload.id,
+          type: payload.input.type.trim() === '' ? null : payload.input.type,
+          school_scope: payload.input.school_scope,
+          version: payload.input.version,
+          file_path: payload.input.file_path.trim() === '' ? null : payload.input.file_path,
+          enabled: payload.input.enabled,
+        }),
+      ),
+    onSuccess: () => {
+      success('模板已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'templates'] });
+      setShowForm(false);
+      setForm(INITIAL_TEMPLATE_FORM);
+      setEditingTemplate(null);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const input: DeleteTemplateFileInput = { id };
+      return unwrapResult(await commands.deleteTemplateFile(input));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['template-files'] });
-      success('模板已创建');
-      setShowForm(false);
-      setForm({ type: 'docx', school_scope: '', version: '', file_path: '' });
+      success('模板已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'templates'] });
     },
-    onError: (e: Error) => showError(e.message),
+    onError: (err: Error) => error(err.message),
   });
 
-  /** 删除模板 */
-  const deleteTemplate = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.deleteTemplateFile({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['template-files'] }); success('模板已删除'); },
-    onError: (e: Error) => showError(e.message),
-  });
+  /** 打开模板创建表单 */
+  const openCreateTemplateForm = () => {
+    setEditingTemplate(null);
+    setForm(INITIAL_TEMPLATE_FORM);
+    setShowForm(true);
+  };
+
+  /** 打开模板编辑表单 */
+  const openEditTemplateForm = (item: TemplateFile) => {
+    setEditingTemplate(item);
+    setForm({
+      type: item.type,
+      school_scope: item.school_scope,
+      version: item.version,
+      file_path: item.file_path,
+      enabled: item.enabled,
+    });
+    setShowForm(true);
+  };
+
+  /** 提交模板表单 */
+  const submitTemplateForm = () => {
+    if (editingTemplate) {
+      updateTemplateMutation.mutate({ id: editingTemplate.id, input: form });
+      return;
+    }
+    createTemplateMutation.mutate(form);
+  };
 
   return (
     <div className="space-y-6">
-      {/* ── 默认导出格式 ── */}
       <section>
-        <h3 className="text-lg font-semibold mb-3">默认导出格式</h3>
-        <div className="flex gap-3">
-          {['docx', 'pdf', 'txt', 'markdown'].map((fmt) => (
+        <h3 className="mb-3 text-lg font-semibold">默认导出格式</h3>
+        <div className="flex gap-2">
+          {['docx', 'pdf', 'txt', 'markdown'].map((format) => (
             <button
-              key={fmt}
-              className={`px-4 py-2 text-sm border rounded-lg ${exportFormatQuery.data === fmt ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'}`}
-              onClick={() => updateExportFormat.mutate(fmt)}
+              key={format}
+              className={`rounded border px-3 py-1.5 text-sm ${
+                exportFormatQuery.data === format ? 'border-blue-600 bg-blue-600 text-white' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => updateExportFormatMutation.mutate(format)}
             >
-              {fmt.toUpperCase()}
+              {format.toUpperCase()}
             </button>
           ))}
         </div>
       </section>
 
-      {/* ── 模板文件管理 ── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-semibold">模板文件</h3>
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => setShowForm(true)}>
+          <button
+            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            onClick={openCreateTemplateForm}
+          >
             <Plus size={14} /> 添加模板
           </button>
         </div>
 
         {showForm && (
-          <div className="p-4 mb-4 border rounded-lg bg-gray-50 space-y-3">
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
             <div className="grid grid-cols-2 gap-3">
-              <select className="border rounded px-3 py-2 text-sm" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                <option value="docx">DOCX</option>
-                <option value="pdf">PDF</option>
-                <option value="txt">TXT</option>
-                <option value="markdown">Markdown</option>
-              </select>
-              <input className="border rounded px-3 py-2 text-sm" placeholder="适用范围（可选）" value={form.school_scope ?? ''} onChange={(e) => setForm({ ...form, school_scope: e.target.value || null })} />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="type"
+                value={form.type}
+                onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="file_path"
+                value={form.file_path}
+                onChange={(e) => setForm((prev) => ({ ...prev, file_path: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="school_scope（可选）"
+                value={form.school_scope ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, school_scope: e.target.value.trim() === '' ? null : e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="version（可选）"
+                value={form.version ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, version: e.target.value.trim() === '' ? null : e.target.value }))}
+              />
             </div>
-            <input className="w-full border rounded px-3 py-2 text-sm" placeholder="文件路径" value={form.file_path} onChange={(e) => setForm({ ...form, file_path: e.target.value })} />
-            <input className="w-full border rounded px-3 py-2 text-sm" placeholder="版本号（可选）" value={form.version ?? ''} onChange={(e) => setForm({ ...form, version: e.target.value || null })} />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(form.enabled ?? 0) === 1}
+                onChange={(e) => setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))}
+              />
+              启用模板
+            </label>
             <div className="flex gap-2">
-              <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => createTemplate.mutate({ type: form.type, school_scope: form.school_scope || null, version: form.version || null, file_path: form.file_path, enabled: 1 })}>创建</button>
-              <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={() => setShowForm(false)}>取消</button>
+              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitTemplateForm}>
+                {editingTemplate ? '更新' : '创建'}
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingTemplate(null);
+                }}
+              >
+                取消
+              </button>
             </div>
           </div>
         )}
 
-        {templatesQuery.data?.length ? (
+        {templatesQuery.data && templatesQuery.data.length > 0 ? (
           <div className="space-y-2">
-            {templatesQuery.data.map((tpl) => (
-              <div key={tpl.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+            {templatesQuery.data.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
                 <div>
-                  <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">{tpl.type.toUpperCase()}</span>
-                  <span className="ml-2 font-mono text-sm text-gray-700">{tpl.file_path}</span>
-                  {tpl.version && <span className="ml-2 text-xs text-gray-400">v{tpl.version}</span>}
-                  {tpl.school_scope && <span className="ml-2 text-xs text-gray-400">{tpl.school_scope}</span>}
+                  <div className="font-medium">
+                    {item.type}
+                    {item.enabled === 1 && <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">启用</span>}
+                  </div>
+                  <div className="text-xs text-gray-500">{item.file_path}</div>
+                  <div className="text-xs text-gray-500">
+                    school_scope: {item.school_scope ?? '-'} / version: {item.version ?? '-'}
+                  </div>
                 </div>
-                <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除模板" onClick={() => setDeleteTarget({ id: tpl.id, label: `${tpl.type} - ${tpl.file_path}` })}><Trash2 size={14} /></button>
+                <div className="flex gap-2">
+                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditTemplateForm(item)} title="编辑模板">
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() => setDeleteTarget(item)}
+                    title="删除模板"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无模板" description="添加文档模板以快速导出" icon={<FileText size={32} className="text-gray-400" />} />
+          <EmptyState title="暂无模板文件" description="请添加模板文件" icon={<FileText size={32} className="text-gray-400" />} />
         )}
       </section>
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         title="确认删除模板"
-        message={`确定要删除模板「${deleteTarget?.label ?? ''}」吗？`}
-        confirmText="删除"
-        isDestructive
-        onConfirm={() => { if (deleteTarget) deleteTemplate.mutate(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-      />
-    </div>
-  );
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   4. 快捷键标签页
-   ═══════════════════════════════════════════════════════════════ */
-
-/** 快捷键标签页 — 全局快捷键管理 */
-const ShortcutTab: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
-
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    action: '',
-    key_combination: '',
-    description: '' as string | null,
-    enabled: 1 as number | null,
-  });
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
-
-  /** 快捷键列表查询 */
-  const shortcutsQuery = useQuery({
-    queryKey: ['global-shortcuts'],
-    queryFn: async () => {
-      const r = await commands.listGlobalShortcuts();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-  });
-
-  /** 创建快捷键 */
-  const createShortcut = useMutation({
-    mutationFn: async (input: CreateGlobalShortcutInput) => {
-      const r = await commands.createGlobalShortcut(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['global-shortcuts'] }); success('快捷键已创建'); resetForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /** 更新快捷键 */
-  const updateShortcut = useMutation({
-    mutationFn: async (input: UpdateGlobalShortcutInput) => {
-      const r = await commands.updateGlobalShortcut(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['global-shortcuts'] }); success('快捷键已更新'); resetForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /** 删除快捷键 */
-  const deleteShortcut = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.deleteGlobalShortcut({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['global-shortcuts'] }); success('快捷键已删除'); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /** 重置表单 */
-  const resetForm = () => {
-    setShowForm(false);
-    setEditId(null);
-    setForm({ action: '', key_combination: '', description: '', enabled: 1 });
-  };
-
-  /** 进入编辑模式 */
-  const startEdit = (s: GlobalShortcut) => {
-    setEditId(s.id);
-    setForm({ action: s.action, key_combination: s.key_combination, description: s.description, enabled: s.enabled });
-    setShowForm(true);
-  };
-
-  /** 提交表单 */
-  const handleSubmit = () => {
-    if (editId) {
-      updateShortcut.mutate({ id: editId, action: form.action || null, key_combination: form.key_combination || null, enabled: form.enabled, description: form.description || null });
-    } else {
-      createShortcut.mutate({ action: form.action, key_combination: form.key_combination, enabled: form.enabled, description: form.description || null });
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">全局快捷键</h3>
-        <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => { resetForm(); setShowForm(true); }}>
-          <Plus size={14} /> 添加快捷键
-        </button>
-      </div>
-
-      {showForm && (
-        <div className="p-4 mb-4 border rounded-lg bg-gray-50 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input className="border rounded px-3 py-2 text-sm" placeholder="动作标识（如 create_task）" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value })} />
-            <input className="border rounded px-3 py-2 text-sm" placeholder="按键组合（如 Ctrl+Shift+N）" value={form.key_combination} onChange={(e) => setForm({ ...form, key_combination: e.target.value })} />
-          </div>
-          <input className="w-full border rounded px-3 py-2 text-sm" placeholder="描述（可选）" value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value || null })} />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.enabled === 1} onChange={(e) => setForm({ ...form, enabled: e.target.checked ? 1 : 0 })} />
-            启用
-          </label>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={handleSubmit}>{editId ? '更新' : '创建'}</button>
-            <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={resetForm}>取消</button>
-          </div>
-        </div>
-      )}
-
-      {shortcutsQuery.data?.length ? (
-        <div className="space-y-2">
-          {shortcutsQuery.data.map((s) => (
-            <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                {s.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
-                <span className="font-medium">{s.action}</span>
-                <kbd className="px-2 py-0.5 text-xs bg-gray-100 border rounded font-mono">{s.key_combination}</kbd>
-                {s.description && <span className="text-xs text-gray-400">{s.description}</span>}
-              </div>
-              <div className="flex gap-2">
-                <button className="p-1.5 hover:bg-gray-200 rounded" title="编辑快捷键" onClick={() => startEdit(s)}><Edit2 size={14} /></button>
-                <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除快捷键" onClick={() => setDeleteTarget({ id: s.id, label: s.action })}><Trash2 size={14} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState title="暂无快捷键" description="添加全局快捷键以提升操作效率" icon={<Keyboard size={32} className="text-gray-400" />} />
-      )}
-
-      <ConfirmDialog
-        isOpen={deleteTarget !== null}
-        title="确认删除快捷键"
-        message={`确定要删除快捷键「${deleteTarget?.label ?? ''}」吗？`}
-        confirmText="删除"
-        isDestructive
-        onConfirm={() => { if (deleteTarget) deleteShortcut.mutate(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-      />
-    </div>
-  );
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   5. Skills 与 MCP 标签页
-   ═══════════════════════════════════════════════════════════════ */
-
-/** Skills 与 MCP 标签页 — 技能管理 / uv 环境 / MCP 服务器 */
-const SkillsMcpTab: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
-  const [subTab, setSubTab] = useState<'skills' | 'uv' | 'mcp'>('skills');
-
-  /* ── Skills 表单 ── */
-  const [showSkillForm, setShowSkillForm] = useState(false);
-  const [editSkillId, setEditSkillId] = useState<string | null>(null);
-  const [skillForm, setSkillForm] = useState({
-    name: '',
-    display_name: '' as string | null,
-    description: '' as string | null,
-    skill_type: 'builtin',
-    version: '' as string | null,
-    source: '' as string | null,
-    permission_scope: '' as string | null,
-    config_json: '' as string | null,
-  });
-
-  /* ── MCP 表单 ── */
-  const [showMcpForm, setShowMcpForm] = useState(false);
-  const [editMcpId, setEditMcpId] = useState<string | null>(null);
-  const [mcpForm, setMcpForm] = useState({
-    name: '',
-    display_name: '' as string | null,
-    description: '' as string | null,
-    transport: 'stdio',
-    command: '' as string | null,
-    args_json: '' as string | null,
-    env_json: '' as string | null,
-    permission_scope: '' as string | null,
-  });
-
-  /* ── 删除确认 ── */
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'skill' | 'mcp'; id: string; name: string } | null>(null);
-
-  /* ── 查询 ── */
-  const skillsQuery = useQuery({
-    queryKey: ['skills'],
-    queryFn: async () => {
-      const r = await commands.listSkills();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-  });
-
-  const mcpQuery = useQuery({
-    queryKey: ['mcp-servers'],
-    queryFn: async () => {
-      const r = await commands.listMcpServers();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-  });
-
-  const uvHealthQuery = useQuery({
-    queryKey: ['uv-health'],
-    queryFn: async () => {
-      const r = await commands.checkUvHealth();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-  });
-
-  /* ── Skills Mutations ── */
-  const createSkill = useMutation({
-    mutationFn: async (input: CreateSkillInput) => {
-      const r = await commands.createSkill(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['skills'] }); success('技能已创建'); resetSkillForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const updateSkillMut = useMutation({
-    mutationFn: async ({ id, input }: { id: string; input: UpdateSkillInput }) => {
-      const r = await commands.updateSkill(id, input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['skills'] }); success('技能已更新'); resetSkillForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const deleteSkillMut = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.deleteSkill({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['skills'] }); success('技能已删除'); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const checkSkill = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.checkSkillHealth(id);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: (data) => {
-      if (data.health_status === 'healthy') success(`技能「${data.name}」健康检查通过`);
-      else showError(`技能「${data.name}」异常：${data.message}`);
-      queryClient.invalidateQueries({ queryKey: ['skills'] });
-    },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /* ── uv Mutations ── */
-  const installUv = useMutation({
-    mutationFn: async () => {
-      const r = await commands.installUv();
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: (data) => {
-      if (data.success) success(`uv 安装成功，版本: ${data.version ?? '未知'}`);
-      else showError(`uv 安装失败：${data.output}`);
-      queryClient.invalidateQueries({ queryKey: ['uv-health'] });
-    },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /* ── MCP Mutations ── */
-  const createMcp = useMutation({
-    mutationFn: async (input: CreateMcpServerInput) => {
-      const r = await commands.createMcpServer(input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }); success('MCP 服务器已创建'); resetMcpForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const updateMcpMut = useMutation({
-    mutationFn: async ({ id, input }: { id: string; input: UpdateMcpServerInput }) => {
-      const r = await commands.updateMcpServer(id, input);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }); success('MCP 服务器已更新'); resetMcpForm(); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const deleteMcpMut = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.deleteMcpServer({ id });
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }); success('MCP 服务器已删除'); },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  const checkMcp = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await commands.checkMcpHealth(id);
-      if (r.status === 'error') throw new Error(JSON.stringify(r.error));
-      return r.data;
-    },
-    onSuccess: (data) => {
-      if (data.health_status === 'healthy') success(`MCP「${data.name}」健康检查通过`);
-      else showError(`MCP「${data.name}」异常：${data.message}`);
-      queryClient.invalidateQueries({ queryKey: ['mcp-servers'] });
-    },
-    onError: (e: Error) => showError(e.message),
-  });
-
-  /** 重置 Skill 表单 */
-  const resetSkillForm = () => {
-    setShowSkillForm(false);
-    setEditSkillId(null);
-    setSkillForm({ name: '', display_name: '', description: '', skill_type: 'builtin', version: '', source: '', permission_scope: '', config_json: '' });
-  };
-
-  /** 重置 MCP 表单 */
-  const resetMcpForm = () => {
-    setShowMcpForm(false);
-    setEditMcpId(null);
-    setMcpForm({ name: '', display_name: '', description: '', transport: 'stdio', command: '', args_json: '', env_json: '', permission_scope: '' });
-  };
-
-  /** 进入编辑 Skill 模式 */
-  const startEditSkill = (s: SkillRecord) => {
-    setEditSkillId(s.id);
-    setSkillForm({
-      name: s.name,
-      display_name: s.display_name,
-      description: s.description,
-      skill_type: s.skill_type,
-      version: s.version,
-      source: s.source,
-      permission_scope: s.permission_scope,
-      config_json: s.config_json,
-    });
-    setShowSkillForm(true);
-  };
-
-  /** 进入编辑 MCP 模式 */
-  const startEditMcp = (m: McpServerRecord) => {
-    setEditMcpId(m.id);
-    setMcpForm({
-      name: m.name,
-      display_name: m.display_name,
-      description: m.description,
-      transport: m.transport,
-      command: m.command,
-      args_json: m.args_json,
-      env_json: m.env_json,
-      permission_scope: m.permission_scope,
-    });
-    setShowMcpForm(true);
-  };
-
-  /** 提交 Skill */
-  const handleSubmitSkill = () => {
-    if (editSkillId) {
-      updateSkillMut.mutate({
-        id: editSkillId,
-        input: {
-          display_name: skillForm.display_name || null,
-          description: skillForm.description || null,
-          permission_scope: skillForm.permission_scope || null,
-          config_json: skillForm.config_json || null,
-          status: null,
-        },
-      });
-    } else {
-      createSkill.mutate({
-        name: skillForm.name,
-        version: skillForm.version || null,
-        source: skillForm.source || null,
-        permission_scope: skillForm.permission_scope || null,
-        display_name: skillForm.display_name || null,
-        description: skillForm.description || null,
-        skill_type: skillForm.skill_type,
-        config_json: skillForm.config_json || null,
-      });
-    }
-  };
-
-  /** 提交 MCP */
-  const handleSubmitMcp = () => {
-    if (editMcpId) {
-      updateMcpMut.mutate({
-        id: editMcpId,
-        input: {
-          display_name: mcpForm.display_name || null,
-          description: mcpForm.description || null,
-          command: mcpForm.command || null,
-          args_json: mcpForm.args_json || null,
-          env_json: mcpForm.env_json || null,
-          permission_scope: mcpForm.permission_scope || null,
-          enabled: null,
-        },
-      });
-    } else {
-      createMcp.mutate({
-        name: mcpForm.name,
-        transport: mcpForm.transport,
-        command: mcpForm.command || null,
-        args_json: mcpForm.args_json || null,
-        env_json: mcpForm.env_json || null,
-        permission_scope: mcpForm.permission_scope || null,
-        display_name: mcpForm.display_name || null,
-        description: mcpForm.description || null,
-      });
-    }
-  };
-
-  const uvHealth = uvHealthQuery.data;
-
-  return (
-    <div className="space-y-4">
-      {/* 子标签切换 */}
-      <div className="flex gap-1 border-b">
-        {(['skills', 'uv', 'mcp'] as const).map((tab) => (
-          <button
-            key={tab}
-            className={`px-4 py-2 text-sm border-b-2 transition-colors ${subTab === tab ? 'border-blue-600 text-blue-600 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            onClick={() => setSubTab(tab)}
-          >
-            {tab === 'skills' ? '技能管理' : tab === 'uv' ? 'Python 环境 (uv)' : 'MCP 服务器'}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Skills 子标签 ── */}
-      {subTab === 'skills' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">已注册技能</h3>
-            <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => { resetSkillForm(); setShowSkillForm(true); }}>
-              <Plus size={14} /> 添加技能
-            </button>
-          </div>
-
-          {showSkillForm && (
-            <div className="p-4 border rounded-lg bg-gray-50 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <input className="border rounded px-3 py-2 text-sm" placeholder="技能标识（如 summary_gen）" value={skillForm.name} onChange={(e) => setSkillForm({ ...skillForm, name: e.target.value })} disabled={!!editSkillId} />
-                <input className="border rounded px-3 py-2 text-sm" placeholder="显示名称（如 摘要生成）" value={skillForm.display_name ?? ''} onChange={(e) => setSkillForm({ ...skillForm, display_name: e.target.value || null })} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <select className="border rounded px-3 py-2 text-sm" value={skillForm.skill_type} onChange={(e) => setSkillForm({ ...skillForm, skill_type: e.target.value })} disabled={!!editSkillId}>
-                  <option value="builtin">内置</option>
-                  <option value="python">Python</option>
-                  <option value="external">外部</option>
-                </select>
-                <input className="border rounded px-3 py-2 text-sm" placeholder="来源（可选）" value={skillForm.source ?? ''} onChange={(e) => setSkillForm({ ...skillForm, source: e.target.value || null })} />
-              </div>
-              <input className="w-full border rounded px-3 py-2 text-sm" placeholder="描述（可选）" value={skillForm.description ?? ''} onChange={(e) => setSkillForm({ ...skillForm, description: e.target.value || null })} />
-              <input className="w-full border rounded px-3 py-2 text-sm" placeholder="权限范围（可选）" value={skillForm.permission_scope ?? ''} onChange={(e) => setSkillForm({ ...skillForm, permission_scope: e.target.value || null })} />
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={handleSubmitSkill}>{editSkillId ? '更新' : '创建'}</button>
-                <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={resetSkillForm}>取消</button>
-              </div>
-            </div>
-          )}
-
-          {skillsQuery.data?.length ? (
-            <div className="space-y-2">
-              {skillsQuery.data.map((s) => (
-                <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    {s.status === 'active' ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
-                    <div>
-                      <span className="font-medium">{s.display_name ?? s.name}</span>
-                      <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 rounded">{s.skill_type}</span>
-                      <span className={`ml-2 px-2 py-0.5 text-xs rounded ${s.health_status === 'healthy' ? 'bg-green-100 text-green-700' : s.health_status === 'unknown' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-700'}`}>
-                        {s.health_status}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="p-1.5 hover:bg-blue-100 rounded text-blue-600" title="健康检查" onClick={() => checkSkill.mutate(s.id)}><Activity size={14} /></button>
-                    <button className="p-1.5 hover:bg-gray-200 rounded" title="编辑技能" onClick={() => startEditSkill(s)}><Edit2 size={14} /></button>
-                    <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除技能" onClick={() => setDeleteTarget({ type: 'skill', id: s.id, name: s.display_name ?? s.name })}><Trash2 size={14} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="暂无技能" description="添加内置或 Python 技能以扩展 AI 能力" icon={<Puzzle size={32} className="text-gray-400" />} />
-          )}
-        </div>
-      )}
-
-      {/* ── uv 子标签 ── */}
-      {subTab === 'uv' && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Python 环境管理 (uv)</h3>
-          <div className="p-4 border rounded-lg space-y-3">
-            <div className="flex items-center gap-3">
-              {uvHealth?.available ? <CheckCircle2 size={20} className="text-green-500" /> : <XCircle size={20} className="text-red-500" />}
-              <div>
-                <div className="font-medium">{uvHealth?.available ? 'uv 已安装' : 'uv 未安装'}</div>
-                {uvHealth?.version && <div className="text-sm text-gray-500">版本: {uvHealth.version}</div>}
-                {uvHealth?.path && <div className="text-sm text-gray-500 font-mono">{uvHealth.path}</div>}
-                <div className="text-xs text-gray-400 mt-1">{uvHealth?.message}</div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button className="flex items-center gap-2 px-4 py-2 text-sm border rounded-lg hover:bg-gray-50" onClick={() => queryClient.invalidateQueries({ queryKey: ['uv-health'] })}>
-                <RefreshCw size={14} /> 重新检测
-              </button>
-              {!uvHealth?.available && (
-                <button className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => installUv.mutate()} disabled={installUv.isPending}>
-                  <Download size={14} /> {installUv.isPending ? '安装中...' : '一键安装 uv'}
-                </button>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-gray-400">uv 用于管理 Python 技能的隔离环境。安装来源: astral.sh（官方）。</p>
-        </div>
-      )}
-
-      {/* ── MCP 子标签 ── */}
-      {subTab === 'mcp' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">MCP 服务器</h3>
-            <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={() => { resetMcpForm(); setShowMcpForm(true); }}>
-              <Plus size={14} /> 添加 MCP 服务器
-            </button>
-          </div>
-
-          {showMcpForm && (
-            <div className="p-4 border rounded-lg bg-gray-50 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <input className="border rounded px-3 py-2 text-sm" placeholder="服务器标识" value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} disabled={!!editMcpId} />
-                <input className="border rounded px-3 py-2 text-sm" placeholder="显示名称" value={mcpForm.display_name ?? ''} onChange={(e) => setMcpForm({ ...mcpForm, display_name: e.target.value || null })} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <select className="border rounded px-3 py-2 text-sm" value={mcpForm.transport} onChange={(e) => setMcpForm({ ...mcpForm, transport: e.target.value })} disabled={!!editMcpId}>
-                  <option value="stdio">Stdio（本地进程）</option>
-                  <option value="http">HTTP（远程）</option>
-                </select>
-                <input className="border rounded px-3 py-2 text-sm" placeholder="启动命令（stdio 必填）" value={mcpForm.command ?? ''} onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value || null })} />
-              </div>
-              <input className="w-full border rounded px-3 py-2 text-sm" placeholder="启动参数 JSON（可选，如 [&quot;--port&quot;, &quot;8080&quot;]）" value={mcpForm.args_json ?? ''} onChange={(e) => setMcpForm({ ...mcpForm, args_json: e.target.value || null })} />
-              <input className="w-full border rounded px-3 py-2 text-sm" placeholder="描述（可选）" value={mcpForm.description ?? ''} onChange={(e) => setMcpForm({ ...mcpForm, description: e.target.value || null })} />
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700" onClick={handleSubmitMcp}>{editMcpId ? '更新' : '创建'}</button>
-                <button className="px-3 py-1.5 text-sm border rounded hover:bg-gray-100" onClick={resetMcpForm}>取消</button>
-              </div>
-            </div>
-          )}
-
-          {mcpQuery.data?.length ? (
-            <div className="space-y-2">
-              {mcpQuery.data.map((m) => (
-                <div key={m.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    {m.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
-                    <div>
-                      <span className="font-medium">{m.display_name ?? m.name}</span>
-                      <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 rounded">{m.transport}</span>
-                      <span className={`ml-2 px-2 py-0.5 text-xs rounded ${m.health_status === 'healthy' ? 'bg-green-100 text-green-700' : m.health_status === 'unknown' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-700'}`}>
-                        {m.health_status}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="p-1.5 hover:bg-blue-100 rounded text-blue-600" title="健康检查" onClick={() => checkMcp.mutate(m.id)}><Activity size={14} /></button>
-                    <button className="p-1.5 hover:bg-gray-200 rounded" title="编辑 MCP" onClick={() => startEditMcp(m)}><Edit2 size={14} /></button>
-                    <button className="p-1.5 hover:bg-red-100 rounded text-red-500" title="删除 MCP" onClick={() => setDeleteTarget({ type: 'mcp', id: m.id, name: m.display_name ?? m.name })}><Trash2 size={14} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="暂无 MCP 服务器" description="注册 MCP 服务器以扩展工具能力" icon={<Puzzle size={32} className="text-gray-400" />} />
-          )}
-        </div>
-      )}
-
-      {/* 删除确认 */}
-      <ConfirmDialog
-        isOpen={deleteTarget !== null}
-        title="确认删除"
-        message={`确定要删除「${deleteTarget?.name ?? ''}」吗？`}
+        message={`确定要删除模板「${deleteTarget?.type ?? ''}」吗？`}
         confirmText="删除"
         isDestructive
         onConfirm={() => {
-          if (!deleteTarget) return;
-          if (deleteTarget.type === 'skill') deleteSkillMut.mutate(deleteTarget.id);
-          else deleteMcpMut.mutate(deleteTarget.id);
+          if (deleteTarget) {
+            deleteTemplateMutation.mutate(deleteTarget.id);
+          }
           setDeleteTarget(null);
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -1373,43 +1042,900 @@ const SkillsMcpTab: React.FC = () => {
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   主组件 — 设置页面
-   ═══════════════════════════════════════════════════════════════ */
+/** 快捷键标签页组件 */
+const ShortcutTab: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { success, error } = useToast();
 
-/** 系统设置页面主组件 — 五标签页布局 */
-export const SettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('ai');
+  const [showForm, setShowForm] = useState(false);
+  const [editingShortcut, setEditingShortcut] = useState<GlobalShortcut | null>(null);
+  const [form, setForm] = useState<CreateGlobalShortcutInput>(INITIAL_SHORTCUT_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<GlobalShortcut | null>(null);
 
-  /** 根据当前激活标签渲染对应内容 */
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'ai': return <AiConfigTab />;
-      case 'security': return <SecurityTab />;
-      case 'template': return <TemplateTab />;
-      case 'shortcut': return <ShortcutTab />;
-      case 'skills': return <SkillsMcpTab />;
-      default: return null;
+  const shortcutsQuery = useQuery({
+    queryKey: ['settings', 'shortcuts'],
+    queryFn: async () => unwrapResult(await commands.listGlobalShortcuts()),
+  });
+
+  const createShortcutMutation = useMutation({
+    mutationFn: async (input: CreateGlobalShortcutInput) => unwrapResult(await commands.createGlobalShortcut(input)),
+    onSuccess: () => {
+      success('快捷键已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'shortcuts'] });
+      setShowForm(false);
+      setEditingShortcut(null);
+      setForm(INITIAL_SHORTCUT_FORM);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const updateShortcutMutation = useMutation({
+    mutationFn: async (payload: { id: string; input: CreateGlobalShortcutInput }) => {
+      const input: UpdateGlobalShortcutInput = {
+        id: payload.id,
+        action: payload.input.action.trim() === '' ? null : payload.input.action,
+        key_combination: payload.input.key_combination.trim() === '' ? null : payload.input.key_combination,
+        enabled: payload.input.enabled,
+        description: payload.input.description,
+      };
+      return unwrapResult(await commands.updateGlobalShortcut(input));
+    },
+    onSuccess: () => {
+      success('快捷键已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'shortcuts'] });
+      setShowForm(false);
+      setEditingShortcut(null);
+      setForm(INITIAL_SHORTCUT_FORM);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const deleteShortcutMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const input: DeleteGlobalShortcutInput = { id };
+      return unwrapResult(await commands.deleteGlobalShortcut(input));
+    },
+    onSuccess: () => {
+      success('快捷键已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'shortcuts'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  /** 打开快捷键创建表单 */
+  const openCreateShortcutForm = () => {
+    setEditingShortcut(null);
+    setForm(INITIAL_SHORTCUT_FORM);
+    setShowForm(true);
+  };
+
+  /** 打开快捷键编辑表单 */
+  const openEditShortcutForm = (item: GlobalShortcut) => {
+    setEditingShortcut(item);
+    setForm({
+      action: item.action,
+      key_combination: item.key_combination,
+      enabled: item.enabled,
+      description: item.description,
+    });
+    setShowForm(true);
+  };
+
+  /** 提交快捷键表单 */
+  const submitShortcutForm = () => {
+    if (editingShortcut) {
+      updateShortcutMutation.mutate({ id: editingShortcut.id, input: form });
+      return;
     }
+    createShortcutMutation.mutate(form);
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* 页面标题 */}
-      <div className="flex items-center gap-2 mb-4">
+    <div className="space-y-6">
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">全局快捷键</h3>
+          <button
+            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            onClick={openCreateShortcutForm}
+          >
+            <Plus size={14} /> 添加快捷键
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="action"
+                value={form.action}
+                onChange={(e) => setForm((prev) => ({ ...prev, action: e.target.value }))}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="key_combination"
+                value={form.key_combination}
+                onChange={(e) => setForm((prev) => ({ ...prev, key_combination: e.target.value }))}
+              />
+              <input
+                className="col-span-2 rounded border px-3 py-2 text-sm"
+                placeholder="description（可选）"
+                value={form.description ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(form.enabled ?? 0) === 1}
+                onChange={(e) => setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))}
+              />
+              启用
+            </label>
+            <div className="flex gap-2">
+              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitShortcutForm}>
+                {editingShortcut ? '更新' : '创建'}
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingShortcut(null);
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {shortcutsQuery.data && shortcutsQuery.data.length > 0 ? (
+          <div className="space-y-2">
+            {shortcutsQuery.data.map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    {item.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
+                    {item.action}
+                  </div>
+                  <div className="mt-1">
+                    <kbd className="rounded border bg-gray-100 px-2 py-0.5 font-mono text-xs">{item.key_combination}</kbd>
+                  </div>
+                  <div className="text-xs text-gray-500">{item.description ?? '无描述'}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditShortcutForm(item)} title="编辑快捷键">
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() => setDeleteTarget(item)}
+                    title="删除快捷键"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="暂无快捷键" description="请添加全局快捷键" icon={<Keyboard size={32} className="text-gray-400" />} />
+        )}
+      </section>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="确认删除快捷键"
+        message={`确定要删除「${deleteTarget?.action ?? ''}」吗？`}
+        confirmText="删除"
+        isDestructive
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteShortcutMutation.mutate(deleteTarget.id);
+          }
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+};
+
+/** Skills 与 MCP 标签页组件 */
+const SkillsMcpTab: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { success, error, info } = useToast();
+
+  const [subTab, setSubTab] = useState<'skills' | 'uv' | 'mcp'>('skills');
+
+  const [showSkillForm, setShowSkillForm] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<SkillRecord | null>(null);
+  const [skillForm, setSkillForm] = useState<CreateSkillInput>(INITIAL_SKILL_FORM);
+  const [skillStatus, setSkillStatus] = useState<string | null>('active');
+
+  const [showMcpForm, setShowMcpForm] = useState(false);
+  const [editingMcp, setEditingMcp] = useState<McpServerRecord | null>(null);
+  const [mcpForm, setMcpForm] = useState<CreateMcpServerInput>(INITIAL_MCP_FORM);
+  const [mcpEnabled, setMcpEnabled] = useState<number | null>(1);
+
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'skill' | 'mcp'; id: string; name: string } | null>(null);
+
+  const [skillEnvName, setSkillEnvName] = useState('');
+  const [skillEnvPythonVersion, setSkillEnvPythonVersion] = useState<string>('');
+
+  const skillsQuery = useQuery({
+    queryKey: ['settings', 'skills'],
+    queryFn: async () => unwrapResult(await commands.listSkills()),
+  });
+
+  const uvHealthQuery = useQuery({
+    queryKey: ['settings', 'uv-health'],
+    queryFn: async (): Promise<UvHealthResult> => unwrapResult(await commands.checkUvHealth()),
+  });
+
+  const mcpQuery = useQuery({
+    queryKey: ['settings', 'mcp-servers'],
+    queryFn: async () => unwrapResult(await commands.listMcpServers()),
+  });
+
+  const createSkillMutation = useMutation({
+    mutationFn: async (input: CreateSkillInput) => unwrapResult(await commands.createSkill(input)),
+    onSuccess: () => {
+      success('技能已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'skills'] });
+      setShowSkillForm(false);
+      setEditingSkill(null);
+      setSkillForm(INITIAL_SKILL_FORM);
+      setSkillStatus('active');
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const updateSkillMutation = useMutation({
+    mutationFn: async (payload: { id: string; input: UpdateSkillInput }) => unwrapResult(await commands.updateSkill(payload.id, payload.input)),
+    onSuccess: () => {
+      success('技能已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'skills'] });
+      setShowSkillForm(false);
+      setEditingSkill(null);
+      setSkillForm(INITIAL_SKILL_FORM);
+      setSkillStatus('active');
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const deleteSkillMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const input: DeleteSkillInput = { id };
+      return unwrapResult(await commands.deleteSkill(input));
+    },
+    onSuccess: () => {
+      success('技能已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'skills'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const checkSkillHealthMutation = useMutation({
+    mutationFn: async (id: string) => unwrapResult(await commands.checkSkillHealth(id)),
+    onSuccess: (data) => {
+      if (data.health_status === 'healthy') {
+        success(`技能「${data.name}」健康检查通过`);
+      } else {
+        error(`技能「${data.name}」异常：${data.message}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['settings', 'skills'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const installUvMutation = useMutation({
+    mutationFn: async () => unwrapResult(await commands.installUv()),
+    onSuccess: (data) => {
+      if (data.success) {
+        success(`uv 安装成功，版本：${data.version ?? '未知'}`);
+      } else {
+        error(`uv 安装失败：${data.output}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['settings', 'uv-health'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const createSkillEnvMutation = useMutation({
+    mutationFn: async (input: CreateSkillEnvInput) => unwrapResult(await commands.createSkillEnv(input)),
+    onSuccess: (message) => {
+      info(message);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const createMcpMutation = useMutation({
+    mutationFn: async (input: CreateMcpServerInput) => unwrapResult(await commands.createMcpServer(input)),
+    onSuccess: () => {
+      success('MCP 服务器已创建');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+      setShowMcpForm(false);
+      setEditingMcp(null);
+      setMcpForm(INITIAL_MCP_FORM);
+      setMcpEnabled(1);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const updateMcpMutation = useMutation({
+    mutationFn: async (payload: { id: string; input: UpdateMcpServerInput }) =>
+      unwrapResult(await commands.updateMcpServer(payload.id, payload.input)),
+    onSuccess: () => {
+      success('MCP 服务器已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+      setShowMcpForm(false);
+      setEditingMcp(null);
+      setMcpForm(INITIAL_MCP_FORM);
+      setMcpEnabled(1);
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const deleteMcpMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const input: DeleteMcpServerInput = { id };
+      return unwrapResult(await commands.deleteMcpServer(input));
+    },
+    onSuccess: () => {
+      success('MCP 服务器已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const checkMcpHealthMutation = useMutation({
+    mutationFn: async (id: string) => unwrapResult(await commands.checkMcpHealth(id)),
+    onSuccess: (data) => {
+      if (data.health_status === 'healthy') {
+        success(`MCP「${data.name}」健康检查通过`);
+      } else {
+        error(`MCP「${data.name}」异常：${data.message}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  /** 打开技能创建表单 */
+  const openCreateSkillForm = () => {
+    setEditingSkill(null);
+    setSkillForm(INITIAL_SKILL_FORM);
+    setSkillStatus('active');
+    setShowSkillForm(true);
+  };
+
+  /** 打开技能编辑表单 */
+  const openEditSkillForm = (item: SkillRecord) => {
+    setEditingSkill(item);
+    setSkillForm({
+      name: item.name,
+      version: item.version,
+      source: item.source,
+      permission_scope: item.permission_scope,
+      display_name: item.display_name,
+      description: item.description,
+      skill_type: item.skill_type,
+      config_json: item.config_json,
+    });
+    setSkillStatus(item.status);
+    setShowSkillForm(true);
+  };
+
+  /** 提交技能表单 */
+  const submitSkillForm = () => {
+    if (editingSkill) {
+      const input: UpdateSkillInput = {
+        display_name: skillForm.display_name,
+        description: skillForm.description,
+        permission_scope: skillForm.permission_scope,
+        config_json: skillForm.config_json,
+        status: skillStatus,
+      };
+      updateSkillMutation.mutate({ id: editingSkill.id, input });
+      return;
+    }
+    createSkillMutation.mutate(skillForm);
+  };
+
+  /** 打开 MCP 创建表单 */
+  const openCreateMcpForm = () => {
+    setEditingMcp(null);
+    setMcpForm(INITIAL_MCP_FORM);
+    setMcpEnabled(1);
+    setShowMcpForm(true);
+  };
+
+  /** 打开 MCP 编辑表单 */
+  const openEditMcpForm = (item: McpServerRecord) => {
+    setEditingMcp(item);
+    setMcpForm({
+      name: item.name,
+      transport: item.transport,
+      command: item.command,
+      args_json: item.args_json,
+      env_json: item.env_json,
+      permission_scope: item.permission_scope,
+      display_name: item.display_name,
+      description: item.description,
+    });
+    setMcpEnabled(item.enabled);
+    setShowMcpForm(true);
+  };
+
+  /** 提交 MCP 表单 */
+  const submitMcpForm = () => {
+    if (editingMcp) {
+      const input: UpdateMcpServerInput = {
+        display_name: mcpForm.display_name,
+        description: mcpForm.description,
+        command: mcpForm.command,
+        args_json: mcpForm.args_json,
+        env_json: mcpForm.env_json,
+        permission_scope: mcpForm.permission_scope,
+        enabled: mcpEnabled,
+      };
+      updateMcpMutation.mutate({ id: editingMcp.id, input });
+      return;
+    }
+    createMcpMutation.mutate(mcpForm);
+  };
+
+  /** 提交技能环境创建 */
+  const submitCreateSkillEnv = () => {
+    if (skillEnvName.trim() === '') {
+      error('请先输入技能名称');
+      return;
+    }
+    const input: CreateSkillEnvInput = {
+      skill_name: skillEnvName,
+      python_version: skillEnvPythonVersion.trim() === '' ? null : skillEnvPythonVersion,
+    };
+    createSkillEnvMutation.mutate(input);
+  };
+
+  /** 确认删除技能或 MCP */
+  const confirmDelete = () => {
+    if (!deleteTarget) {
+      return;
+    }
+    if (deleteTarget.type === 'skill') {
+      deleteSkillMutation.mutate(deleteTarget.id);
+    } else {
+      deleteMcpMutation.mutate(deleteTarget.id);
+    }
+    setDeleteTarget(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b">
+        {(['skills', 'uv', 'mcp'] as const).map((tab) => (
+          <button
+            key={tab}
+            className={`border-b-2 px-4 py-2 text-sm transition-colors ${
+              subTab === tab ? 'border-blue-600 font-medium text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setSubTab(tab)}
+          >
+            {tab === 'skills' ? '技能管理' : tab === 'uv' ? 'Python环境(uv)' : 'MCP服务器'}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'skills' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">技能列表</h3>
+            <button
+              className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+              onClick={openCreateSkillForm}
+            >
+              <Plus size={14} /> 添加技能
+            </button>
+          </div>
+
+          {showSkillForm && (
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="name"
+                  value={skillForm.name}
+                  disabled={editingSkill !== null}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="display_name（可选）"
+                  value={skillForm.display_name ?? ''}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      display_name: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="version（可选）"
+                  value={skillForm.version ?? ''}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, version: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="source（可选）"
+                  value={skillForm.source ?? ''}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, source: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="permission_scope（可选）"
+                  value={skillForm.permission_scope ?? ''}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      permission_scope: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="skill_type"
+                  value={skillForm.skill_type}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, skill_type: e.target.value }))}
+                />
+                <input
+                  className="col-span-2 rounded border px-3 py-2 text-sm"
+                  placeholder="description（可选）"
+                  value={skillForm.description ?? ''}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="col-span-2 rounded border px-3 py-2 text-sm"
+                  placeholder="config_json（可选）"
+                  value={skillForm.config_json ?? ''}
+                  onChange={(e) => setSkillForm((prev) => ({ ...prev, config_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+              </div>
+              {editingSkill && (
+                <select
+                  className="rounded border px-3 py-2 text-sm"
+                  value={skillStatus ?? ''}
+                  onChange={(e) => setSkillStatus(e.target.value.trim() === '' ? null : e.target.value)}
+                >
+                  <option value="active">active</option>
+                  <option value="inactive">inactive</option>
+                </select>
+              )}
+              <div className="flex gap-2">
+                <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitSkillForm}>
+                  {editingSkill ? '更新' : '创建'}
+                </button>
+                <button
+                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                  onClick={() => {
+                    setShowSkillForm(false);
+                    setEditingSkill(null);
+                  }}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {skillsQuery.data && skillsQuery.data.length > 0 ? (
+            <div className="space-y-2">
+              {skillsQuery.data.map((item) => (
+                <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      {item.status === 'active' ? (
+                        <CheckCircle2 size={16} className="text-green-500" />
+                      ) : (
+                        <XCircle size={16} className="text-gray-400" />
+                      )}
+                      {item.display_name ?? item.name}
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{item.skill_type}</span>
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          item.health_status === 'healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {item.health_status}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">name: {item.name}</div>
+                    <div className="text-xs text-gray-500">description: {item.description ?? '-'}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="rounded p-1.5 text-blue-600 hover:bg-blue-100"
+                      onClick={() => checkSkillHealthMutation.mutate(item.id)}
+                      title="健康检查"
+                    >
+                      <Activity size={14} />
+                    </button>
+                    <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditSkillForm(item)} title="编辑技能">
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                      onClick={() => setDeleteTarget({ type: 'skill', id: item.id, name: item.display_name ?? item.name })}
+                      title="删除技能"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="暂无技能" description="请添加技能配置" icon={<Puzzle size={32} className="text-gray-400" />} />
+          )}
+        </div>
+      )}
+
+      {subTab === 'uv' && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Python 环境（uv）</h3>
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-sm">
+              {uvHealthQuery.data?.available ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-red-500" />}
+              {uvHealthQuery.data?.available ? 'uv 已安装' : 'uv 未安装'}
+            </div>
+            <div className="text-xs text-gray-500">版本：{uvHealthQuery.data?.version ?? '-'}</div>
+            <div className="text-xs text-gray-500">路径：{uvHealthQuery.data?.path ?? '-'}</div>
+            <div className="text-xs text-gray-500">信息：{uvHealthQuery.data?.message ?? '-'}</div>
+            <div className="flex gap-2">
+              <button
+                className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['settings', 'uv-health'] })}
+              >
+                <RefreshCw size={14} /> 重新检测
+              </button>
+              <button
+                className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                onClick={() => installUvMutation.mutate()}
+              >
+                <Download size={14} /> 安装 uv
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-4">
+            <h4 className="font-medium">创建技能环境</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="skill_name"
+                value={skillEnvName}
+                onChange={(e) => setSkillEnvName(e.target.value)}
+              />
+              <input
+                className="rounded border px-3 py-2 text-sm"
+                placeholder="python_version（可选）"
+                value={skillEnvPythonVersion}
+                onChange={(e) => setSkillEnvPythonVersion(e.target.value)}
+              />
+            </div>
+            <button
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+              onClick={submitCreateSkillEnv}
+            >
+              创建环境
+            </button>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'mcp' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">MCP 服务器</h3>
+            <button
+              className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+              onClick={openCreateMcpForm}
+            >
+              <Plus size={14} /> 添加 MCP
+            </button>
+          </div>
+
+          {showMcpForm && (
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="name"
+                  value={mcpForm.name}
+                  disabled={editingMcp !== null}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="display_name（可选）"
+                  value={mcpForm.display_name ?? ''}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      display_name: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="transport"
+                  value={mcpForm.transport}
+                  disabled={editingMcp !== null}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, transport: e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="command（可选）"
+                  value={mcpForm.command ?? ''}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, command: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="args_json（可选）"
+                  value={mcpForm.args_json ?? ''}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, args_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="env_json（可选）"
+                  value={mcpForm.env_json ?? ''}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, env_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="permission_scope（可选）"
+                  value={mcpForm.permission_scope ?? ''}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      permission_scope: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
+                />
+                <input
+                  className="rounded border px-3 py-2 text-sm"
+                  placeholder="description（可选）"
+                  value={mcpForm.description ?? ''}
+                  onChange={(e) => setMcpForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+                />
+              </div>
+              {editingMcp && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={(mcpEnabled ?? 0) === 1} onChange={(e) => setMcpEnabled(e.target.checked ? 1 : 0)} />
+                  启用
+                </label>
+              )}
+              <div className="flex gap-2">
+                <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitMcpForm}>
+                  {editingMcp ? '更新' : '创建'}
+                </button>
+                <button
+                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                  onClick={() => {
+                    setShowMcpForm(false);
+                    setEditingMcp(null);
+                  }}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mcpQuery.data && mcpQuery.data.length > 0 ? (
+            <div className="space-y-2">
+              {mcpQuery.data.map((item) => (
+                <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      {item.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
+                      {item.display_name ?? item.name}
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{item.transport}</span>
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          item.health_status === 'healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {item.health_status}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">command: {item.command ?? '-'}</div>
+                    <div className="text-xs text-gray-500">args_json: {item.args_json ?? '-'}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="rounded p-1.5 text-blue-600 hover:bg-blue-100"
+                      onClick={() => checkMcpHealthMutation.mutate(item.id)}
+                      title="健康检查"
+                    >
+                      <Activity size={14} />
+                    </button>
+                    <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditMcpForm(item)} title="编辑 MCP">
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                      onClick={() => setDeleteTarget({ type: 'mcp', id: item.id, name: item.display_name ?? item.name })}
+                      title="删除 MCP"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="暂无 MCP 服务器" description="请添加 MCP 服务配置" icon={<Puzzle size={32} className="text-gray-400" />} />
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="确认删除"
+        message={`确定要删除「${deleteTarget?.name ?? ''}」吗？`}
+        confirmText="删除"
+        isDestructive
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+};
+
+/** 系统设置页面主组件 */
+export const SettingsPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<TabKey>('ai');
+
+  /** 渲染当前激活标签页内容 */
+  const renderContent = () => {
+    if (activeTab === 'ai') {
+      return <AiConfigTab />;
+    }
+    if (activeTab === 'security') {
+      return <SecurityTab />;
+    }
+    if (activeTab === 'template') {
+      return <TemplateTab />;
+    }
+    if (activeTab === 'shortcut') {
+      return <ShortcutTab />;
+    }
+    return <SkillsMcpTab />;
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-4 flex items-center gap-2">
         <Settings size={20} />
         <h2 className="text-xl font-bold">系统设置</h2>
       </div>
 
-      {/* 标签导航栏 */}
-      <div className="flex gap-1 border-b mb-6">
-        {TABS.map((tab) => (
+      <div className="mb-6 flex gap-1 border-b">
+        {[
+          { key: 'ai' as const, label: 'AI配置', icon: <Cpu size={16} /> },
+          { key: 'security' as const, label: '安全隐私', icon: <Shield size={16} /> },
+          { key: 'template' as const, label: '模板导出', icon: <FileText size={16} /> },
+          { key: 'shortcut' as const, label: '快捷键', icon: <Keyboard size={16} /> },
+          { key: 'skills' as const, label: 'Skills与MCP', icon: <Puzzle size={16} /> },
+        ].map((tab) => (
           <button
             key={tab.key}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-blue-600 text-blue-600 font-medium'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm transition-colors ${
+              activeTab === tab.key ? 'border-blue-600 font-medium text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
             onClick={() => setActiveTab(tab.key)}
           >
@@ -1419,10 +1945,7 @@ export const SettingsPage: React.FC = () => {
         ))}
       </div>
 
-      {/* 标签页内容区 */}
-      <div className="flex-1 overflow-y-auto">
-        {renderContent()}
-      </div>
+      <div className="flex-1 overflow-y-auto">{renderContent()}</div>
     </div>
   );
 };
