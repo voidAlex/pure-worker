@@ -46,7 +46,11 @@ export const DashboardPage: React.FC = () => {
 
       <AiWorkbench
         healthText={healthData?.status === 'ok' ? '正常运行' : '检查中...'}
-        taskCount={tasksData?.length || 0}
+        tasks={(tasksData || []).map((task) => ({
+          id: task.id,
+          task_type: task.task_type,
+          status: task.status,
+        }))}
       />
     </div>
   );

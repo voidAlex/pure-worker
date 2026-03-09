@@ -41,10 +41,12 @@ export const AppLayout: React.FC = () => {
           )}
         </main>
         
-        <AiPanel
-          isOpen={isDashboardRoute || isAiPanelOpen}
-          onClose={() => setIsAiPanelOpen(false)} 
-        />
+        {!isDashboardRoute && (
+          <AiPanel
+            isOpen={isAiPanelOpen}
+            onClose={() => setIsAiPanelOpen(false)}
+          />
+        )}
       </div>
       
       <StatusBar />
