@@ -119,4 +119,4 @@ jobs:
         with:
           name: pureworker-${{ matrix.platform }}
           path: |
-            apps/desktop/src-tauri/target/release/bundle/**
+            apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**
