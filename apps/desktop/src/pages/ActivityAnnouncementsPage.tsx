@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, type Classroom, type ActivityAnnouncement, type TemplateFile } from '@/bindings';
+import { commands, type Classroom, type ActivityAnnouncement, type TemplateFile } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';

@@ -5,22 +5,20 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  commands,
-  type Classroom,
-  type GradingJob,
-  type AssignmentAsset,
-  type AssignmentOcrResult,
-  type AsyncTask,
-  type Student,
-  type CreateGradingJobInput,
-  type AddAssignmentAssetsInput,
-  type ReviewOcrResultInput,
-} from '@/bindings';
+import { commands,
+type Classroom,
+type GradingJob,
+type AssignmentAsset,
+type AssignmentOcrResult,
+type AsyncTask,
+type Student,
+type CreateGradingJobInput,
+type AddAssignmentAssetsInput,
+type ReviewOcrResultInput, } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { listen } from '@tauri-apps/api/event';
+import { isTauriRuntime } from '@/utils/runtime';
 import {
   ClipboardCheck,
   Upload,
@@ -276,17 +274,20 @@ export const AssignmentGradingPage: React.FC = () => {
 
   /** 监听拖拽文件事件 */
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     if (!selectedJobId || !selectedClassId) return;
-    const unlisten = listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
-      const paths = event.payload.paths;
-      if (paths.length > 0) {
-        addAssetsMutation.mutate({
-          job_id: selectedJobId,
-          class_id: selectedClassId,
-          file_paths: paths,
-        });
-      }
-    });
+    const unlisten = import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
+        const paths = event.payload.paths;
+        if (paths.length > 0) {
+          addAssetsMutation.mutate({
+            job_id: selectedJobId,
+            class_id: selectedClassId,
+            file_paths: paths,
+          });
+        }
+      }),
+    );
     return () => {
       unlisten.then((fn) => fn());
     };

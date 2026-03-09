@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { commands, CreateStudentInput } from '@/bindings';
+import { commands, CreateStudentInput } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Plus, Search, GraduationCap, Filter } from 'lucide-react';

@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, Classroom, CreateClassroomInput, UpdateClassroomInput } from '@/bindings';
+import { commands, Classroom, CreateClassroomInput, UpdateClassroomInput } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { EmptyState } from '@/components/shared/EmptyState';

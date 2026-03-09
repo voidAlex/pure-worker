@@ -6,13 +6,11 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  commands,
-  ParentCommunication,
-  GenerateParentCommInput,
-  UpdateParentCommunicationInput,
-  RegenerateParentCommInput,
-} from '@/bindings';
+import { commands,
+ParentCommunication,
+GenerateParentCommInput,
+UpdateParentCommunicationInput,
+RegenerateParentCommInput, } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import {

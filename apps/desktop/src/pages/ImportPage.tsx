@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { commands, ImportStudentsInput, ImportDuplicateStrategy, ImportStudentsResult } from '@/bindings';
+import { commands, ImportStudentsInput, ImportDuplicateStrategy, ImportStudentsResult } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { UploadCloud, FileSpreadsheet, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 

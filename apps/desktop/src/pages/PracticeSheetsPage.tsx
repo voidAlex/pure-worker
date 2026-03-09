@@ -5,18 +5,16 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  commands,
-  type WrongAnswerRecord,
-  type PracticeSheet,
-  type Student,
-  type Classroom,
-  type ListWrongAnswersInput,
-  type ResolveWrongAnswerCommandInput,
-  type GeneratePracticeSheetInput,
-  type ListStudentPracticeSheetsInput,
-  type DeletePracticeSheetInput,
-} from '@/bindings';
+import { commands,
+type WrongAnswerRecord,
+type PracticeSheet,
+type Student,
+type Classroom,
+type ListWrongAnswersInput,
+type ResolveWrongAnswerCommandInput,
+type GeneratePracticeSheetInput,
+type ListStudentPracticeSheetsInput,
+type DeletePracticeSheetInput, } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';

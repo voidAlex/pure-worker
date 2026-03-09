@@ -5,13 +5,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  commands,
-  type Classroom,
-  type SemesterComment,
-  type AsyncTask,
-  type Student,
-} from '@/bindings';
+import { commands,
+type Classroom,
+type SemesterComment,
+type AsyncTask,
+type Student, } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
