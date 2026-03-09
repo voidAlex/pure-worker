@@ -5,7 +5,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-
 /// 批改任务记录，关联一次批改的配置和状态。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
 pub struct GradingJob {
@@ -63,7 +62,6 @@ pub struct UpdateGradingJobInput {
     pub output_path: Option<String>,
 }
 
-
 /// 作业资产记录（含 M4 扩展字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
 pub struct AssignmentAsset {
@@ -101,7 +99,6 @@ pub struct AddAssignmentAssetsInput {
     /// 本地文件路径列表（前端拖拽获取）
     pub file_paths: Vec<String>,
 }
-
 
 /// OCR 识别结果记录（含 M4 扩展字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
@@ -157,7 +154,6 @@ pub struct BatchReviewOcrResultsInput {
     pub final_score: Option<f64>,
 }
 
-
 /// 错题记录。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
 pub struct WrongAnswerRecord {
@@ -199,7 +195,6 @@ pub struct ResolveWrongAnswerInput {
     pub id: String,
 }
 
-
 /// 练习卷记录。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
 pub struct PracticeSheet {
@@ -239,7 +234,6 @@ pub struct GeneratePracticeSheetInput {
     /// 题目数量
     pub question_count: Option<i32>,
 }
-
 
 /// 题库记录（含 M4 扩展字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, Type)]
@@ -297,13 +291,11 @@ pub struct ListQuestionBankInput {
     pub limit: Option<i32>,
 }
 
-
 /// 启动批量批改任务输入。
 #[derive(Debug, Clone, Deserialize, Type)]
 pub struct StartGradingInput {
     pub job_id: String,
 }
-
 
 /// 导出批改结果输入。
 #[derive(Debug, Deserialize, Type)]

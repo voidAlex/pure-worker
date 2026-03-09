@@ -703,6 +703,287 @@ export const commands = {
 			return { status: "error", error: e as any };
 		}
 	},
+	/** M5: Settings commands */
+	async getSetting(key: string): Promise<Result<AppSetting, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_setting", { key }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateSetting(key: string, value: string, category: string, description: string | null): Promise<Result<AppSetting, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_setting", { key, value, category, description }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getSettingsByCategory(category: string): Promise<Result<AppSetting[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_settings_by_category", { category }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: AI Param Preset commands */
+	async listAiParamPresets(): Promise<Result<AiParamPreset[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_ai_param_presets") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getActiveAiParamPreset(): Promise<Result<AiParamPreset, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_active_ai_param_preset") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createAiParamPreset(input: CreatePresetInput): Promise<Result<AiParamPreset, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_ai_param_preset", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateAiParamPreset(input: UpdatePresetInput): Promise<Result<AiParamPreset, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_ai_param_preset", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteAiParamPreset(input: DeleteAiParamPresetInput): Promise<Result<DeleteAiParamPresetResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_ai_param_preset", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async activateAiParamPreset(input: ActivateAiParamPresetInput): Promise<Result<AiParamPreset, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("activate_ai_param_preset", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: Storage Lifecycle commands */
+	async getStorageStats(): Promise<Result<StorageStats, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_storage_stats") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async exportWorkspace(input: ExportWorkspaceInput): Promise<Result<ExportWorkspaceResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("export_workspace", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async archiveWorkspace(input: ArchiveWorkspaceInput): Promise<Result<ArchiveWorkspaceResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("archive_workspace", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async eraseWorkspace(input: EraseWorkspaceInput): Promise<Result<EraseWorkspaceResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("erase_workspace", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: Global Shortcut commands */
+	async listGlobalShortcuts(): Promise<Result<GlobalShortcut[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_global_shortcuts") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getGlobalShortcut(id: string): Promise<Result<GlobalShortcut, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_global_shortcut", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createGlobalShortcut(input: CreateGlobalShortcutInput): Promise<Result<GlobalShortcut, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_global_shortcut", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateGlobalShortcut(input: UpdateGlobalShortcutInput): Promise<Result<GlobalShortcut, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_global_shortcut", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteGlobalShortcut(input: DeleteGlobalShortcutInput): Promise<Result<DeleteGlobalShortcutResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_global_shortcut", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: Watch Folder commands */
+	async listWatchFolders(): Promise<Result<WatchFolder[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_watch_folders") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getWatchFolder(id: string): Promise<Result<WatchFolder, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_watch_folder", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createWatchFolder(input: CreateWatchFolderInput): Promise<Result<WatchFolder, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_watch_folder", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateWatchFolder(input: UpdateWatchFolderInput): Promise<Result<WatchFolder, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_watch_folder", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteWatchFolder(input: DeleteWatchFolderInput): Promise<Result<DeleteWatchFolderResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_watch_folder", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: Skill commands */
+	async listSkills(): Promise<Result<SkillRecord[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_skills") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getSkill(id: string): Promise<Result<SkillRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_skill", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createSkill(input: CreateSkillInput): Promise<Result<SkillRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_skill", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateSkill(id: string, input: UpdateSkillInput): Promise<Result<SkillRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_skill", { id, input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteSkill(input: DeleteSkillInput): Promise<Result<DeleteSkillResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_skill", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async checkSkillHealth(id: string): Promise<Result<SkillHealthResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("check_skill_health", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: UV Manager commands */
+	async checkUvHealth(): Promise<Result<UvHealthResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("check_uv_health") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createSkillEnv(input: CreateSkillEnvInput): Promise<Result<string, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_skill_env", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async installUv(): Promise<Result<UvInstallResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("install_uv") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async repairUv(): Promise<Result<UvInstallResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("repair_uv") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	/** M5: MCP Server commands */
+	async listMcpServers(): Promise<Result<McpServerRecord[], AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("list_mcp_servers") };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async getMcpServer(id: string): Promise<Result<McpServerRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("get_mcp_server", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async createMcpServer(input: CreateMcpServerInput): Promise<Result<McpServerRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("create_mcp_server", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async updateMcpServer(id: string, input: UpdateMcpServerInput): Promise<Result<McpServerRecord, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("update_mcp_server", { id, input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async deleteMcpServer(input: DeleteMcpServerInput): Promise<Result<DeleteMcpServerResponse, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("delete_mcp_server", { input }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
+	async checkMcpHealth(id: string): Promise<Result<McpHealthResult, AppError>> {
+		try {
+			return { status: "ok", data: await TAURI_INVOKE("check_mcp_health", { id }) };
+		} catch (e) {
+			return { status: "error", error: e as any };
+		}
+	},
 };
 
 /** user-defined types **/
@@ -1428,6 +1709,61 @@ export type CreateQuestionBankInput = {
 	template_params_json: string | null;
 	parent_id: string | null;
 };
+
+/** M5: 应用设置扩展 */
+export type AppSetting = { id: string; key: string; value: string; category: string; description: string | null; is_deleted: number; created_at: string; updated_at: string };
+
+/** M5: AI 参数预设 */
+export type AiParamPreset = { id: string; name: string; display_name: string; temperature: number; top_p: number | null; max_tokens: number | null; is_default: number; is_active: number; is_deleted: number; created_at: string; updated_at: string };
+export type CreatePresetInput = { name: string; display_name: string; temperature: number; top_p: number | null; max_tokens: number | null; is_default: boolean | null; is_active: boolean | null };
+export type UpdatePresetInput = { id: string; name: string | null; display_name: string | null; temperature: number | null; top_p: number | null; max_tokens: number | null; is_default: boolean | null; is_active: boolean | null };
+export type DeleteAiParamPresetInput = { id: string };
+export type DeleteAiParamPresetResponse = { success: boolean };
+export type ActivateAiParamPresetInput = { id: string };
+
+/** M5: 存储生命周期 */
+export type StorageStats = { workspace_path: string; total_files: number; total_size_bytes: number; total_size_display: string; archive_count: number };
+export type ExportWorkspaceInput = { output_path: string; approved: boolean };
+export type ExportWorkspaceResponse = { output_path: string };
+export type ArchiveWorkspaceInput = { archive_name: string | null };
+export type ArchiveWorkspaceResponse = { archive_path: string };
+export type EraseWorkspaceInput = { approved: boolean };
+export type EraseWorkspaceResponse = { success: boolean };
+
+/** M5: 全局快捷键 */
+export type GlobalShortcut = { id: string; action: string; key_combination: string; enabled: number; description: string | null; is_deleted: number; created_at: string; updated_at: string };
+export type CreateGlobalShortcutInput = { action: string; key_combination: string; enabled: number | null; description: string | null };
+export type UpdateGlobalShortcutInput = { id: string; action: string | null; key_combination: string | null; enabled: number | null; description: string | null };
+export type DeleteGlobalShortcutInput = { id: string };
+export type DeleteGlobalShortcutResponse = { success: boolean };
+
+/** M5: 监控文件夹 */
+export type WatchFolder = { id: string; folder_path: string; pattern: string | null; action: string; enabled: number; is_deleted: number; created_at: string; updated_at: string };
+export type CreateWatchFolderInput = { folder_path: string; pattern: string | null; action: string; enabled: number | null };
+export type UpdateWatchFolderInput = { id: string; folder_path: string | null; pattern: string | null; action: string | null; enabled: number | null };
+export type DeleteWatchFolderInput = { id: string };
+export type DeleteWatchFolderResponse = { success: boolean };
+
+/** M5: 技能管理 */
+export type SkillRecord = { id: string; name: string; version: string | null; source: string | null; permission_scope: string | null; status: string | null; is_deleted: number; created_at: string; display_name: string | null; description: string | null; skill_type: string; env_path: string | null; config_json: string | null; updated_at: string | null; health_status: string; last_health_check: string | null };
+export type CreateSkillInput = { name: string; version: string | null; source: string | null; permission_scope: string | null; display_name: string | null; description: string | null; skill_type: string; config_json: string | null };
+export type UpdateSkillInput = { display_name: string | null; description: string | null; permission_scope: string | null; config_json: string | null; status: string | null };
+export type DeleteSkillInput = { id: string };
+export type DeleteSkillResponse = { success: boolean };
+export type SkillHealthResult = { name: string; health_status: string; message: string; checked_at: string };
+
+/** M5: uv 管理 */
+export type UvHealthResult = { available: boolean; version: string | null; path: string | null; message: string };
+export type CreateSkillEnvInput = { skill_name: string; python_version: string | null };
+export type UvInstallResult = { success: boolean; version: string | null; output: string };
+
+/** M5: MCP 服务器管理 */
+export type McpServerRecord = { id: string; name: string; transport: string; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; enabled: number; is_deleted: number; created_at: string; display_name: string | null; description: string | null; health_status: string; last_health_check: string | null; updated_at: string | null };
+export type CreateMcpServerInput = { name: string; transport: string; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; display_name: string | null; description: string | null };
+export type UpdateMcpServerInput = { display_name: string | null; description: string | null; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; enabled: number | null };
+export type DeleteMcpServerInput = { id: string };
+export type DeleteMcpServerResponse = { success: boolean };
+export type McpHealthResult = { name: string; health_status: string; message: string; checked_at: string };
 /** tauri-specta globals **/
 
 import {

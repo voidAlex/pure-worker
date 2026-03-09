@@ -13,13 +13,16 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::models::activity_announcement::{ActivityAnnouncement, CreateActivityAnnouncementInput};
+use crate::models::ai_param_preset::AiParamPreset;
 use crate::models::async_task::{AsyncTask, BatchProgress, CreateAsyncTaskInput};
 use crate::models::memory_search::MemorySearchInput;
 use crate::models::parent_communication::{CreateParentCommunicationInput, ParentCommunication};
 use crate::models::semester_comment::{CreateSemesterCommentInput, SemesterComment};
 use crate::services::activity_announcement::ActivityAnnouncementService;
+use crate::services::ai_param_preset::AiParamPresetService;
 use crate::services::async_task::AsyncTaskService;
 use crate::services::audit::AuditService;
+use crate::services::desensitize::DesensitizeService;
 use crate::services::llm_provider::LlmProviderService;
 use crate::services::memory_search::MemorySearchService;
 use crate::services::parent_communication::ParentCommunicationService;
@@ -178,14 +181,25 @@ impl AiGenerationService {
         }
 
         let rendered = PromptTemplateService::render(&template, &variables)?;
+        let safe_user_prompt =
+            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        let agent =
-            LlmProviderService::create_agent(&client, &config.default_model, &rendered.system, 0.7);
+        // 获取当前激活的参数预设
+        let preset = AiParamPresetService::get_active_preset(pool)
+            .await
+            .unwrap_or_else(|_| AiParamPreset::default_balanced());
+        let temperature = preset.temperature;
+        let agent = LlmProviderService::create_agent(
+            &client,
+            &config.default_model,
+            &rendered.system,
+            temperature,
+        );
 
         let response: String = agent
-            .prompt(&rendered.user)
+            .prompt(&safe_user_prompt)
             .await
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
@@ -290,14 +304,25 @@ impl AiGenerationService {
         }
 
         let rendered = PromptTemplateService::render(&template, &variables)?;
+        let safe_user_prompt =
+            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        let agent =
-            LlmProviderService::create_agent(&client, &config.default_model, &rendered.system, 0.7);
+        // 获取当前激活的参数预设
+        let preset = AiParamPresetService::get_active_preset(pool)
+            .await
+            .unwrap_or_else(|_| AiParamPreset::default_balanced());
+        let temperature = preset.temperature;
+        let agent = LlmProviderService::create_agent(
+            &client,
+            &config.default_model,
+            &rendered.system,
+            temperature,
+        );
 
         let response: String = agent
-            .prompt(&rendered.user)
+            .prompt(&safe_user_prompt)
             .await
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
@@ -554,14 +579,25 @@ impl AiGenerationService {
         }
 
         let rendered = PromptTemplateService::render(&template, &variables)?;
+        let safe_user_prompt =
+            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        let agent =
-            LlmProviderService::create_agent(&client, &config.default_model, &rendered.system, 0.7);
+        // 获取当前激活的参数预设
+        let preset = AiParamPresetService::get_active_preset(pool)
+            .await
+            .unwrap_or_else(|_| AiParamPreset::default_balanced());
+        let temperature = preset.temperature;
+        let agent = LlmProviderService::create_agent(
+            &client,
+            &config.default_model,
+            &rendered.system,
+            temperature,
+        );
 
         let response: String = agent
-            .prompt(&rendered.user)
+            .prompt(&safe_user_prompt)
             .await
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
