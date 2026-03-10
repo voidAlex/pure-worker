@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PureWorker - 教师AI助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px;
+            max-width: 800px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            text-align: center;
+        }
+        .logo {
+            font-size: 72px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 48px;
+            color: #2563eb;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+        .tagline {
+            font-size: 20px;
+            color: #64748b;
+            margin-bottom: 40px;
+        }
+        .description {
+            font-size: 16px;
+            color: #475569;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+        .feature {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #2563eb;
+        }
+        .feature h3 {
+            color: #1e40af;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .feature p {
+            color: #64748b;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+        .tech-badge {
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .download-section {
+            background: #f0f9ff;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+        }
+        .download-section h3 {
+            color: #0369a1;
+            margin-bottom: 16px;
+        }
+        .download-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+            border: 2px solid #e2e8f0;
+        }
+        .btn-secondary:hover {
+            background: #e2e8f0;
+            transform: translateY(-2px);
+        }
+        .footer {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .footer a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .status {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📚</div>
+        <h1>PureWorker</h1>
+        <p class="tagline">面向教师场景的本地优先桌面 AI 助手</p>
+        <span class="status">🚧 开发中 - M1 工程底座阶段</span>
+        
+        <div class="description">
+            <p>PureWorker 是一款专为教师设计的 AI 辅助工具，采用本地优先架构，确保学生数据安全。通过智能化的教务管理、作业批改、家校沟通等功能，帮助教师提升工作效率，专注于教学本身。</p>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <h3>🔒 本地优先</h3>
+                <p>学生数据保存在本地，默认不上传云端，保护隐私安全</p>
+            </div>
+            <div class="feature">
+                <h3>🤖 智能辅助</h3>
+                <p>AI 生成评语、通知草稿，教师确认后生效，人审闭环</p>
+            </div>
+            <div class="feature">
+                <h3>📋 教务管理</h3>
+                <p>班级、学生档案、成绩、观察记录等一站式管理</p>
+            </div>
+            <div class="feature">
+                <h3>💬 家校沟通</h3>
+                <p>智能生成沟通内容，支持批量处理，提升沟通效率</p>
+            </div>
+        </div>
+
+        <div class="tech-stack">
+            <span class="tech-badge">Tauri 2.x</span>
+            <span class="tech-badge">Rust</span>
+            <span class="tech-badge">React</span>
+            <span class="tech-badge">TypeScript</span>
+            <span class="tech-badge">SQLite</span>
+            <span class="tech-badge">Tailwind CSS</span>
+        </div>
+
+        <div class="download-section">
+            <h3>📥 下载客户端</h3>
+            <p style="color: #64748b; margin-bottom: 20px;">支持 Windows 和 macOS 平台</p>
+            <div class="download-buttons">
+                <a href="https://github.com/voidAlex/pure-worker/releases" class="btn btn-primary">
+                    <span>⬇️</span> 下载最新版本
+                </a>
+                <a href="https://github.com/voidAlex/pure-worker" class="btn btn-secondary">
+                    <span>📦</span> 查看源码
+                </a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>
+                <a href="https://github.com/voidAlex/pure-worker">GitHub</a> · 
+                <a href="https://github.com/voidAlex/pure-worker/blob/master/doc/prd-v1.0.md">产品文档</a> · 
+                <a href="https://github.com/voidAlex/pure-worker/blob/master/doc/tech-solution-v1.0.md">技术方案</a>
+            </p>
+            <p style="margin-top: 12px;">License: AGPL-3.0 · Made with ❤️ for teachers</p>
+        </div>
+    </div>
+</body>
+</html>

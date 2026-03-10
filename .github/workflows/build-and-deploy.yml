@@ -4,26 +4,18 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/**'
   pull_request:
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/**'
-  schedule:
-    - cron: '0 0 * * 1' # 每周执行一次
-
     branches: [master]
+  schedule:
+    - cron: '0 0 * * 1'
 
-    permissions:
-      contents: write
-      id-token: write
-      pages: write
+permissions:
+  contents: write
+  id-token: write
+  pages: write
 
 env:
   CI: false
-  PNPM_HOME: /root/.local/share/pnpm
 
 jobs:
   lint-and-test:
@@ -83,32 +75,10 @@ jobs:
     name: Build Pages
     needs: lint-and-test
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      pages: write
-    defaults:
-      run:
-        working-directory: apps/desktop
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -116,29 +86,25 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/desktop/dist
-          retention-days: '1'
+          path: docs
 
   deploy-pages:
     name: Deploy Pages
     needs: build-pages
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      pages: write
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     environment:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
 
   tauri-build:
     name: Build (${{ matrix.platform }})
     needs: lint-and-test
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -181,23 +147,37 @@ jobs:
       - name: Build Tauri app
         run: pnpm tauri build --target ${{ matrix.rust_target }}
 
-      - name: Inspect bundle outputs
+      - name: Inspect bundle outputs (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $bundlePaths = @(
-            "apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle",
-            "apps/desktop/src-tauri/target/release/bundle"
+            "src-tauri/target/${{ matrix.rust_target }}/release/bundle",
+            "src-tauri/target/release/bundle"
           )
-
           foreach ($bundlePath in $bundlePaths) {
             if (Test-Path $bundlePath) {
               Write-Host "Found bundle directory: $bundlePath"
               Get-ChildItem -Path $bundlePath -Recurse | Select-Object FullName
-            }
-            else {
+            } else {
               Write-Warning "Bundle directory not found: $bundlePath"
             }
           }
+
+      - name: Inspect bundle outputs (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for dir in \
+            "src-tauri/target/${{ matrix.rust_target }}/release/bundle" \
+            "src-tauri/target/release/bundle"; do
+            if [ -d "$dir" ]; then
+              echo "Found bundle directory: $dir"
+              find "$dir" -type f
+            else
+              echo "Warning: Bundle directory not found: $dir"
+            fi
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
