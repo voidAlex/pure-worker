@@ -77,17 +77,12 @@ pub async fn init_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, AppE
     Ok(pool)
 }
 
-/// Run database migrations
+/// 执行数据库迁移
 ///
-/// Uses sqlx migrate macro to apply all migrations in the migrations directory
+/// 使用 sqlx::migrate!() 宏在编译期嵌入迁移文件，
+/// 确保打包后的二进制文件不依赖外部 migrations 目录
 async fn run_migrations(pool: &SqlitePool) -> Result<(), AppError> {
-    // Note: sqlx::migrate!() macro expects migrations at compile time
-    // For runtime migrations, we use sqlx::migrate::Migrator
-    let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("./migrations"))
-        .await
-        .map_err(|e| AppError::Database(format!("加载迁移文件失败：{}", e)))?;
-
-    migrator
+    sqlx::migrate!("./migrations")
         .run(pool)
         .await
         .map_err(|e| AppError::Database(format!("执行迁移失败：{}", e)))?;
