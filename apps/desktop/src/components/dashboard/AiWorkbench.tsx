@@ -1,20 +1,23 @@
+/**
+ * AI 工作台组件
+ * 仪表盘页面的主要内容区域，全屏嵌入 AiPanel 组件。
+ * 移除了原有的系统状态侧边栏，聊天区域占满可用空间。
+ */
+
 import React from 'react';
-import { Bot, CheckCircle2, Command, Sparkles } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 import { AiPanel } from '@/components/layout/AiPanel';
 
-interface AiWorkbenchProps {
-  healthText: string;
-  tasks: Array<{ id: string; task_type: string; status: string }>;
-}
-
-export const AiWorkbench: React.FC<AiWorkbenchProps> = ({ healthText, tasks }) => {
-  const taskCount = tasks.length;
-
+/**
+ * AI 工作台 —— 无需外部 props，内部直接渲染全屏模式的 AiPanel。
+ */
+export const AiWorkbench: React.FC = () => {
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 h-full min-h-[640px]">
-      <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col min-h-[640px]">
-        <header className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+    <div className="flex flex-col h-full">
+      <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col flex-1">
+        {/* 顶部标题栏 */}
+        <header className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 shrink-0">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Bot className="w-5 h-5 text-brand-600" />
@@ -22,68 +25,12 @@ export const AiWorkbench: React.FC<AiWorkbenchProps> = ({ healthText, tasks }) =
             </h2>
             <p className="text-xs text-gray-500 mt-1">主对话区（支持角色切换与 / 快捷指令）</p>
           </div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs font-medium">
-            <Sparkles className="w-3.5 h-3.5" />
-            AI 主导
-          </div>
         </header>
+        {/* 全屏 AiPanel 填满剩余空间 */}
         <div className="flex-1 min-h-0">
-          <AiPanel isOpen onClose={() => {}} />
+          <AiPanel mode="fullscreen" />
         </div>
       </section>
-
-      <aside className="space-y-4">
-        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">系统状态</h3>
-          <div className="space-y-2 text-sm text-gray-600">
-            <div className="flex items-center justify-between">
-              <span>后端健康</span>
-              <span className="inline-flex items-center gap-1 text-green-600 font-medium">
-                <CheckCircle2 className="w-4 h-4" />
-                {healthText}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>待办任务</span>
-              <span className="font-medium text-gray-900">{taskCount} 项</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">最近任务</h3>
-          {tasks.length > 0 ? (
-            <ul className="space-y-2">
-              {tasks.slice(0, 6).map((task) => (
-                <li key={task.id} className="px-3 py-2 rounded-md border border-gray-100 bg-gray-50">
-                  <div className="text-xs font-medium text-gray-800 truncate">{task.task_type}</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">状态：{task.status}</div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-gray-500">当前暂无任务</p>
-          )}
-        </section>
-
-        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">快捷提示</h3>
-          <ul className="space-y-2 text-xs text-gray-600">
-            <li className="flex items-start gap-2">
-              <Command className="w-3.5 h-3.5 mt-0.5 text-gray-500" />
-              输入 <span className="font-mono text-gray-800">/agent</span> 快速切换 AI 角色
-            </li>
-            <li className="flex items-start gap-2">
-              <Command className="w-3.5 h-3.5 mt-0.5 text-gray-500" />
-              输入 <span className="font-mono text-gray-800">/new</span> 新建会话
-            </li>
-            <li className="flex items-start gap-2">
-              <Command className="w-3.5 h-3.5 mt-0.5 text-gray-500" />
-              输入 <span className="font-mono text-gray-800">/clear</span> 清空当前会话
-            </li>
-          </ul>
-        </section>
-      </aside>
     </div>
   );
 };

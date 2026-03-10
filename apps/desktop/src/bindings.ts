@@ -1467,7 +1467,18 @@ async checkMcpHealth(id: string) : Promise<Result<McpHealthResult, AppError>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * 与 AI 进行通用对话。
+ */
+async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chat_with_ai", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
 }
+},
 }
 
 /** user-defined events **/
@@ -1479,6 +1490,15 @@ async checkMcpHealth(id: string) : Promise<Result<McpHealthResult, AppError>> {
 
 
 /** user-defined types **/
+
+/**
+ * 聊天请求输入。
+ */
+export type ChatInput = { message: string; agentRole: string }
+/**
+ * 聊天响应输出。
+ */
+export type ChatResponse = { content: string; model: string }
 
 /**
  * 激活预设输入。

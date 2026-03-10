@@ -96,6 +96,7 @@ pub fn run() {
         commands::ai_generation::generate_semester_comments_batch,
         commands::ai_generation::get_batch_task_progress,
         commands::ai_generation::generate_activity_announcement,
+        commands::chat::chat_with_ai,
         commands::student::get_student_profile_360,
         commands::memory_search::search_evidence,
         commands::student_memory::init_student_memory,

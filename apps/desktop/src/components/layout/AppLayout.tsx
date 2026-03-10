@@ -43,6 +43,7 @@ export const AppLayout: React.FC = () => {
         
         {!isDashboardRoute && (
           <AiPanel
+            mode="sidebar"
             isOpen={isAiPanelOpen}
             onClose={() => setIsAiPanelOpen(false)}
           />
