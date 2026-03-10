@@ -5,12 +5,12 @@ on:
   push:
     branches: [master]
     paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/desktop-build.yml'
+      - "apps/desktop/**"
+      - ".github/workflows/desktop-build.yml"
   pull_request:
     paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/desktop-build.yml'
+      - "apps/desktop/**"
+      - ".github/workflows/desktop-build.yml"
 
 jobs:
   lint-and-test:
@@ -108,15 +108,36 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app
         run: pnpm tauri build --target ${{ matrix.rust_target }}
+
+      - name: Inspect bundle outputs
+        shell: pwsh
+        run: |
+          # 输出常见 Tauri bundle 目录，方便在 CI 日志里快速确认真实产物位置。
+          $bundlePaths = @(
+            "apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle",
+            "apps/desktop/src-tauri/target/release/bundle"
+          )
+
+          foreach ($bundlePath in $bundlePaths) {
+            if (Test-Path $bundlePath) {
+              Write-Host "Found bundle directory: $bundlePath"
+              Get-ChildItem -Path $bundlePath -Recurse | Select-Object FullName
+            }
+            else {
+              Write-Warning "Bundle directory not found: $bundlePath"
+            }
+          }
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pureworker-${{ matrix.platform }}
           path: |
             apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/**
+            apps/desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error
