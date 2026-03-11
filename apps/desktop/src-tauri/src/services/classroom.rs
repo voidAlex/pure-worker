@@ -35,7 +35,7 @@ impl ClassroomService {
         pool: &SqlitePool,
         input: CreateClassroomInput,
     ) -> Result<Classroom, AppError> {
-        Self::validate_teacher_exists(pool, &input.teacher_id).await?;
+        // TODO: 教师档案管理功能完成后恢复校验
 
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
@@ -84,9 +84,10 @@ impl ClassroomService {
 
         Self::get_by_id(pool, &input.id).await?;
 
-        if let Some(teacher_id) = input.teacher_id.as_deref() {
-            Self::validate_teacher_exists(pool, teacher_id).await?;
-        }
+        // TODO: 教师档案管理功能完成后恢复校验
+        // if let Some(teacher_id) = input.teacher_id.as_deref() {
+        //     Self::validate_teacher_exists(pool, teacher_id).await?;
+        // }
 
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query(
@@ -147,6 +148,8 @@ impl ClassroomService {
         Ok(())
     }
 
+    /// 校验教师是否存在（教师档案管理功能完成后启用）。
+    #[allow(dead_code)]
     async fn validate_teacher_exists(pool: &SqlitePool, teacher_id: &str) -> Result<(), AppError> {
         let exists = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(1) FROM teacher_profile WHERE id = ? AND is_deleted = 0",

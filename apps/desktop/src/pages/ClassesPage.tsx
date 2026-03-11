@@ -22,7 +22,7 @@ export const ClassesPage: React.FC = () => {
     grade: '',
     class_name: '',
     subject: '',
-    teacher_id: 'teacher-1', // Placeholder
+    teacher_id: '', // TODO: 教师档案功能完成后改为从当前教师获取
   });
 
   const { data: classes, isLoading } = useQuery({
@@ -79,7 +79,7 @@ export const ClassesPage: React.FC = () => {
   });
 
   const resetForm = () => {
-    setFormData({ grade: '', class_name: '', subject: '', teacher_id: 'teacher-1' });
+    setFormData({ grade: '', class_name: '', subject: '', teacher_id: '' });
     setEditingClass(null);
   };
 
