@@ -809,6 +809,17 @@ async generateActivityAnnouncement(input: GenerateActivityAnnouncementInput) : P
 }
 },
 /**
+ * 与 AI 进行通用对话。
+ */
+async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chat_with_ai", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 获取学生 360 度全景视图
  */
 async getStudentProfile360(id: string) : Promise<Result<StudentProfile360, AppError>> {
@@ -1467,18 +1478,7 @@ async checkMcpHealth(id: string) : Promise<Result<McpHealthResult, AppError>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
-},
-/**
- * 与 AI 进行通用对话。
- */
-async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("chat_with_ai", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
 }
-},
 }
 
 /** user-defined events **/
@@ -1490,15 +1490,6 @@ async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
 
 
 /** user-defined types **/
-
-/**
- * 聊天请求输入。
- */
-export type ChatInput = { message: string; agentRole: string }
-/**
- * 聊天响应输出。
- */
-export type ChatResponse = { content: string; model: string }
 
 /**
  * 激活预设输入。
@@ -1702,6 +1693,30 @@ export type BatchReviewOcrResultsInput = { ids: string[]; review_status: string;
  * 教师确认的最终得分（可选，批量设定同一分数）
  */
 final_score: number | null }
+/**
+ * 聊天请求输入。
+ */
+export type ChatInput = { 
+/**
+ * 用户消息内容。
+ */
+message: string; 
+/**
+ * AI 角色标识（homeroom/grading/communication/ops）。
+ */
+agent_role: string }
+/**
+ * 聊天响应输出。
+ */
+export type ChatResponse = { 
+/**
+ * AI 回复内容。
+ */
+content: string; 
+/**
+ * 使用的模型名称。
+ */
+model: string }
 /**
  * 文本敏感信息检测输入。
  */

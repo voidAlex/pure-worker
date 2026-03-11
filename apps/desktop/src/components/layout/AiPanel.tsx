@@ -154,7 +154,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       // 调用真实后端 AI 对话命令
       const result = await commands.chatWithAi({
         message: trimmedText,
-        agentRole: selectedAgent,
+        agent_role: selectedAgent,
       });
 
       if (result.status === 'error') {
