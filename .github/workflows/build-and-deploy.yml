@@ -41,12 +41,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Frontend lint
-        run: pnpm eslint src/
-
-      - name: Frontend typecheck
-        run: pnpm tsc --noEmit
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -64,6 +58,18 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
+
+      - name: Export TypeScript bindings
+        run: pnpm bindings:export
+
+      - name: Verify generated bindings are committed
+        run: git diff --exit-code -- src/bindings.ts
+
+      - name: Frontend lint
+        run: pnpm eslint src/
+
+      - name: Frontend typecheck
+        run: pnpm typecheck
 
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
