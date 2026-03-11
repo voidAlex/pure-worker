@@ -12,8 +12,8 @@ use specta_typescript::BigIntExportBehavior;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
-pub fn run() {
-    let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
+fn create_specta_builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new().commands(collect_commands![
         commands::settings::get_app_settings,
         commands::settings::get_setting,
         commands::settings::update_setting,
@@ -119,7 +119,6 @@ pub fn run() {
         commands::storage_lifecycle::export_workspace,
         commands::storage_lifecycle::archive_workspace,
         commands::storage_lifecycle::erase_workspace,
-        // M4 作业批改与题库命令
         commands::assignment_grading::create_grading_job,
         commands::assignment_grading::get_grading_job,
         commands::assignment_grading::list_grading_jobs,
@@ -158,15 +157,28 @@ pub fn run() {
         commands::mcp_server::update_mcp_server,
         commands::mcp_server::delete_mcp_server,
         commands::mcp_server::check_mcp_health,
-    ]);
+    ])
+}
+
+pub fn export_typescript_bindings() -> Result<(), Box<dyn std::error::Error>> {
+    let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("src")
+        .join("bindings.ts");
+
+    create_specta_builder().export(
+        specta_typescript::Typescript::default().bigint(BigIntExportBehavior::Number),
+        bindings_path,
+    )?;
+
+    Ok(())
+}
+
+pub fn run() {
+    let builder = create_specta_builder();
 
     #[cfg(debug_assertions)]
-    builder
-        .export(
-            specta_typescript::Typescript::default().bigint(BigIntExportBehavior::Number),
-            "../src/bindings.ts",
-        )
-        .expect("Failed to export TypeScript bindings");
+    export_typescript_bindings().expect("Failed to export TypeScript bindings");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

@@ -1,10 +1,10 @@
-pub mod chat;
 pub mod activity_announcement;
 pub mod ai_config;
 pub mod ai_generation;
 pub mod ai_param_preset;
 pub mod approval;
 pub mod assignment_grading;
+pub mod chat;
 pub mod classroom;
 pub mod export;
 pub mod global_shortcut;
