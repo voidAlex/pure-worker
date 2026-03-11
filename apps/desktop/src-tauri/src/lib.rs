@@ -174,6 +174,9 @@ pub fn export_typescript_bindings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 启动 Tauri 应用主函数
+///
+/// 初始化数据库连接池、注册 IPC 命令、挂载事件，然后运行应用
 pub fn run() {
     let builder = create_specta_builder();
 
@@ -184,12 +187,57 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
+            // 在 release 模式下写入启动日志文件，便于排查安装包崩溃问题
+            #[cfg(not(debug_assertions))]
+            {
+                if let Ok(log_dir) = app.path().app_log_dir() {
+                    let _ = std::fs::create_dir_all(&log_dir);
+                    let log_path = log_dir.join("startup.log");
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                    let msg = format!("[{}] PureWorker 启动中...\n", timestamp);
+                    let _ = std::fs::write(&log_path, &msg);
+                }
+            }
+
             let app_handle = app.handle().clone();
             let pool = tauri::async_runtime::block_on(database::init_pool(&app_handle))
                 .unwrap_or_else(|error| {
+                    // 数据库初始化失败时，也写入日志
+                    #[cfg(not(debug_assertions))]
+                    {
+                        if let Ok(log_dir) = app.path().app_log_dir() {
+                            let log_path = log_dir.join("startup.log");
+                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                            let msg = format!(
+                                "[{}] 数据库初始化失败：{}\n",
+                                timestamp, error
+                            );
+                            let _ = std::fs::OpenOptions::new()
+                                .append(true)
+                                .open(&log_path)
+                                .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+                        }
+                    }
                     eprintln!("[Startup] 数据库初始化失败：{}", error);
                     panic!("数据库初始化失败，应用无法启动");
                 });
+
+            // 数据库初始化成功，记录日志
+            #[cfg(not(debug_assertions))]
+            {
+                if let Ok(log_dir) = app.path().app_log_dir() {
+                    let log_path = log_dir.join("startup.log");
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                    let msg = format!(
+                        "[{}] 数据库初始化成功，应用启动完成\n",
+                        timestamp
+                    );
+                    let _ = std::fs::OpenOptions::new()
+                        .append(true)
+                        .open(&log_path)
+                        .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+                }
+            }
 
             app.manage(pool);
             builder.mount_events(app);

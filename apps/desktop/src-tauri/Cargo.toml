@@ -2,10 +2,21 @@
 name = "pure-worker"
 version = "0.1.0"
 edition = "2021"
+default-run = "pure-worker"
 
 [lib]
 name = "pure_worker_lib"
 path = "src/lib.rs"
+
+# 主应用二进制（Tauri 入口）
+[[bin]]
+name = "pure-worker"
+path = "src/main.rs"
+
+# 绑定导出工具（仅用于开发阶段导出 TypeScript 绑定，不参与打包）
+[[bin]]
+name = "export-bindings"
+path = "src/bin/export-bindings.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
