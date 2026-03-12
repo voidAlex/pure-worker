@@ -93,3 +93,4 @@ jobs/
 *.crt
 credentials.json
 secrets.*
+.sisyphus/
