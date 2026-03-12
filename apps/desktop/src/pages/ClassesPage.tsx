@@ -22,7 +22,7 @@ export const ClassesPage: React.FC = () => {
     grade: '',
     class_name: '',
     subject: '',
-    teacher_id: '', // TODO: 教师档案功能完成后改为从当前教师获取
+    teacher_id: '',
   });
 
   const { data: classes, isLoading } = useQuery({
