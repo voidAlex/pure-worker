@@ -36,7 +36,10 @@ type DeleteTemplateFileInput,
 type DeleteGlobalShortcutInput,
 type DeleteSkillInput,
 type DeleteMcpServerInput,
-type CreateSkillEnvInput, } from '@/services/commandClient';
+type CreateSkillEnvInput,
+type ProviderPreset,
+type ModelInfo,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -60,6 +63,11 @@ import {
   AlertTriangle,
   Play,
   RefreshCw,
+  Loader2,
+  Check,
+  Bot,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 
 /** 从 AppError 联合类型中提取错误信息字符串 */
@@ -144,55 +152,88 @@ const INITIAL_MCP_FORM: CreateMcpServerInput = {
   description: null,
 };
 
-/** AI 配置标签页组件 */
+/** 供应商图标映射表：根据供应商名称返回对应的 Lucide 图标组件 */
+const PROVIDER_ICON_MAP: Record<string, React.ReactNode> = {
+  openai: <Bot size={24} className="text-green-600" />,
+  anthropic: <Sparkles size={24} className="text-purple-600" />,
+  deepseek: <Zap size={24} className="text-blue-600" />,
+  qwen: <Cpu size={24} className="text-orange-600" />,
+  gemini: <Activity size={24} className="text-red-500" />,
+};
+
+/** AI 配置标签页组件 — 供应商卡片选择 + 模型自动获取 */
 const AiConfigTab: React.FC = () => {
   const queryClient = useQueryClient();
   const { success, error } = useToast();
 
-  const [showConfigForm, setShowConfigForm] = useState(false);
+  /* ---- 新建/编辑配置的表单状态 ---- */
   const [editingConfig, setEditingConfig] = useState<AiConfigSafe | null>(null);
   const [configForm, setConfigForm] = useState<CreateAiConfigInput>(INITIAL_AI_FORM);
 
+  /* ---- 供应商选择与模型获取状态 ---- */
+  const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
+  const [isCustom, setIsCustom] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
+
+  /* ---- 参数预设表单状态 ---- */
   const [showPresetForm, setShowPresetForm] = useState(false);
   const [editingPreset, setEditingPreset] = useState<AiParamPreset | null>(null);
   const [presetForm, setPresetForm] = useState<CreatePresetInput>(INITIAL_PRESET_FORM);
 
+  /* ---- 删除确认状态 ---- */
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'config' | 'preset'; id: string; name: string } | null>(null);
 
+  /* ---- 高级配置展开状态 ---- */
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  /* ==================== 数据查询 ==================== */
+
+  /** 查询供应商预设列表 */
+  const presetsListQuery = useQuery({
+    queryKey: ['settings', 'provider-presets'],
+    queryFn: async () => unwrapResult(await commands.getProviderPresets()),
+  });
+
+  /** 查询已保存的 AI 配置列表 */
   const configsQuery = useQuery({
     queryKey: ['settings', 'ai-configs'],
     queryFn: async () => unwrapResult(await commands.listAiConfigs()),
   });
 
+  /** 查询参数预设列表 */
   const presetsQuery = useQuery({
     queryKey: ['settings', 'ai-presets'],
     queryFn: async () => unwrapResult(await commands.listAiParamPresets()),
   });
 
+  /* ==================== 变更操作 ==================== */
+
+  /** 创建 AI 配置 */
   const createConfigMutation = useMutation({
     mutationFn: async (input: CreateAiConfigInput) => unwrapResult(await commands.createAiConfig(input)),
     onSuccess: () => {
       success('AI 配置已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
-      setShowConfigForm(false);
-      setEditingConfig(null);
-      setConfigForm(INITIAL_AI_FORM);
+      resetConfigPanel();
     },
     onError: (err: Error) => error(err.message),
   });
 
+  /** 更新 AI 配置 */
   const updateConfigMutation = useMutation({
     mutationFn: async (input: UpdateAiConfigInput) => unwrapResult(await commands.updateAiConfig(input)),
     onSuccess: () => {
       success('AI 配置已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
-      setShowConfigForm(false);
-      setEditingConfig(null);
-      setConfigForm(INITIAL_AI_FORM);
+      resetConfigPanel();
     },
     onError: (err: Error) => error(err.message),
   });
 
+  /** 删除 AI 配置 */
   const deleteConfigMutation = useMutation({
     mutationFn: async (id: string) => {
       const input: DeleteAiConfigInput = { id };
@@ -205,6 +246,7 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
+  /** 创建参数预设 */
   const createPresetMutation = useMutation({
     mutationFn: async (input: CreatePresetInput) => unwrapResult(await commands.createAiParamPreset(input)),
     onSuccess: () => {
@@ -217,6 +259,7 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
+  /** 更新参数预设 */
   const updatePresetMutation = useMutation({
     mutationFn: async (input: UpdatePresetInput) => unwrapResult(await commands.updateAiParamPreset(input)),
     onSuccess: () => {
@@ -229,6 +272,7 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
+  /** 删除参数预设 */
   const deletePresetMutation = useMutation({
     mutationFn: async (id: string) => {
       const input: DeleteAiParamPresetInput = { id };
@@ -241,6 +285,7 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
+  /** 激活参数预设 */
   const activatePresetMutation = useMutation({
     mutationFn: async (id: string) => {
       const input: ActivateAiParamPresetInput = { id };
@@ -253,16 +298,50 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
-  /** 打开 AI 配置创建表单 */
-  const openCreateConfigForm = () => {
+  /* ==================== 操作函数 ==================== */
+
+  /** 重置配置面板到初始状态 */
+  const resetConfigPanel = () => {
+    setShowConfigPanel(false);
     setEditingConfig(null);
     setConfigForm(INITIAL_AI_FORM);
-    setShowConfigForm(true);
+    setSelectedPreset(null);
+    setIsCustom(false);
+    setModels([]);
+    setShowApiKey(false);
+    setShowAdvanced(false);
   };
 
-  /** 打开 AI 配置编辑表单 */
+  /** 选择内置供应商预设卡片 */
+  const selectProviderPreset = (preset: ProviderPreset) => {
+    setSelectedPreset(preset);
+    setIsCustom(false);
+    setModels([]);
+    setConfigForm((prev) => ({
+      ...prev,
+      provider_name: preset.name,
+      display_name: preset.display_name,
+      base_url: preset.base_url,
+      default_model: '',
+    }));
+    setShowConfigPanel(true);
+  };
+
+  /** 选择自定义供应商 */
+  const selectCustomProvider = () => {
+    setSelectedPreset(null);
+    setIsCustom(true);
+    setModels([]);
+    setConfigForm({ ...INITIAL_AI_FORM });
+    setShowConfigPanel(true);
+  };
+
+  /** 打开已有配置编辑 */
   const openEditConfigForm = (item: AiConfigSafe) => {
     setEditingConfig(item);
+    setSelectedPreset(null);
+    setIsCustom(true);
+    setModels([]);
     setConfigForm({
       provider_name: item.provider_name,
       display_name: item.display_name,
@@ -272,11 +351,51 @@ const AiConfigTab: React.FC = () => {
       is_active: item.is_active === 1,
       config_json: item.config_json,
     });
-    setShowConfigForm(true);
+    setShowConfigPanel(true);
   };
 
-  /** 提交 AI 配置表单 */
+  /** 通过 API 获取供应商的模型列表 */
+  const handleFetchModels = async () => {
+    const providerName = configForm.provider_name.trim();
+    const baseUrl = configForm.base_url.trim();
+    const apiKey = configForm.api_key.trim();
+    if (!providerName || !baseUrl || !apiKey) {
+      error('请先填写供应商名称、接口地址和 API Key');
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const result = await commands.fetchProviderModels(providerName, baseUrl, apiKey);
+      const modelList = unwrapResult(result);
+      setModels(modelList);
+      if (modelList.length > 0) {
+        success(`获取到 ${modelList.length} 个模型`);
+      } else {
+        error('未获取到可用模型，请检查 API Key 是否正确');
+      }
+    } catch (err) {
+      error(err instanceof Error ? err.message : '获取模型列表失败');
+      setModels([]);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  /** 选中一个模型作为默认模型 */
+  const selectModel = (modelId: string) => {
+    setConfigForm((prev) => ({ ...prev, default_model: modelId }));
+  };
+
+  /** 提交 AI 配置表单（创建或更新） */
   const submitConfigForm = () => {
+    if (!configForm.provider_name.trim() || !configForm.base_url.trim()) {
+      error('供应商名称和接口地址不能为空');
+      return;
+    }
+    if (!editingConfig && !configForm.api_key.trim()) {
+      error('API Key 不能为空');
+      return;
+    }
     if (editingConfig) {
       const input: UpdateAiConfigInput = {
         id: editingConfig.id,
@@ -336,9 +455,7 @@ const AiConfigTab: React.FC = () => {
 
   /** 执行删除动作 */
   const confirmDelete = () => {
-    if (!deleteTarget) {
-      return;
-    }
+    if (!deleteTarget) return;
     if (deleteTarget.type === 'config') {
       deleteConfigMutation.mutate(deleteTarget.id);
     } else {
@@ -347,129 +464,320 @@ const AiConfigTab: React.FC = () => {
     setDeleteTarget(null);
   };
 
+  /* ==================== 渲染 ==================== */
+
   return (
-    <div className="space-y-6">
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">AI 服务配置</h3>
+    <div className="space-y-8">
+      {/* ===== 第一区：新建 AI 服务配置 ===== */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <Bot size={20} className="text-blue-600" />
+          新建 AI 服务配置
+        </h3>
+        <p className="mb-4 text-sm text-gray-500">选择一个供应商，填入 API Key 后即可自动获取模型列表</p>
+
+        {/* 供应商卡片网格 */}
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {presetsListQuery.data?.map((preset) => (
+            <button
+              key={preset.name}
+              onClick={() => selectProviderPreset(preset)}
+              className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all hover:shadow-md ${
+                selectedPreset?.name === preset.name && !isCustom
+                  ? 'border-blue-500 bg-blue-50 shadow-md'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              {PROVIDER_ICON_MAP[preset.name] ?? <Bot size={24} className="text-gray-500" />}
+              <span className="text-sm font-medium text-gray-800">{preset.display_name}</span>
+            </button>
+          ))}
+          {/* 自定义供应商卡片 */}
           <button
-            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
-            onClick={openCreateConfigForm}
+            onClick={selectCustomProvider}
+            className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-all hover:shadow-md ${
+              isCustom ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+            }`}
           >
-            <Plus size={14} /> 添加配置
+            <Plus size={24} className="text-gray-500" />
+            <span className="text-sm font-medium text-gray-600">自定义</span>
           </button>
         </div>
 
-        {showConfigForm && (
-          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="provider_name"
-                value={configForm.provider_name}
-                disabled={editingConfig !== null}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, provider_name: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="display_name"
-                value={configForm.display_name}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="base_url"
-                value={configForm.base_url}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                type="password"
-                placeholder={editingConfig ? 'api_key（留空不修改）' : 'api_key'}
-                value={configForm.api_key}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, api_key: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="default_model"
-                value={configForm.default_model}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, default_model: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="config_json（可选）"
-                value={configForm.config_json ?? ''}
-                onChange={(e) =>
-                  setConfigForm((prev) => ({
-                    ...prev,
-                    config_json: e.target.value.trim() === '' ? null : e.target.value,
-                  }))
-                }
-              />
+        {/* 配置表单面板 — 选择供应商后展开 */}
+        {showConfigPanel && (
+          <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-5">
+            {/* 自定义供应商需要输入名称和地址 */}
+            {isCustom && !editingConfig && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">供应商名称</label>
+                  <input
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="例如: openai"
+                    value={configForm.provider_name}
+                    onChange={(e) => setConfigForm((prev) => ({ ...prev, provider_name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">显示名称</label>
+                  <input
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="例如: OpenAI"
+                    value={configForm.display_name}
+                    onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">接口地址 (Base URL)</label>
+                  <input
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="https://api.example.com"
+                    value={configForm.base_url}
+                    onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 编辑已有配置时显示供应商信息（只读） */}
+            {editingConfig && (
+              <div className="flex items-center gap-3 rounded-lg bg-white p-3">
+                {PROVIDER_ICON_MAP[editingConfig.provider_name] ?? <Bot size={20} className="text-gray-500" />}
+                <div>
+                  <div className="text-sm font-medium text-gray-800">{editingConfig.display_name}</div>
+                  <div className="text-xs text-gray-500">{editingConfig.provider_name} — {editingConfig.base_url}</div>
+                </div>
+              </div>
+            )}
+
+            {/* API Key 输入 + 获取模型按钮 */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">
+                API Key {editingConfig ? '（留空则不修改）' : ''}
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    type={showApiKey ? 'text' : 'password'}
+                    placeholder="sk-..."
+                    value={configForm.api_key}
+                    onChange={(e) => setConfigForm((prev) => ({ ...prev, api_key: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    title={showApiKey ? '隐藏密钥' : '显示密钥'}
+                  >
+                    {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleFetchModels}
+                  disabled={fetchingModels}
+                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {fetchingModels ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  获取模型列表
+                </button>
+              </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={configForm.is_active === true}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, is_active: e.target.checked }))}
-              />
-              设为激活
-            </label>
-            <div className="flex gap-2">
-              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitConfigForm}>
-                {editingConfig ? '更新' : '创建'}
-              </button>
+
+            {/* 模型列表 */}
+            {models.length > 0 && (
+              <div>
+                <label className="mb-2 block text-xs font-medium text-gray-600">
+                  可用模型（点击选择默认模型）
+                </label>
+                <div className="max-h-60 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                  {models.map((model) => (
+                    <button
+                      key={model.id}
+                      onClick={() => selectModel(model.id)}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        configForm.default_model === model.id
+                          ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-300'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {configForm.default_model === model.id && <Check size={14} className="text-blue-600" />}
+                        <span className={configForm.default_model === model.id ? 'font-medium' : ''}>{model.name}</span>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          model.is_vision
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {model.is_vision ? '多模态' : '文本'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 高级选项（可折叠） */}
+            <div>
               <button
-                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
-                onClick={() => {
-                  setShowConfigForm(false);
-                  setEditingConfig(null);
-                }}
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
               >
-                取消
+                <Settings size={12} />
+                {showAdvanced ? '收起高级选项' : '展开高级选项'}
               </button>
+              {showAdvanced && (
+                <div className="mt-2 space-y-3">
+                  {isCustom && editingConfig && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">显示名称</label>
+                        <input
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          value={configForm.display_name}
+                          onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">接口地址</label>
+                        <input
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          value={configForm.base_url}
+                          onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">默认模型（手动输入）</label>
+                    <input
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="gpt-4o"
+                      value={configForm.default_model}
+                      onChange={(e) => setConfigForm((prev) => ({ ...prev, default_model: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">配置 JSON（可选）</label>
+                    <input
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder='{"key": "value"}'
+                      value={configForm.config_json ?? ''}
+                      onChange={(e) =>
+                        setConfigForm((prev) => ({
+                          ...prev,
+                          config_json: e.target.value.trim() === '' ? null : e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 激活开关 + 保存/取消按钮 */}
+            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={configForm.is_active === true}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                />
+                设为激活
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={resetConfigPanel}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={submitConfigForm}
+                  disabled={createConfigMutation.isPending || updateConfigMutation.isPending}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {(createConfigMutation.isPending || updateConfigMutation.isPending) && (
+                    <Loader2 size={14} className="animate-spin" />
+                  )}
+                  {editingConfig ? '更新配置' : '保存配置'}
+                </button>
+              </div>
             </div>
           </div>
         )}
+      </section>
 
+      {/* ===== 第二区：已保存的 AI 配置列表 ===== */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <CheckCircle2 size={20} className="text-green-600" />
+          已保存的服务配置
+        </h3>
         {configsQuery.data && configsQuery.data.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {configsQuery.data.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
-                <div>
-                  <div className="font-medium">
-                    {item.provider_name} / {item.display_name}
-                    {item.is_active === 1 && (
-                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">激活</span>
-                    )}
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:bg-gray-100"
+              >
+                <div className="flex items-center gap-3">
+                  {PROVIDER_ICON_MAP[item.provider_name] ?? <Bot size={20} className="text-gray-400" />}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">{item.display_name}</span>
+                      {item.is_active === 1 && (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          激活
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      {item.provider_name} · 默认模型: {item.default_model || '未设置'}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">默认模型：{item.default_model}</div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditConfigForm(item)} title="编辑配置">
+                <div className="flex items-center gap-1">
+                  <button
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-200"
+                    onClick={() => openEditConfigForm(item)}
+                    title="编辑配置"
+                  >
                     <Edit2 size={14} />
+                    编辑
                   </button>
                   <button
-                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50"
                     onClick={() => setDeleteTarget({ type: 'config', id: item.id, name: item.display_name })}
                     title="删除配置"
                   >
                     <Trash2 size={14} />
+                    删除
                   </button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无 AI 配置" description="请先添加至少一个服务配置" icon={<Cpu size={32} className="text-gray-400" />} />
+          <EmptyState title="暂无 AI 配置" description="请在上方选择供应商并添加配置" icon={<Cpu size={32} className="text-gray-400" />} />
         )}
       </section>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">参数预设</h3>
+      {/* ===== 第三区：参数预设 ===== */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <Settings size={20} className="text-gray-600" />
+            参数预设
+          </h3>
           <button
-            className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
             onClick={openCreatePresetForm}
           >
             <Plus size={14} /> 添加预设
@@ -477,66 +785,82 @@ const AiConfigTab: React.FC = () => {
         </div>
 
         {showPresetForm && (
-          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="name"
-                value={presetForm.name}
-                onChange={(e) => setPresetForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                placeholder="display_name"
-                value={presetForm.display_name}
-                onChange={(e) => setPresetForm((prev) => ({ ...prev, display_name: e.target.value }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                type="number"
-                step={0.1}
-                min={0}
-                max={2}
-                placeholder="temperature"
-                value={presetForm.temperature}
-                onChange={(e) =>
-                  setPresetForm((prev) => ({
-                    ...prev,
-                    temperature: Number.isNaN(Number(e.target.value)) ? 0.7 : Number(e.target.value),
-                  }))
-                }
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                type="number"
-                step={0.1}
-                min={0}
-                max={1}
-                placeholder="top_p"
-                value={presetForm.top_p ?? ''}
-                onChange={(e) => setPresetForm((prev) => ({ ...prev, top_p: toNullableNumber(e.target.value) }))}
-              />
-              <input
-                className="rounded border px-3 py-2 text-sm"
-                type="number"
-                min={1}
-                placeholder="max_tokens"
-                value={presetForm.max_tokens ?? ''}
-                onChange={(e) => setPresetForm((prev) => ({ ...prev, max_tokens: toNullableNumber(e.target.value) }))}
-              />
+          <div className="mb-4 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">预设标识</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="例如: creative"
+                  value={presetForm.name}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">显示名称</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="例如: 创意模式"
+                  value={presetForm.display_name}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Temperature</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  type="number"
+                  step={0.1}
+                  min={0}
+                  max={2}
+                  value={presetForm.temperature}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({
+                      ...prev,
+                      temperature: Number.isNaN(Number(e.target.value)) ? 0.7 : Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Top P</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  type="number"
+                  step={0.1}
+                  min={0}
+                  max={1}
+                  placeholder="可选"
+                  value={presetForm.top_p ?? ''}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, top_p: toNullableNumber(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Max Tokens</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  type="number"
+                  min={1}
+                  placeholder="可选"
+                  value={presetForm.max_tokens ?? ''}
+                  onChange={(e) => setPresetForm((prev) => ({ ...prev, max_tokens: toNullableNumber(e.target.value) }))}
+                />
+              </div>
             </div>
             <div className="flex gap-4">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
+                  className="rounded"
                   checked={presetForm.is_default === true}
                   onChange={(e) => setPresetForm((prev) => ({ ...prev, is_default: e.target.checked }))}
                 />
                 默认
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
+                  className="rounded"
                   checked={presetForm.is_active === true}
                   onChange={(e) => setPresetForm((prev) => ({ ...prev, is_active: e.target.checked }))}
                 />
@@ -544,11 +868,14 @@ const AiConfigTab: React.FC = () => {
               </label>
             </div>
             <div className="flex gap-2">
-              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitPresetForm}>
-                {editingPreset ? '更新' : '创建'}
+              <button
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                onClick={submitPresetForm}
+              >
+                {editingPreset ? '更新预设' : '创建预设'}
               </button>
               <button
-                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
                 onClick={() => {
                   setShowPresetForm(false);
                   setEditingPreset(null);
@@ -563,41 +890,47 @@ const AiConfigTab: React.FC = () => {
         {presetsQuery.data && presetsQuery.data.length > 0 ? (
           <div className="space-y-2">
             {presetsQuery.data.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+              <div key={item.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-3 transition-colors hover:bg-gray-100">
                 <div>
-                  <div className="font-medium">
-                    {item.display_name}
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900">{item.display_name}</span>
                     {item.is_active === 1 && (
-                      <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">激活</span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">激活</span>
                     )}
                     {item.is_default === 1 && (
-                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">默认</span>
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">默认</span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500">{item.name}</div>
-                  <div className="text-xs text-gray-500">
-                    T={item.temperature} / P={item.top_p ?? '-'} / MaxTok={item.max_tokens ?? '-'}
+                  <div className="mt-0.5 text-xs text-gray-500">
+                    {item.name} · T={item.temperature} / P={item.top_p ?? '-'} / MaxTok={item.max_tokens ?? '-'}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1">
                   {item.is_active !== 1 && (
                     <button
-                      className="rounded p-1.5 text-blue-600 hover:bg-blue-100"
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-blue-600 hover:bg-blue-50"
                       onClick={() => activatePresetMutation.mutate(item.id)}
                       title="激活预设"
                     >
                       <Play size={14} />
+                      激活
                     </button>
                   )}
-                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditPresetForm(item)} title="编辑预设">
+                  <button
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-200"
+                    onClick={() => openEditPresetForm(item)}
+                    title="编辑预设"
+                  >
                     <Edit2 size={14} />
+                    编辑
                   </button>
                   <button
-                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50"
                     onClick={() => setDeleteTarget({ type: 'preset', id: item.id, name: item.display_name })}
                     title="删除预设"
                   >
                     <Trash2 size={14} />
+                    删除
                   </button>
                 </div>
               </div>
@@ -608,6 +941,7 @@ const AiConfigTab: React.FC = () => {
         )}
       </section>
 
+      {/* 删除确认弹窗 */}
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         title="确认删除"
