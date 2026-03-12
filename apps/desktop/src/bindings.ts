@@ -94,6 +94,28 @@ async deleteAiConfig(input: DeleteAiConfigInput) : Promise<Result<DeleteAiConfig
 }
 },
 /**
+ * 获取供应商可用模型列表。
+ */
+async fetchProviderModels(providerName: string, baseUrl: string, apiKey: string) : Promise<Result<ModelInfo[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("fetch_provider_models", { providerName, baseUrl, apiKey }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取供应商预设配置列表。
+ */
+async getProviderPresets() : Promise<Result<ProviderPreset[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_presets") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 列出全部预设。
  */
 async listAiParamPresets() : Promise<Result<AiParamPreset[], AppError>> {
@@ -1734,7 +1756,14 @@ export type CreateActivityAnnouncementInput = { class_id: string; title: string;
  * 创建 AI 配置输入。
  */
 export type CreateAiConfigInput = { provider_name: string; display_name: string; base_url: string; api_key: string; default_model: string; is_active: boolean | null; config_json: string | null }
-export type CreateClassroomInput = { grade: string; class_name: string; subject: string; teacher_id: string }
+/**
+ * 创建班级输入参数。
+ */
+export type CreateClassroomInput = { grade: string; class_name: string; subject: string; 
+/**
+ * 教师ID（可选，为空时自动分配默认教师）。
+ */
+teacher_id: string | null }
 /**
  * 创建全局快捷键输入。
  */
@@ -2367,6 +2396,22 @@ top_k: number | null;
  * 工作区路径（可选，命令层会提供默认值）。
  */
 workspace_path: string | null }
+/**
+ * 模型信息。
+ */
+export type ModelInfo = { 
+/**
+ * 模型ID（如 gpt-4o, claude-3-5-sonnet-20241022）。
+ */
+id: string; 
+/**
+ * 模型显示名称。
+ */
+name: string; 
+/**
+ * 是否支持视觉/多模态。
+ */
+is_vision: boolean }
 export type ObservationNote = { id: string; student_id: string; content: string; source: string | null; created_at: string; is_deleted: number; updated_at: string }
 export type ParentCommunication = { id: string; student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; created_at: string; is_deleted: number; updated_at: string }
 /**
@@ -2401,6 +2446,22 @@ status: string;
  * 关联异步任务 ID
  */
 task_id: string | null; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 供应商预设配置。
+ */
+export type ProviderPreset = { 
+/**
+ * 供应商标识。
+ */
+name: string; 
+/**
+ * 供应商显示名称。
+ */
+display_name: string; 
+/**
+ * 供应商默认 Base URL。
+ */
+base_url: string }
 /**
  * 题库记录（含 M4 扩展字段）。
  */

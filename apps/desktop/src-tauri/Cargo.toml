@@ -38,6 +38,7 @@ calamine = { version = "0.26", features = ["dates"] }
 regex = "1"
 toml = "0.8"
 rig-core = { version = "0.32.0", default-features = false, features = ["reqwest-rustls"] }
+reqwest = { version = "0.12", features = ["json"] }
 schemars = "1.0"
 futures = "0.3"
 base64 = "0.22"

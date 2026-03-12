@@ -59,3 +59,25 @@ pub struct UpdateAiConfigInput {
     pub is_active: Option<bool>,
     pub config_json: Option<String>,
 }
+
+/// 模型信息。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ModelInfo {
+    /// 模型ID（如 gpt-4o, claude-3-5-sonnet-20241022）。
+    pub id: String,
+    /// 模型显示名称。
+    pub name: String,
+    /// 是否支持视觉/多模态。
+    pub is_vision: bool,
+}
+
+/// 供应商预设配置。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ProviderPreset {
+    /// 供应商标识。
+    pub name: String,
+    /// 供应商显示名称。
+    pub display_name: String,
+    /// 供应商默认 Base URL。
+    pub base_url: String,
+}

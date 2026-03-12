@@ -8,7 +8,9 @@ use sqlx::SqlitePool;
 use tauri::State;
 
 use crate::error::AppError;
-use crate::models::ai_config::{AiConfigSafe, CreateAiConfigInput, UpdateAiConfigInput};
+use crate::models::ai_config::{
+    AiConfigSafe, CreateAiConfigInput, ModelInfo, ProviderPreset, UpdateAiConfigInput,
+};
 use crate::services;
 
 /// 删除 AI 配置输入。
@@ -60,4 +62,22 @@ pub async fn delete_ai_config(
     services::llm_provider::LlmProviderService::delete_config(&pool, &input.id).await?;
 
     Ok(DeleteAiConfigResponse { success: true })
+}
+
+/// 获取供应商可用模型列表。
+#[tauri::command]
+#[specta::specta]
+pub async fn fetch_provider_models(
+    provider_name: String,
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<ModelInfo>, AppError> {
+    services::llm_provider::fetch_provider_models(&provider_name, &base_url, &api_key).await
+}
+
+/// 获取供应商预设配置列表。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_provider_presets() -> Result<Vec<ProviderPreset>, AppError> {
+    Ok(services::llm_provider::get_provider_presets())
 }

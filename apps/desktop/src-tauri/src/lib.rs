@@ -22,6 +22,8 @@ fn create_specta_builder() -> Builder<tauri::Wry> {
         commands::ai_config::create_ai_config,
         commands::ai_config::update_ai_config,
         commands::ai_config::delete_ai_config,
+        commands::ai_config::fetch_provider_models,
+        commands::ai_config::get_provider_presets,
         commands::ai_param_preset::list_ai_param_presets,
         commands::ai_param_preset::get_active_ai_param_preset,
         commands::ai_param_preset::create_ai_param_preset,

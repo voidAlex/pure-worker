@@ -7,13 +7,61 @@ use chrono::Utc;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::ai_config::{AiConfig, AiConfigSafe, CreateAiConfigInput, UpdateAiConfigInput};
+use crate::models::ai_config::{
+    AiConfig, AiConfigSafe, CreateAiConfigInput, ModelInfo, ProviderPreset, UpdateAiConfigInput,
+};
 use crate::services::audit::AuditService;
 use crate::services::keychain::KeychainService;
+
+/// 视觉/多模态模型前缀列表。
+const VISION_MODEL_PREFIXES: &[&str] = &[
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-5",
+    "gpt-4-vision",
+    "gpt-4-turbo",
+    "claude-3-opus",
+    "claude-3-5-sonnet",
+    "claude-3-5-haiku",
+    "claude-3-haiku",
+    "claude-sonnet-4",
+    "claude-opus-4",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-2.0",
+    "gemini-pro-vision",
+    "qwen-vl",
+    "qwen2-vl",
+];
+
+/// OpenAI 兼容的模型列表响应。
+#[derive(Debug, Deserialize)]
+struct OpenAiModelsResponse {
+    data: Vec<OpenAiModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModel {
+    id: String,
+}
+
+/// Anthropic 模型列表响应。
+#[derive(Debug, Deserialize)]
+struct AnthropicModelsResponse {
+    data: Vec<AnthropicModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicModel {
+    id: String,
+    #[serde(default)]
+    display_name: String,
+}
 
 /// 密钥迁移报告。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -425,12 +473,18 @@ impl LlmProviderService {
 
     /// 验证 provider_name 是否合法。
     fn validate_provider_name(name: &str) -> Result<(), AppError> {
-        if name == "deepseek" || name == "qwen" || name == "openai" || name == "custom" {
+        if name == "deepseek"
+            || name == "qwen"
+            || name == "openai"
+            || name == "custom"
+            || name == "anthropic"
+            || name == "gemini"
+        {
             return Ok(());
         }
 
         Err(AppError::InvalidInput(format!(
-            "provider_name 非法：{name}，仅支持 deepseek/qwen/openai/custom",
+            "provider_name 非法：{name}，仅支持 openai/anthropic/deepseek/qwen/gemini/custom",
         )))
     }
 
@@ -442,4 +496,139 @@ impl LlmProviderService {
 
         Ok(())
     }
+}
+
+/// 获取所有供应商预设。
+pub fn get_provider_presets() -> Vec<ProviderPreset> {
+    vec![
+        ProviderPreset {
+            name: String::from("openai"),
+            display_name: String::from("OpenAI"),
+            base_url: String::from("https://api.openai.com"),
+        },
+        ProviderPreset {
+            name: String::from("anthropic"),
+            display_name: String::from("Anthropic"),
+            base_url: String::from("https://api.anthropic.com"),
+        },
+        ProviderPreset {
+            name: String::from("deepseek"),
+            display_name: String::from("DeepSeek"),
+            base_url: String::from("https://api.deepseek.com"),
+        },
+        ProviderPreset {
+            name: String::from("qwen"),
+            display_name: String::from("通义千问"),
+            base_url: String::from("https://dashscope.aliyuncs.com/compatible-mode"),
+        },
+        ProviderPreset {
+            name: String::from("gemini"),
+            display_name: String::from("Google Gemini"),
+            base_url: String::from("https://generativelanguage.googleapis.com"),
+        },
+    ]
+}
+
+/// 检查模型是否支持视觉/多模态。
+fn is_vision_model(model_id: &str) -> bool {
+    VISION_MODEL_PREFIXES
+        .iter()
+        .any(|prefix| model_id.starts_with(prefix))
+}
+
+/// 从供应商 API 获取可用模型列表。
+///
+/// 支持 OpenAI 兼容接口和 Anthropic 专有接口，自动识别视觉/多模态模型。
+pub async fn fetch_provider_models(
+    provider_name: &str,
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, AppError> {
+    LlmProviderService::validate_provider_name(provider_name)?;
+    LlmProviderService::validate_required(base_url, "base_url")?;
+    LlmProviderService::validate_required(api_key, "api_key")?;
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|error| AppError::ExternalService(format!("创建 HTTP 客户端失败：{error}")))?;
+    let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
+
+    let response = if provider_name == "anthropic" {
+        client
+            .get(&url)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("请求模型列表失败：{error}")))?
+    } else {
+        client
+            .get(&url)
+            .bearer_auth(api_key)
+            .send()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("请求模型列表失败：{error}")))?
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response
+            .text()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("读取模型列表响应失败：{error}")))?;
+        return Err(AppError::ExternalService(format!(
+            "模型列表请求失败（{status}）：{body}"
+        )));
+    }
+
+    let mut models = if provider_name == "anthropic" {
+        let payload = response
+            .json::<AnthropicModelsResponse>()
+            .await
+            .map_err(|error| {
+                AppError::ExternalService(format!("解析 Anthropic 响应失败：{error}"))
+            })?;
+        payload
+            .data
+            .into_iter()
+            .map(|item| {
+                let name = if item.display_name.trim().is_empty() {
+                    item.id.clone()
+                } else {
+                    item.display_name
+                };
+                ModelInfo {
+                    id: item.id.clone(),
+                    name,
+                    is_vision: is_vision_model(&item.id),
+                }
+            })
+            .collect::<Vec<ModelInfo>>()
+    } else {
+        let payload = response
+            .json::<OpenAiModelsResponse>()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("解析模型列表响应失败：{error}")))?;
+        payload
+            .data
+            .into_iter()
+            .map(|item| {
+                let model_id = item.id;
+                ModelInfo {
+                    id: model_id.clone(),
+                    name: model_id.clone(),
+                    is_vision: is_vision_model(&model_id),
+                }
+            })
+            .collect::<Vec<ModelInfo>>()
+    };
+
+    models.sort_by(|left, right| {
+        right
+            .is_vision
+            .cmp(&left.is_vision)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+
+    Ok(models)
 }
