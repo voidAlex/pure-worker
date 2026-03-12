@@ -18,6 +18,8 @@ fn create_specta_builder() -> Builder<tauri::Wry> {
         commands::settings::get_setting,
         commands::settings::update_setting,
         commands::settings::get_settings_by_category,
+        commands::initialization::check_initialization_status,
+        commands::initialization::select_directory,
         commands::ai_config::list_ai_configs,
         commands::ai_config::create_ai_config,
         commands::ai_config::update_ai_config,
@@ -187,6 +189,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             // 在 release 模式下写入启动日志文件，便于排查安装包崩溃问题

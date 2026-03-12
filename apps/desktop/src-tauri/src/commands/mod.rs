@@ -8,6 +8,7 @@ pub mod chat;
 pub mod classroom;
 pub mod export;
 pub mod global_shortcut;
+pub mod initialization;
 pub mod mcp_server;
 pub mod memory_search;
 pub mod observation_note;

@@ -3,7 +3,7 @@
  * 配置 TanStack Query 客户端和 React Router 路由，注册所有页面路由
  */
 
-import { type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -18,6 +18,8 @@ import { SemesterCommentsPage } from '@/pages/SemesterCommentsPage';
 import { ActivityAnnouncementsPage } from '@/pages/ActivityAnnouncementsPage';
 import { AssignmentGradingPage } from '@/pages/AssignmentGradingPage';
 import { PracticeSheetsPage } from '@/pages/PracticeSheetsPage';
+import { InitializationWizard } from '@/components/shared/InitializationWizard';
+import { commands } from '@/services/commandClient';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,8 +31,39 @@ const queryClient = new QueryClient({
 });
 
 export const App = (): ReactElement => {
+  const [initialized, setInitialized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    checkInitialization();
+  }, []);
+
+  const checkInitialization = async () => {
+    try {
+      // TypeScript will pass this after bindings are regenerated
+      const res = await (commands as Record<string, any>).checkInitializationStatus();
+      if (res.status === 'ok') {
+        setInitialized(res.data.initialized);
+      } else {
+        setInitialized(true);
+      }
+    } catch {
+      setInitialized(true);
+    }
+  };
+
+  if (initialized === null) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-gray-400 animate-pulse">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
+      {!initialized && (
+        <InitializationWizard onComplete={() => setInitialized(true)} />
+      )}
       <BrowserRouter>
         <Routes>
           <Route element={<AppLayout />}>

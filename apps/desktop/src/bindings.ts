@@ -50,6 +50,30 @@ async getSettingsByCategory(category: string) : Promise<Result<AppSetting[], App
 }
 },
 /**
+ * 检查首次启动初始化状态。
+ */
+async checkInitializationStatus() : Promise<Result<InitializationStatus, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_initialization_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 打开系统原生目录选择对话框。
+ * 
+ * 返回用户选择的目录路径字符串，若用户取消则返回 None。
+ */
+async selectDirectory() : Promise<Result<string | null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("select_directory") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 列出全部 AI 配置。
  */
 async listAiConfigs() : Promise<Result<AiConfigSafe[], AppError>> {
@@ -2234,6 +2258,22 @@ class_id: string | null;
  * 班主任教师 ID（可选）。
  */
 homeroom_teacher_id: string | null }
+/**
+ * 初始化状态响应。
+ */
+export type InitializationStatus = { 
+/**
+ * 是否已完成初始化
+ */
+initialized: boolean; 
+/**
+ * 是否已设置工作目录（非默认值）
+ */
+has_workspace: boolean; 
+/**
+ * 是否已配置至少一个 AI 供应商
+ */
+has_ai_config: boolean }
 /**
  * 列表查询输入
  */
