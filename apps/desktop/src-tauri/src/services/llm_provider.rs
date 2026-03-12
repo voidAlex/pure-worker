@@ -63,6 +63,22 @@ struct AnthropicModel {
     display_name: String,
 }
 
+/// Google Gemini 模型列表响应。
+#[derive(Debug, Deserialize)]
+struct GeminiModelsResponse {
+    models: Vec<GeminiModel>,
+}
+
+/// Google Gemini 单个模型条目。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GeminiModel {
+    /// 格式为 "models/gemini-1.5-pro"，需要去除 "models/" 前缀作为 model_id。
+    name: String,
+    #[serde(default)]
+    display_name: String,
+}
+
 /// 密钥迁移报告。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct MigrationReport {
@@ -551,9 +567,20 @@ pub async fn fetch_provider_models(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|error| AppError::ExternalService(format!("创建 HTTP 客户端失败：{error}")))?;
-    let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
 
-    let response = if provider_name == "anthropic" {
+    let response = if provider_name == "gemini" {
+        let url = format!(
+            "{}/v1beta/models?key={}",
+            base_url.trim_end_matches('/'),
+            api_key
+        );
+        client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("请求模型列表失败：{error}")))?
+    } else if provider_name == "anthropic" {
+        let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
         client
             .get(&url)
             .header("x-api-key", api_key)
@@ -562,6 +589,7 @@ pub async fn fetch_provider_models(
             .await
             .map_err(|error| AppError::ExternalService(format!("请求模型列表失败：{error}")))?
     } else {
+        let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
         client
             .get(&url)
             .bearer_auth(api_key)
@@ -581,7 +609,32 @@ pub async fn fetch_provider_models(
         )));
     }
 
-    let mut models = if provider_name == "anthropic" {
+    let mut models = if provider_name == "gemini" {
+        let payload = response
+            .json::<GeminiModelsResponse>()
+            .await
+            .map_err(|error| AppError::ExternalService(format!("解析 Gemini 响应失败：{error}")))?;
+        payload
+            .models
+            .into_iter()
+            .filter_map(|item| {
+                let model_id = item.name.strip_prefix("models/").unwrap_or(&item.name);
+                if model_id.is_empty() {
+                    return None;
+                }
+                let name = if item.display_name.trim().is_empty() {
+                    model_id.to_string()
+                } else {
+                    item.display_name
+                };
+                Some(ModelInfo {
+                    id: model_id.to_string(),
+                    name,
+                    is_vision: is_vision_model(model_id),
+                })
+            })
+            .collect::<Vec<ModelInfo>>()
+    } else if provider_name == "anthropic" {
         let payload = response
             .json::<AnthropicModelsResponse>()
             .await

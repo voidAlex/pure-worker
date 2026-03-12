@@ -76,7 +76,12 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
       const models = unwrapResult(res);
       
       setModelCount(models.length);
-      setDefaultModel(models.length > 0 ? models[0].id : '');
+      if (models.length === 0) {
+        setConnectionStatus('failed');
+        setConnectionError('未发现可用模型，请检查 API Key 是否正确');
+        return;
+      }
+      setDefaultModel(models[0].id);
       setConnectionStatus('success');
     } catch (error) {
       setConnectionStatus('failed');

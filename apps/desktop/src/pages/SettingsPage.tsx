@@ -369,6 +369,10 @@ const AiConfigTab: React.FC = () => {
       const modelList = unwrapResult(result);
       setModels(modelList);
       if (modelList.length > 0) {
+        /* 自动选中第一个模型作为默认模型（若当前未设置） */
+        if (!configForm.default_model) {
+          setConfigForm((prev) => ({ ...prev, default_model: modelList[0].id }));
+        }
         success(`获取到 ${modelList.length} 个模型`);
       } else {
         error('未获取到可用模型，请检查 API Key 是否正确');

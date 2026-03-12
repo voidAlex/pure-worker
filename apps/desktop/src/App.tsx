@@ -62,13 +62,13 @@ export const App = (): ReactElement => {
         if (res.status === 'ok') {
           setInitialized(res.data.initialized);
         } else {
-          console.warn('检查初始化状态失败，默认放行:', res.error);
-          setInitialized(true);
+          console.error('检查初始化状态失败，进入初始化向导:', res.error);
+          setInitialized(false);
         }
       })
       .catch((err: unknown) => {
-        console.warn('检查初始化状态异常，默认放行:', err);
-        setInitialized(true);
+        console.error('检查初始化状态异常，进入初始化向导:', err);
+        setInitialized(false);
       });
   }, []);
 
