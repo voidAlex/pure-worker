@@ -13,12 +13,14 @@ pub struct Classroom {
     pub updated_at: String,
 }
 
+/// 创建班级输入参数。
 #[derive(Debug, Deserialize, Type)]
 pub struct CreateClassroomInput {
     pub grade: String,
     pub class_name: String,
     pub subject: String,
-    pub teacher_id: String,
+    /// 教师ID（可选，为空时自动分配默认教师）。
+    pub teacher_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Type)]

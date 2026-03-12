@@ -22,7 +22,7 @@ export const ClassesPage: React.FC = () => {
     grade: '',
     class_name: '',
     subject: '',
-    teacher_id: '',
+    teacher_id: null,
   });
 
   const { data: classes, isLoading } = useQuery({
@@ -79,7 +79,7 @@ export const ClassesPage: React.FC = () => {
   });
 
   const resetForm = () => {
-    setFormData({ grade: '', class_name: '', subject: '', teacher_id: '' });
+    setFormData({ grade: '', class_name: '', subject: '', teacher_id: null });
     setEditingClass(null);
   };
 
@@ -90,7 +90,7 @@ export const ClassesPage: React.FC = () => {
         grade: cls.grade,
         class_name: cls.class_name,
         subject: cls.subject,
-        teacher_id: cls.teacher_id,
+        teacher_id: null,
       });
     } else {
       resetForm();
@@ -106,7 +106,7 @@ export const ClassesPage: React.FC = () => {
         grade: formData.grade,
         class_name: formData.class_name,
         subject: formData.subject,
-        teacher_id: formData.teacher_id,
+        teacher_id: null,
       });
     } else {
       createMutation.mutate(formData);

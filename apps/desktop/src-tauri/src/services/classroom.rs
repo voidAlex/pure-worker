@@ -1,12 +1,46 @@
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::classroom::{Classroom, CreateClassroomInput, UpdateClassroomInput};
 use crate::services::audit::AuditService;
 
+/// 班级服务层
+/// 提供班级的增删改查功能
 pub struct ClassroomService;
+
+/// 解析 teacher_id：如果为空，则查找或创建默认教师档案
+async fn resolve_teacher_id(pool: &SqlitePool) -> Result<String, AppError> {
+    // 查询已存在的教师档案
+    let result = sqlx::query("SELECT id FROM teacher_profile WHERE is_deleted = 0 LIMIT 1")
+        .fetch_optional(pool)
+        .await?;
+
+    if let Some(row) = result {
+        return Ok(row.get::<String, _>("id"));
+    }
+
+    // 没有教师档案，创建默认教师
+    let teacher_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO teacher_profile (id, name, gender, phone, email, avatar_path, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+    )
+    .bind(&teacher_id)
+    .bind("我的教师档案")
+    .bind("")
+    .bind("")
+    .bind("")
+    .bind("")
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(teacher_id)
+}
 
 impl ClassroomService {
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Classroom>, AppError> {
@@ -38,6 +72,12 @@ impl ClassroomService {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
 
+        // 解析 teacher_id：如果为空则自动查找或创建默认教师
+        let teacher_id = match input.teacher_id {
+            Some(ref tid) if !tid.is_empty() => tid.clone(),
+            _ => resolve_teacher_id(pool).await?,
+        };
+
         sqlx::query(
             "INSERT INTO classroom (id, grade, class_name, subject, teacher_id, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
         )
@@ -45,7 +85,7 @@ impl ClassroomService {
         .bind(&input.grade)
         .bind(&input.class_name)
         .bind(&input.subject)
-        .bind(&input.teacher_id)
+        .bind(&teacher_id)
         .bind(&now)
         .bind(&now)
         .execute(pool)
