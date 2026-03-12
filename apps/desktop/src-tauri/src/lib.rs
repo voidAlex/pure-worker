@@ -208,14 +208,13 @@ pub fn run() {
                         if let Ok(log_dir) = app.path().app_log_dir() {
                             let log_path = log_dir.join("startup.log");
                             let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                            let msg = format!(
-                                "[{}] 数据库初始化失败：{}\n",
-                                timestamp, error
-                            );
+                            let msg = format!("[{}] 数据库初始化失败：{}\n", timestamp, error);
                             let _ = std::fs::OpenOptions::new()
                                 .append(true)
                                 .open(&log_path)
-                                .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+                                .and_then(|mut f| {
+                                    std::io::Write::write_all(&mut f, msg.as_bytes())
+                                });
                         }
                     }
                     eprintln!("[Startup] 数据库初始化失败：{}", error);
@@ -228,10 +227,7 @@ pub fn run() {
                 if let Ok(log_dir) = app.path().app_log_dir() {
                     let log_path = log_dir.join("startup.log");
                     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                    let msg = format!(
-                        "[{}] 数据库初始化成功，应用启动完成\n",
-                        timestamp
-                    );
+                    let msg = format!("[{}] 数据库初始化成功，应用启动完成\n", timestamp);
                     let _ = std::fs::OpenOptions::new()
                         .append(true)
                         .open(&log_path)

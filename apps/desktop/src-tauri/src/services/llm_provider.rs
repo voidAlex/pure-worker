@@ -5,6 +5,7 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use rig::client::CompletionClient;
+use rig::completion::Prompt;
 use rig::providers::openai;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -71,12 +72,7 @@ impl LlmProviderService {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         let is_active = i32::from(input.is_active.unwrap_or(false));
-        let mut encoded_key = String::new();
-
-        if KeychainService::store_api_key(&id, &input.api_key).is_err() {
-            eprintln!("[LlmProviderService] Keychain 不可用，回退 Base64 存储");
-            encoded_key = Self::encode_api_key(&input.api_key);
-        }
+        let encoded_key = Self::persist_key(&id, &input.api_key);
 
         if is_active == 1 {
             sqlx::query("UPDATE ai_config SET is_active = 0, updated_at = ? WHERE is_deleted = 0")
@@ -113,6 +109,7 @@ impl LlmProviderService {
         .await?;
 
         let created = Self::get_by_id(pool, &id).await?;
+        Self::validate_active_key(&created).await?;
         Ok(Self::to_safe(&created))
     }
 
@@ -154,10 +151,7 @@ impl LlmProviderService {
 
         let mut encoded_key: Option<String> = None;
         if let Some(api_key) = input.api_key.as_deref() {
-            if KeychainService::store_api_key(&input.id, api_key).is_err() {
-                eprintln!("[LlmProviderService] Keychain 更新失败，回退 Base64 存储");
-                encoded_key = Some(Self::encode_api_key(api_key));
-            }
+            encoded_key = Some(Self::persist_key(&input.id, api_key));
         }
 
         if is_active == Some(1) {
@@ -200,6 +194,7 @@ impl LlmProviderService {
         .await?;
 
         let updated = Self::get_by_id(pool, &input.id).await?;
+        Self::validate_active_key(&updated).await?;
         Ok(Self::to_safe(&updated))
     }
 
@@ -234,24 +229,46 @@ impl LlmProviderService {
         Ok(())
     }
 
+    pub async fn validate_active_key(config: &AiConfig) -> Result<(), AppError> {
+        if config.is_active != 1 {
+            return Ok(());
+        }
+
+        let api_key = Self::load_api_key(config)?;
+        let client = Self::create_client_with_key(config, &api_key)?;
+        let agent = Self::create_agent(
+            &client,
+            &config.default_model,
+            "你是 PureWorker 教务 AI 助手。",
+            0.0,
+        );
+
+        let _: String = agent.prompt("ping").await.map_err(|error| {
+            AppError::ExternalService(format!("AI 配置连通性测试失败：{error}"))
+        })?;
+
+        Ok(())
+    }
+
     /// 创建 rig OpenAI Chat Completions API 兼容客户端。
     ///
     /// DeepSeek/Qwen 等国产模型使用 Chat Completions API（非 Responses API），
     /// 因此通过 `completions_api()` 切换到兼容模式。
     pub fn create_client(config: &AiConfig) -> Result<openai::CompletionsClient, AppError> {
-        let api_key = if KeychainService::has_api_key(&config.id) {
-            KeychainService::get_api_key(&config.id)?
-        } else {
-            Self::decode_api_key(&config.api_key_encrypted)?
-        };
+        let api_key = Self::load_api_key(config)?;
+        Self::create_client_with_key(config, &api_key)
+    }
 
+    fn create_client_with_key(
+        config: &AiConfig,
+        api_key: &str,
+    ) -> Result<openai::CompletionsClient, AppError> {
         let responses_client = openai::Client::builder()
-            .api_key(&api_key)
+            .api_key(api_key)
             .base_url(&config.base_url)
             .build()
             .map_err(|e| AppError::ExternalService(format!("创建 LLM 客户端失败：{e}")))?;
 
-        // 转换为 Chat Completions API 客户端（兼容 DeepSeek/Qwen 等）
         Ok(responses_client.completions_api())
     }
 
@@ -270,7 +287,7 @@ impl LlmProviderService {
     }
 
     /// 按 ID 获取配置记录。
-    async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<AiConfig, AppError> {
+    pub async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<AiConfig, AppError> {
         let item = sqlx::query_as::<_, AiConfig>(
             "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE id = ? AND is_deleted = 0",
         )
@@ -333,6 +350,51 @@ impl LlmProviderService {
     /// 将明文 API Key 编码为 Base64。
     fn encode_api_key(raw: &str) -> String {
         BASE64.encode(raw.as_bytes())
+    }
+
+    /// 持久化 API Key：始终将 Base64 编码写入数据库，同时尽力写入系统密钥链。
+    ///
+    /// 采用"双写"策略，数据库始终保存 Base64 编码的 key 作为可靠兜底，
+    /// 避免 keychain 在 Linux 下行为不稳定（写入成功但后续读取失败）导致 key 丢失。
+    fn persist_key(provider_id: &str, api_key: &str) -> String {
+        let encoded = Self::encode_api_key(api_key);
+
+        if KeychainService::is_available() {
+            match KeychainService::store_api_key(provider_id, api_key) {
+                Ok(_) => eprintln!("[LlmProviderService] API Key 已写入 Keychain（双写）"),
+                Err(e) => eprintln!("[LlmProviderService] Keychain 写入失败，仅用数据库：{e}"),
+            }
+        } else {
+            eprintln!("[LlmProviderService] Keychain 不可用，仅用数据库 Base64 存储");
+        }
+
+        encoded
+    }
+
+    fn load_api_key(config: &AiConfig) -> Result<String, AppError> {
+        let mut api_key = match KeychainService::get_api_key(&config.id) {
+            Ok(value) => value,
+            Err(error) => {
+                if config.api_key_encrypted.trim().is_empty() {
+                    return Err(AppError::InvalidInput(format!(
+                        "密钥链不可用或未找到 API Key：{error}"
+                    )));
+                }
+                Self::decode_api_key(&config.api_key_encrypted)?
+            }
+        };
+
+        if api_key.trim().is_empty() && !config.api_key_encrypted.trim().is_empty() {
+            api_key = Self::decode_api_key(&config.api_key_encrypted)?;
+        }
+
+        if api_key.trim().is_empty() {
+            return Err(AppError::InvalidInput(String::from(
+                "未检测到 API Key，请在设置中重新保存",
+            )));
+        }
+
+        Ok(api_key)
     }
 
     /// 将 Base64 编码的 API Key 解码为明文。
