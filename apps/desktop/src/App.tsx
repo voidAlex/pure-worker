@@ -1,6 +1,7 @@
 /**
  * 应用根组件
- * 配置 TanStack Query 客户端和 React Router 路由，注册所有页面路由
+ * 配置 TanStack Query 客户端和 React Router 路由，注册所有页面路由。
+ * 首次启动时显示初始化向导，引导用户完成工作目录和 AI 配置。
  */
 
 import { useState, useEffect, type ReactElement } from 'react';
@@ -30,57 +31,60 @@ const queryClient = new QueryClient({
   },
 });
 
+/** 主应用内容（路由及布局） */
+const AppContent = (): ReactElement => (
+  <BrowserRouter>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/classes" element={<ClassesPage />} />
+        <Route path="/students" element={<StudentsPage />} />
+        <Route path="/students/:id" element={<StudentDetailPage />} />
+        <Route path="/import" element={<ImportPage />} />
+        <Route path="/schedule" element={<SchedulePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/semester-comments" element={<SemesterCommentsPage />} />
+        <Route path="/announcements" element={<ActivityAnnouncementsPage />} />
+        <Route path="/assignment-grading" element={<AssignmentGradingPage />} />
+        <Route path="/practice-sheets" element={<PracticeSheetsPage />} />
+      </Route>
+    </Routes>
+  </BrowserRouter>
+);
+
 export const App = (): ReactElement => {
   const [initialized, setInitialized] = useState<boolean | null>(null);
 
   useEffect(() => {
-    checkInitialization();
-  }, []);
-
-  const checkInitialization = async () => {
-    try {
-      // TypeScript will pass this after bindings are regenerated
-      const res = await (commands as Record<string, any>).checkInitializationStatus();
-      if (res.status === 'ok') {
-        setInitialized(res.data.initialized);
-      } else {
+    commands
+      .checkInitializationStatus()
+      .then((res) => {
+        if (res.status === 'ok') {
+          setInitialized(res.data.initialized);
+        } else {
+          console.warn('检查初始化状态失败，默认放行:', res.error);
+          setInitialized(true);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('检查初始化状态异常，默认放行:', err);
         setInitialized(true);
-      }
-    } catch {
-      setInitialized(true);
-    }
-  };
-
-  if (initialized === null) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-400 animate-pulse">加载中...</div>
-      </div>
-    );
-  }
+      });
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!initialized && (
+      {initialized === null && (
+        <div className="flex items-center justify-center h-screen bg-gray-50">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
+        </div>
+      )}
+
+      {initialized === false && (
         <InitializationWizard onComplete={() => setInitialized(true)} />
       )}
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/classes" element={<ClassesPage />} />
-            <Route path="/students" element={<StudentsPage />} />
-            <Route path="/students/:id" element={<StudentDetailPage />} />
-            <Route path="/import" element={<ImportPage />} />
-            <Route path="/schedule" element={<SchedulePage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/semester-comments" element={<SemesterCommentsPage />} />
-            <Route path="/announcements" element={<ActivityAnnouncementsPage />} />
-            <Route path="/assignment-grading" element={<AssignmentGradingPage />} />
-            <Route path="/practice-sheets" element={<PracticeSheetsPage />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+
+      {initialized === true && <AppContent />}
     </QueryClientProvider>
   );
 };
