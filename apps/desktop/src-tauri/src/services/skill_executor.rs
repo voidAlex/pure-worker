@@ -449,13 +449,16 @@ impl SkillExecutorService {
         let env_base = std::path::Path::new(&home)
             .join(".pureworker")
             .join("skill-envs");
-        if let Ok(canonical_base) = env_base.canonicalize() {
-            if !canonical_env.starts_with(&canonical_base) {
-                return Err(AppError::PermissionDenied(format!(
-                    "Python 技能 env_path 逃逸出允许范围：'{}'",
-                    canonical_env.display()
-                )));
-            }
+        let canonical_base = env_base.canonicalize().map_err(|e| {
+            AppError::PermissionDenied(format!(
+                "技能环境根目录不存在或无法解析（~/.pureworker/skill-envs/）：{e}"
+            ))
+        })?;
+        if !canonical_env.starts_with(&canonical_base) {
+            return Err(AppError::PermissionDenied(format!(
+                "Python 技能 env_path 逃逸出允许范围：'{}'",
+                canonical_env.display()
+            )));
         }
 
         let canonical_source = std::path::Path::new(source_dir)
