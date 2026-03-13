@@ -45,69 +45,28 @@ impl SkillExecutorService {
         let invoke_id = generate_invoke_id();
         let start = Instant::now();
 
-        // 查找技能记录
-        let skill = SkillService::get_skill_by_name(pool, skill_name).await?;
+        let (result, skill_id, skill_type) =
+            Self::execute_skill_inner(pool, skill_name, &invoke_id, input, &start).await;
 
-        // 校验技能状态
-        if skill.status.as_deref() != Some("enabled") {
-            let duration_ms = start.elapsed().as_millis() as u64;
-            let result = create_error_result(
-                skill_name,
-                &invoke_id,
-                ToolRiskLevel::Low,
-                duration_ms,
-                format!(
-                    "技能 '{skill_name}' 未启用，当前状态：{}",
-                    skill.status.as_deref().unwrap_or("未知")
-                ),
-            );
-            return Ok(result);
-        }
-
-        // 校验健康状态
-        if skill.health_status == "unhealthy" {
-            let duration_ms = start.elapsed().as_millis() as u64;
-            let result = create_error_result(
-                skill_name,
-                &invoke_id,
-                ToolRiskLevel::Low,
-                duration_ms,
-                format!("技能 '{skill_name}' 健康检查不通过，请先修复"),
-            );
-            return Ok(result);
-        }
-
-        // 根据技能类型分发执行
-        let result = match skill.skill_type.as_str() {
-            "builtin" => Self::execute_builtin_skill(skill_name, &invoke_id, input, &start).await,
-            "python" => Self::execute_python_skill(&skill, &invoke_id, input, &start).await,
-            other => {
-                let duration_ms = start.elapsed().as_millis() as u64;
-                Ok(create_error_result(
-                    skill_name,
-                    &invoke_id,
-                    ToolRiskLevel::Low,
-                    duration_ms,
-                    format!("不支持的技能类型：'{other}'"),
-                ))
-            }
-        }?;
-
-        // 记录审计日志
+        // 审计日志：无论执行结果如何都记录（"finally" 语义）
+        let (audit_risk, audit_success, audit_duration) = match &result {
+            Ok(r) => (r.audit.risk_level.clone(), r.success, r.audit.duration_ms),
+            Err(_) => ("low".to_string(), false, start.elapsed().as_millis() as u64),
+        };
         let detail = serde_json::json!({
             "invoke_id": invoke_id,
             "skill_name": skill_name,
-            "skill_type": skill.skill_type,
-            "success": result.success,
-            "duration_ms": result.audit.duration_ms,
+            "skill_type": skill_type,
+            "success": audit_success,
+            "duration_ms": audit_duration,
         });
         if let Err(e) = AuditService::log_with_detail(
             pool,
             "ai",
             "execute_skill",
             "skill_registry",
-            Some(&skill.id),
-            result.audit.risk_level.as_str(),
+            skill_id.as_deref(),
+            &audit_risk,
             false,
             Some(&detail.to_string()),
         )
@@ -116,7 +75,72 @@ impl SkillExecutorService {
             eprintln!("[审计日志] 记录技能执行审计失败：{e}");
         }
 
-        Ok(result)
+        result
+    }
+
+    /// 技能执行核心逻辑（内部方法）。
+    ///
+    /// 返回 `(执行结果, 技能ID, 技能类型)` 三元组，供外层统一记录审计日志。
+    async fn execute_skill_inner(
+        pool: &SqlitePool,
+        skill_name: &str,
+        invoke_id: &str,
+        input: serde_json::Value,
+        start: &Instant,
+    ) -> (Result<ToolResult, AppError>, Option<String>, String) {
+        let skill = match SkillService::get_skill_by_name(pool, skill_name).await {
+            Ok(s) => s,
+            Err(e) => {
+                return (Err(e), None, "unknown".to_string());
+            }
+        };
+
+        let skill_id = Some(skill.id.clone());
+        let skill_type = skill.skill_type.clone();
+
+        if skill.status.as_deref() != Some("enabled") {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            let result = create_error_result(
+                skill_name,
+                invoke_id,
+                ToolRiskLevel::Low,
+                duration_ms,
+                format!(
+                    "技能 '{skill_name}' 未启用，当前状态：{}",
+                    skill.status.as_deref().unwrap_or("未知")
+                ),
+            );
+            return (Ok(result), skill_id, skill_type);
+        }
+
+        if skill.health_status == "unhealthy" {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            let result = create_error_result(
+                skill_name,
+                invoke_id,
+                ToolRiskLevel::Low,
+                duration_ms,
+                format!("技能 '{skill_name}' 健康检查不通过，请先修复"),
+            );
+            return (Ok(result), skill_id, skill_type);
+        }
+
+        let result = match skill.skill_type.as_str() {
+            "builtin" => Self::execute_builtin_skill(skill_name, invoke_id, input, start).await,
+            "python" => Self::execute_python_skill(&skill, invoke_id, input, start).await,
+            other => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                Ok(create_error_result(
+                    skill_name,
+                    invoke_id,
+                    ToolRiskLevel::Low,
+                    duration_ms,
+                    format!("不支持的技能类型：'{other}'"),
+                ))
+            }
+        };
+
+        (result, skill_id, skill_type)
     }
 
     /// 执行内置技能。
@@ -314,8 +338,17 @@ impl SkillExecutorService {
                         _ => ToolRiskLevel::Medium,
                     };
 
-                    // 采用 Python 端的 invoke_id（如有），否则使用外部生成的
-                    let effective_invoke_id = py_invoke_id.unwrap_or(invoke_id);
+                    // invoke_id 一致性校验：始终以 Rust 侧生成的为准，
+                    // Python 端返回的仅作日志比对，防止技能脚本篡改调用链标识。
+                    if let Some(reported_id) = py_invoke_id {
+                        if reported_id != invoke_id {
+                            eprintln!(
+                                "[技能协议] 技能 '{skill_name}' 返回的 invoke_id '{reported_id}' \
+                                 与分配的 '{invoke_id}' 不一致，以分配值为准"
+                            );
+                        }
+                    }
+                    let effective_invoke_id = invoke_id;
 
                     // 采用 Python 端的 duration_ms（如有），否则使用 Rust 侧测量值
                     let effective_duration_ms = py_duration_ms.unwrap_or(duration_ms);

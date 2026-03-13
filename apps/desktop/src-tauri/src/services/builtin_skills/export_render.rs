@@ -117,6 +117,19 @@ async fn execute_inner(
         }
     };
 
+    if let Err(e) =
+        crate::services::path_whitelist::PathWhitelistService::validate_write_path(&output_path)
+    {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::High,
+            duration_ms,
+            format!("输出路径校验失败：{e}"),
+        ));
+    }
+
     match format.as_str() {
         "docx" => execute_render_docx(input, invoke_id, start, &output_path).await,
         "xlsx" => execute_render_xlsx(input, invoke_id, start, &output_path).await,

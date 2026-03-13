@@ -2,20 +2,76 @@
 //!
 //! 将 UnifiedTool 协议桥接到 rig-core 的 ToolDyn trait，
 //! 使技能可以作为 Agent 工具被 LLM 调用。
+//! 内置技能直接通过 UnifiedTool trait 对象调用，无需 DB 查找。
 
 use rig::completion::ToolDefinition;
 use rig::tool::{ToolDyn, ToolSet};
 use serde_json::Value;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 
 use crate::error::AppError;
+use crate::services::builtin_skills;
 use crate::services::skill::SkillService;
 use crate::services::skill_executor::SkillExecutorService;
+use crate::services::unified_tool::UnifiedTool;
 
-/// 技能工具适配器，将 PureWorker 技能适配为 rig Agent 可调用的工具。
+/// 内置技能适配器：直接桥接 UnifiedTool trait 对象到 rig ToolDyn。
 ///
-/// 实现 rig::tool::ToolDyn trait，使 LLM Agent 可以通过函数调用方式执行技能。
-/// 每个适配器实例对应一个已注册的技能。
+/// 不经过 DB 查找和 SkillExecutorService，直接调用内置技能实现。
+pub struct BuiltinToolAdapter {
+    tool: Arc<Box<dyn UnifiedTool>>,
+}
+
+impl BuiltinToolAdapter {
+    pub fn new(tool: Box<dyn UnifiedTool>) -> Self {
+        Self {
+            tool: Arc::new(tool),
+        }
+    }
+}
+
+impl ToolDyn for BuiltinToolAdapter {
+    fn name(&self) -> String {
+        self.tool.name().to_string()
+    }
+
+    fn definition<'a>(
+        &'a self,
+        _prompt: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
+        let def = ToolDefinition {
+            name: self.tool.name().to_string(),
+            description: self.tool.description().to_string(),
+            parameters: self.tool.input_schema(),
+        };
+        Box::pin(async move { def })
+    }
+
+    fn call<'a>(
+        &'a self,
+        args: String,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String, rig::tool::ToolError>> + Send + 'a>,
+    > {
+        let tool = self.tool.clone();
+
+        Box::pin(async move {
+            let input: Value =
+                serde_json::from_str(&args).map_err(rig::tool::ToolError::JsonError)?;
+
+            let invoke_id = uuid::Uuid::new_v4().to_string();
+
+            let result = tool.invoke(input, &invoke_id).await.map_err(|e| {
+                rig::tool::ToolError::ToolCallError(Box::new(ToolAdapterError(e.to_string())))
+            })?;
+
+            serde_json::to_string(&result).map_err(rig::tool::ToolError::JsonError)
+        })
+    }
+}
+
+/// 外部技能适配器（Python 等非内置技能）：通过 DB 查找 + SkillExecutorService 执行。
 pub struct SkillToolAdapter {
     skill_name: String,
     skill_description: String,
@@ -24,7 +80,6 @@ pub struct SkillToolAdapter {
 }
 
 impl SkillToolAdapter {
-    /// 创建技能工具适配器实例。
     pub fn new(
         skill_name: String,
         skill_description: String,
@@ -40,8 +95,6 @@ impl SkillToolAdapter {
     }
 
     /// 从数据库中的技能记录构建适配器。
-    ///
-    /// 自动从 config_json 中提取 input_schema，若不存在则使用空对象 Schema。
     pub async fn from_skill_name(pool: &SqlitePool, skill_name: &str) -> Result<Self, AppError> {
         let skill = SkillService::get_skill_by_name(pool, skill_name).await?;
 
@@ -119,8 +172,12 @@ pub async fn build_skill_toolset(
     let mut toolset = ToolSet::default();
 
     for &name in skill_names {
-        let adapter = SkillToolAdapter::from_skill_name(pool, name).await?;
-        toolset.add_tool(adapter);
+        if let Some(builtin_tool) = builtin_skills::get_builtin_tool(name) {
+            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool));
+        } else {
+            let adapter = SkillToolAdapter::from_skill_name(pool, name).await?;
+            toolset.add_tool(adapter);
+        }
     }
 
     Ok(toolset)
@@ -133,6 +190,11 @@ pub async fn build_all_enabled_skill_toolset(pool: &SqlitePool) -> Result<ToolSe
 
     for skill in skills {
         if skill.status.as_deref() != Some("enabled") {
+            continue;
+        }
+
+        if let Some(builtin_tool) = builtin_skills::get_builtin_tool(&skill.name) {
+            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool));
             continue;
         }
 
@@ -159,7 +221,7 @@ pub async fn build_all_enabled_skill_toolset(pool: &SqlitePool) -> Result<ToolSe
     Ok(toolset)
 }
 
-/// 适配器内部错误类型，用于将 AppError 转换为 std::error::Error。
+/// 适配器内部错误类型。
 #[derive(Debug)]
 struct ToolAdapterError(String);
 

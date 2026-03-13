@@ -164,8 +164,8 @@ impl SkillDiscoveryService {
                         },
                     );
                 }
-                Err(_) => {
-                    // SKILL.md 解析失败则跳过该目录，不中断整体扫描
+                Err(e) => {
+                    eprintln!("[技能发现] SKILL.md 解析失败 '{}'：{e}", path.display());
                     continue;
                 }
             }

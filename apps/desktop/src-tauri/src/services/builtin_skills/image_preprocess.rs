@@ -126,6 +126,32 @@ async fn execute_inner(
         }
     };
 
+    // 路径白名单校验：输入路径需在读取白名单内，输出路径需在写入白名单内
+    if let Err(e) =
+        crate::services::path_whitelist::PathWhitelistService::validate_read_path(&input_path)
+    {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            format!("输入路径校验失败：{e}"),
+        ));
+    }
+    if let Err(e) =
+        crate::services::path_whitelist::PathWhitelistService::validate_write_path(&output_path)
+    {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            format!("输出路径校验失败：{e}"),
+        ));
+    }
+
     if !Path::new(&input_path).exists() {
         let duration_ms = start.elapsed().as_millis() as u64;
         return Ok(create_error_result(

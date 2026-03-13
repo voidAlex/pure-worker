@@ -137,6 +137,19 @@ async fn execute_inner(
         }
     };
 
+    if let Err(e) =
+        crate::services::path_whitelist::PathWhitelistService::validate_read_path(&image_path)
+    {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            SKILL_NAME,
+            invoke_id,
+            ToolRiskLevel::Low,
+            duration_ms,
+            format!("图片路径校验失败：{e}"),
+        ));
+    }
+
     // 校验模型文件是否就位
     let models_dir = get_models_dir();
     let det_path = models_dir.join(DET_MODEL_FILE);

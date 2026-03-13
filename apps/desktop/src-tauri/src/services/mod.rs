@@ -19,6 +19,7 @@ pub mod multimodal_grading;
 pub mod observation_note;
 pub mod ocr;
 pub mod parent_communication;
+pub mod path_whitelist;
 pub mod practice_sheet;
 pub mod prompt_template;
 pub mod schedule_event;

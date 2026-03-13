@@ -56,8 +56,8 @@ impl SkillStoreService {
             items_map.insert(
                 skill.name.clone(),
                 SkillStoreItem {
-                    name: skill.name,
-                    display_name: skill.description.clone(),
+                    name: skill.name.clone(),
+                    display_name: skill.name,
                     description: skill.description,
                     version: skill.version,
                     source: String::from("local"),
@@ -110,6 +110,19 @@ impl SkillStoreService {
             )));
         }
 
+        // Python 技能：检查是否存在 requirements.txt，如有则创建虚拟环境并安装依赖
+        let env_path = if skill.skill_type == "python" {
+            let requirements_path =
+                std::path::Path::new(&skill.source_path).join("requirements.txt");
+            if requirements_path.exists() {
+                Some(Self::setup_python_env(&skill.name, &requirements_path).await?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let input = CreateSkillInput {
             name: skill.name.clone(),
             version: skill.version.clone(),
@@ -118,7 +131,7 @@ impl SkillStoreService {
             display_name: Some(skill.name.clone()),
             description: Some(skill.description.clone()),
             skill_type: skill.skill_type.clone(),
-            env_path: None,
+            env_path,
             config_json: None,
         };
 
@@ -390,6 +403,8 @@ impl SkillStoreService {
                 })?;
 
                 if !output.status.success() {
+                    // 克隆失败时清理可能已创建的半成品目录
+                    let _ = tokio::fs::remove_dir_all(target).await;
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     return Err(AppError::ExternalService(format!(
                         "git clone 失败：{stderr}"
@@ -401,8 +416,10 @@ impl SkillStoreService {
             Err(_) => {
                 // 超时：wait_with_output() 的 future 被 drop，
                 // tokio::process::Child 的 Drop 实现会自动发送 kill 信号终止子进程。
+                // 显式清理超时产生的半成品目录，避免残留
+                let _ = tokio::fs::remove_dir_all(target).await;
                 Err(AppError::ExternalService(format!(
-                    "git clone 超时（{} 秒），请检查网络连接或仓库地址",
+                    "git clone 超时（{} 秒），已清理半成品目录，请检查网络连接或仓库地址",
                     Self::GIT_CLONE_TIMEOUT_SECS
                 )))
             }
