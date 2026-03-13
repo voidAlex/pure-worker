@@ -60,7 +60,7 @@ impl UnifiedTool for ImagePreprocessSkill {
     }
 
     fn risk_level(&self) -> ToolRiskLevel {
-        ToolRiskLevel::Medium
+        ToolRiskLevel::High
     }
 
     fn invoke(

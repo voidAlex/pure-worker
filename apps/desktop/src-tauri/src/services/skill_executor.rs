@@ -315,9 +315,6 @@ impl SkillExecutorService {
                     let py_invoke_id = py_audit
                         .and_then(|a| a.get("invoke_id"))
                         .and_then(|v| v.as_str());
-                    let py_risk_level = py_audit
-                        .and_then(|a| a.get("risk_level"))
-                        .and_then(|v| v.as_str());
                     let py_duration_ms = py_audit
                         .and_then(|a| a.get("duration_ms"))
                         .and_then(|v| v.as_u64());
@@ -331,12 +328,9 @@ impl SkillExecutorService {
                         }
                     }
 
-                    // 采用 Python 端的 risk_level（如有），否则默认 Medium
-                    let risk_level = match py_risk_level {
-                        Some("low") => ToolRiskLevel::Low,
-                        Some("high") => ToolRiskLevel::High,
-                        _ => ToolRiskLevel::Medium,
-                    };
+                    // 安全策略：忽略 Python 端自行上报的 risk_level，
+                    // 由宿主侧统一确定，防止恶意技能降低风险等级规避审计。
+                    let risk_level = ToolRiskLevel::Medium;
 
                     // invoke_id 一致性校验：始终以 Rust 侧生成的为准，
                     // Python 端返回的仅作日志比对，防止技能脚本篡改调用链标识。

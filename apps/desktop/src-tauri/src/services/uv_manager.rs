@@ -76,6 +76,8 @@ impl UvManager {
             return Err(AppError::InvalidInput(String::from("skill_name 不能为空")));
         }
 
+        Self::validate_skill_name(skill_name)?;
+
         let base = Self::skill_env_base_dir()?;
         let env_path = base.join(skill_name);
         tokio::fs::create_dir_all(&base)
@@ -153,6 +155,28 @@ impl UvManager {
     /// 修复 uv（仅允许 astral.sh 来源）。
     pub async fn repair_uv() -> Result<UvInstallResult, AppError> {
         Self::run_uv_installer().await
+    }
+
+    /// 校验技能名称，防止目录穿越攻击。
+    ///
+    /// 仅允许 `[A-Za-z0-9._-]`，禁止路径分隔符和 `..`。
+    fn validate_skill_name(skill_name: &str) -> Result<(), AppError> {
+        if skill_name.contains("..") || skill_name.contains('/') || skill_name.contains('\\') {
+            return Err(AppError::InvalidInput(format!(
+                "技能名称包含非法字符（禁止路径分隔符和 '..'）：'{skill_name}'"
+            )));
+        }
+
+        let valid = skill_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+        if !valid {
+            return Err(AppError::InvalidInput(format!(
+                "技能名称仅允许字母、数字、点、下划线和连字符：'{skill_name}'"
+            )));
+        }
+
+        Ok(())
     }
 
     /// 构建技能环境根目录。

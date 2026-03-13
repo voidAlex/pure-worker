@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
-use crate::models::skill::CreateSkillInput;
+use crate::models::skill::{CreateSkillInput, UpdateSkillInput};
 use crate::services::audit::AuditService;
 use crate::services::skill::SkillService;
 
@@ -96,15 +96,38 @@ impl SkillDiscoveryService {
                 config_json: None,
             };
 
-            let _ = SkillService::create_skill(pool, input).await?;
+            let created = SkillService::create_skill(pool, input).await?;
             skill.already_installed = true;
+
+            // Python 技能在自动发现时没有环境（env_path 为空），
+            // 标记为 disabled + unhealthy，需用户手动安装环境后启用。
+            if skill.skill_type == "python" {
+                let update = UpdateSkillInput {
+                    display_name: None,
+                    description: None,
+                    permission_scope: None,
+                    config_json: None,
+                    status: Some(String::from("disabled")),
+                };
+                let _ = SkillService::update_skill(pool, &created.id, update).await;
+
+                let now = chrono::Utc::now().to_rfc3339();
+                let _ = sqlx::query(
+                    "UPDATE skill_registry SET health_status = 'unhealthy', last_health_check = ?, updated_at = ? WHERE id = ? AND is_deleted = 0",
+                )
+                .bind(&now)
+                .bind(&now)
+                .bind(&created.id)
+                .execute(pool)
+                .await;
+            }
 
             if let Err(e) = AuditService::log(
                 pool,
                 "system",
                 "auto_register_skill",
                 "skill_registry",
-                None,
+                Some(&created.id),
                 "medium",
                 false,
             )

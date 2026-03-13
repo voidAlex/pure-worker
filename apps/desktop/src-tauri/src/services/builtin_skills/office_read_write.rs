@@ -135,17 +135,8 @@ async fn execute_read_excel(
         }
     };
 
-    if !Path::new(&file_path).exists() {
-        let duration_ms = start.elapsed().as_millis() as u64;
-        return Ok(create_error_result(
-            skill_name,
-            invoke_id,
-            ToolRiskLevel::Medium,
-            duration_ms,
-            format!("Excel 文件不存在：{file_path}"),
-        ));
-    }
-
+    // 路径白名单校验必须在任何文件系统访问（包括 exists()）之前执行，
+    // 防止白名单外路径的存在性探测。
     if let Err(e) =
         crate::services::path_whitelist::PathWhitelistService::validate_read_path(&file_path)
     {
@@ -156,6 +147,17 @@ async fn execute_read_excel(
             ToolRiskLevel::Medium,
             duration_ms,
             format!("文件路径校验失败：{e}"),
+        ));
+    }
+
+    if !Path::new(&file_path).exists() {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            format!("Excel 文件不存在：{file_path}"),
         ));
     }
 
@@ -213,17 +215,7 @@ async fn execute_read_word(
         }
     };
 
-    if !Path::new(&file_path).exists() {
-        let duration_ms = start.elapsed().as_millis() as u64;
-        return Ok(create_error_result(
-            skill_name,
-            invoke_id,
-            ToolRiskLevel::Medium,
-            duration_ms,
-            format!("Word 文件不存在：{file_path}"),
-        ));
-    }
-
+    // 路径白名单校验必须在任何文件系统访问之前执行
     if let Err(e) =
         crate::services::path_whitelist::PathWhitelistService::validate_read_path(&file_path)
     {
@@ -234,6 +226,17 @@ async fn execute_read_word(
             ToolRiskLevel::Medium,
             duration_ms,
             format!("文件路径校验失败：{e}"),
+        ));
+    }
+
+    if !Path::new(&file_path).exists() {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            format!("Word 文件不存在：{file_path}"),
         ));
     }
 

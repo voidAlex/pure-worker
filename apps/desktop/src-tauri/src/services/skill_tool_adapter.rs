@@ -1,14 +1,14 @@
 //! 技能工具适配器模块
 //!
-//! 将 UnifiedTool 协议桥接到 rig-core 的 ToolDyn trait，
+//! 将技能桥接到 rig-core 的 ToolDyn trait，
 //! 使技能可以作为 Agent 工具被 LLM 调用。
-//! 内置技能直接通过 UnifiedTool trait 对象调用，无需 DB 查找。
+//! 所有技能（内置和外部）统一通过 SkillExecutorService 执行，
+//! 确保审计日志、状态检查和健康检查一致覆盖。
 
 use rig::completion::ToolDefinition;
 use rig::tool::{ToolDyn, ToolSet};
 use serde_json::Value;
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::services::builtin_skills;
@@ -16,24 +16,28 @@ use crate::services::skill::SkillService;
 use crate::services::skill_executor::SkillExecutorService;
 use crate::services::unified_tool::UnifiedTool;
 
-/// 内置技能适配器：直接桥接 UnifiedTool trait 对象到 rig ToolDyn。
-///
-/// 不经过 DB 查找和 SkillExecutorService，直接调用内置技能实现。
+/// 内置技能适配器：通过 SkillExecutorService 统一执行，确保审计和状态检查覆盖。
 pub struct BuiltinToolAdapter {
-    tool: Arc<Box<dyn UnifiedTool>>,
+    tool_name: String,
+    tool_description: String,
+    input_schema: Value,
+    pool: SqlitePool,
 }
 
 impl BuiltinToolAdapter {
-    pub fn new(tool: Box<dyn UnifiedTool>) -> Self {
+    pub fn new(tool: &dyn UnifiedTool, pool: SqlitePool) -> Self {
         Self {
-            tool: Arc::new(tool),
+            tool_name: tool.name().to_string(),
+            tool_description: tool.description().to_string(),
+            input_schema: tool.input_schema(),
+            pool,
         }
     }
 }
 
 impl ToolDyn for BuiltinToolAdapter {
     fn name(&self) -> String {
-        self.tool.name().to_string()
+        self.tool_name.clone()
     }
 
     fn definition<'a>(
@@ -41,9 +45,9 @@ impl ToolDyn for BuiltinToolAdapter {
         _prompt: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
         let def = ToolDefinition {
-            name: self.tool.name().to_string(),
-            description: self.tool.description().to_string(),
-            parameters: self.tool.input_schema(),
+            name: self.tool_name.clone(),
+            description: self.tool_description.clone(),
+            parameters: self.input_schema.clone(),
         };
         Box::pin(async move { def })
     }
@@ -54,17 +58,18 @@ impl ToolDyn for BuiltinToolAdapter {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<String, rig::tool::ToolError>> + Send + 'a>,
     > {
-        let tool = self.tool.clone();
+        let pool = self.pool.clone();
+        let skill_name = self.tool_name.clone();
 
         Box::pin(async move {
             let input: Value =
                 serde_json::from_str(&args).map_err(rig::tool::ToolError::JsonError)?;
 
-            let invoke_id = uuid::Uuid::new_v4().to_string();
-
-            let result = tool.invoke(input, &invoke_id).await.map_err(|e| {
-                rig::tool::ToolError::ToolCallError(Box::new(ToolAdapterError(e.to_string())))
-            })?;
+            let result = SkillExecutorService::execute_skill(&pool, &skill_name, input)
+                .await
+                .map_err(|e| {
+                    rig::tool::ToolError::ToolCallError(Box::new(ToolAdapterError(e.to_string())))
+                })?;
 
             serde_json::to_string(&result).map_err(rig::tool::ToolError::JsonError)
         })
@@ -173,7 +178,7 @@ pub async fn build_skill_toolset(
 
     for &name in skill_names {
         if let Some(builtin_tool) = builtin_skills::get_builtin_tool(name) {
-            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool));
+            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool.as_ref(), pool.clone()));
         } else {
             let adapter = SkillToolAdapter::from_skill_name(pool, name).await?;
             toolset.add_tool(adapter);
@@ -194,7 +199,7 @@ pub async fn build_all_enabled_skill_toolset(pool: &SqlitePool) -> Result<ToolSe
         }
 
         if let Some(builtin_tool) = builtin_skills::get_builtin_tool(&skill.name) {
-            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool));
+            toolset.add_tool(BuiltinToolAdapter::new(builtin_tool.as_ref(), pool.clone()));
             continue;
         }
 

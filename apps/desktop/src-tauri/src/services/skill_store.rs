@@ -110,15 +110,10 @@ impl SkillStoreService {
             )));
         }
 
-        // Python 技能：检查是否存在 requirements.txt，如有则创建虚拟环境并安装依赖
+        // Python 技能：始终创建虚拟环境，有 requirements.txt 时额外安装依赖
         let env_path = if skill.skill_type == "python" {
-            let requirements_path =
-                std::path::Path::new(&skill.source_path).join("requirements.txt");
-            if requirements_path.exists() {
-                Some(Self::setup_python_env(&skill.name, &requirements_path).await?)
-            } else {
-                None
-            }
+            let skill_dir = std::path::Path::new(&skill.source_path);
+            Some(Self::setup_python_env_always(&skill.name, skill_dir).await?)
         } else {
             None
         };
@@ -255,11 +250,27 @@ impl SkillStoreService {
         // 浅克隆仓库（depth=1 减少下载量）
         Self::git_clone(git_url, &target_dir).await?;
 
-        // 解析 SKILL.md
+        // clone 成功后的所有步骤统一走 cleanup-on-error：
+        // 任何失败都清理 target_dir，避免半成品目录残留阻塞重试。
+        match Self::post_clone_setup(pool, git_url, &target_dir).await {
+            Ok(item) => Ok(item),
+            Err(e) => {
+                let _ = tokio::fs::remove_dir_all(&target_dir).await;
+                Err(e)
+            }
+        }
+    }
+
+    /// clone 成功后的安装步骤（解析 SKILL.md → 创建 venv → 安装依赖 → 注册 DB → 审计）。
+    ///
+    /// 此方法由 `install_from_git` 调用，任何失败由调用方统一清理 target_dir。
+    async fn post_clone_setup(
+        pool: &SqlitePool,
+        git_url: &str,
+        target_dir: &Path,
+    ) -> Result<SkillStoreItem, AppError> {
         let skill_md_path = target_dir.join("SKILL.md");
         if !skill_md_path.exists() {
-            // 克隆成功但缺少 SKILL.md，清理目录
-            let _ = tokio::fs::remove_dir_all(&target_dir).await;
             return Err(AppError::InvalidInput(format!(
                 "Git 仓库 '{git_url}' 缺少 SKILL.md 文件，不符合技能目录规范"
             )));
@@ -271,15 +282,9 @@ impl SkillStoreService {
 
         let (skill_name, description, version) = Self::parse_skill_md_content(&skill_md_content)?;
 
-        // 安装 Python 依赖（如果存在 requirements.txt）
-        let requirements_path = target_dir.join("requirements.txt");
-        let env_path = if requirements_path.exists() {
-            Some(Self::setup_python_env(&skill_name, &requirements_path).await?)
-        } else {
-            None
-        };
+        // Python 技能始终创建 venv（确保 env_path 非空），仅在有 requirements.txt 时安装依赖
+        let env_path = Self::setup_python_env_always(&skill_name, target_dir).await?;
 
-        // 注册到数据库（包含 env_path 以确保 Python 技能可执行）
         let input = CreateSkillInput {
             name: skill_name.clone(),
             version: version.clone(),
@@ -288,13 +293,12 @@ impl SkillStoreService {
             display_name: Some(skill_name.clone()),
             description: Some(description.clone()),
             skill_type: String::from("python"),
-            env_path,
+            env_path: Some(env_path),
             config_json: None,
         };
 
         let record = SkillService::create_skill(pool, input).await?;
 
-        // 写入审计日志
         let detail = serde_json::json!({
             "skill_name": skill_name,
             "git_url": git_url,
@@ -478,16 +482,19 @@ impl SkillStoreService {
         Ok((name, description, version))
     }
 
-    /// 为技能创建 Python 虚拟环境并安装依赖，返回环境路径。
+    /// 为 Python 技能始终创建虚拟环境，有 requirements.txt 时额外安装依赖。
     ///
-    /// 调用 `UvManager` 创建隔离环境，再通过 `uv pip install -r` 安装 requirements。
-    async fn setup_python_env(
+    /// 确保所有 Python 技能都有 env_path，避免"安装成功但无法执行"的问题。
+    async fn setup_python_env_always(
         skill_name: &str,
-        requirements_path: &Path,
+        skill_dir: &Path,
     ) -> Result<String, AppError> {
         let env_path = UvManager::create_skill_env(skill_name, None).await?;
 
-        UvManager::install_skill_deps(&env_path, &requirements_path.to_string_lossy()).await?;
+        let requirements_path = skill_dir.join("requirements.txt");
+        if requirements_path.exists() {
+            UvManager::install_skill_deps(&env_path, &requirements_path.to_string_lossy()).await?;
+        }
 
         Ok(env_path)
     }
