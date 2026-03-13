@@ -248,24 +248,24 @@ fn process_image(
 
     // 原子写入：先保存到同目录临时文件，再 rename 到最终路径
     // 防止写入过程中 output_path 被替换为 symlink 导致任意文件覆盖
+    // 使用 UUID 临时文件名 + 写前检测已存在则重试
     let output = std::path::Path::new(output_path);
     let parent = output
         .parent()
         .ok_or_else(|| "输出路径缺少父目录".to_string())?;
-    let tmp_name = format!(
-        ".tmp-img-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let tmp_path = parent.join(&tmp_name);
-
-    processed.save(&tmp_path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        format!("保存处理后的图片到临时文件失败：{e}")
-    })?;
+    let tmp_path = loop {
+        let tmp_name = format!(".tmp-img-{}", uuid::Uuid::new_v4());
+        let path = parent.join(&tmp_name);
+        // 若已存在（包括 symlink）则重试新 UUID
+        if path.symlink_metadata().is_ok() {
+            continue;
+        }
+        processed.save(&path).map_err(|e| {
+            let _ = std::fs::remove_file(&path);
+            format!("保存处理后的图片到临时文件失败：{e}")
+        })?;
+        break path;
+    };
 
     std::fs::rename(&tmp_path, output_path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);

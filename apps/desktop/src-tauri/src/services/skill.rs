@@ -32,7 +32,10 @@ fn validate_skill_name(name: &str) -> Result<(), AppError> {
 
 /// 校验 Python 技能 source 路径落在合法的技能目录下（canonicalize 解析符号链接和 `..`）。
 ///
-/// 合法路径必须满足：路径存在，且 canonicalize 后位于某个 `.agents/skills/` 根目录下。
+/// 合法路径必须满足：
+/// 1. 路径存在且 canonicalize 成功
+/// 2. 必须位于某个 `.agents/skills/` 目录下（组件级判断，非字符串 contains）
+/// 3. 必须位于允许的根目录内（用户 home 或系统临时目录）
 fn validate_python_source_path(source: &str) -> Result<(), AppError> {
     let source_path = Path::new(source);
     let canonical = source_path.canonicalize().map_err(|e| {
@@ -41,16 +44,67 @@ fn validate_python_source_path(source: &str) -> Result<(), AppError> {
         ))
     })?;
 
-    let sep = std::path::MAIN_SEPARATOR;
-    let agents_skills = format!("{sep}.agents{sep}skills{sep}");
-    let canonical_str = canonical.to_string_lossy();
-    if !canonical_str.contains(&agents_skills) {
+    // 组件级校验：检查路径中是否存在 .agents/skills 目录结构
+    if !is_under_agents_skills_dir(&canonical) {
         return Err(AppError::InvalidInput(format!(
             "Python 技能 source 必须位于 .agents/skills/ 目录下，当前规范路径：'{}'",
             canonical.display()
         )));
     }
+
+    // 校验必须位于允许的根目录内（home 或 temp_dir）
+    if !is_under_allowed_roots(&canonical) {
+        return Err(AppError::InvalidInput(format!(
+            "Python 技能 source 必须位于用户目录或临时目录内，当前规范路径：'{}'",
+            canonical.display()
+        )));
+    }
+
     Ok(())
+}
+
+/// 组件级判断路径是否位于 .agents/skills/ 目录结构下。
+fn is_under_agents_skills_dir(path: &Path) -> bool {
+    let mut components = path.components().peekable();
+    while let Some(component) = components.next() {
+        if let std::path::Component::Normal(name) = component {
+            if name == ".agents" {
+                if let Some(std::path::Component::Normal(next)) = components.peek() {
+                    if *next == "skills" {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 校验路径是否位于允许的根目录内（用户 home 或系统临时目录）。
+fn is_under_allowed_roots(path: &Path) -> bool {
+    // 获取 home 目录
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE").ok()
+    } else {
+        std::env::var("HOME").ok()
+    };
+
+    if let Some(home_str) = home {
+        if let Ok(home_path) = Path::new(&home_str).canonicalize() {
+            if path.starts_with(&home_path) {
+                return true;
+            }
+        }
+    }
+
+    // 检查 temp_dir
+    if let Ok(canonical_temp) = std::env::temp_dir().canonicalize() {
+        if path.starts_with(&canonical_temp) {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// 校验 Python 技能 env_path 落在 ~/.pureworker/skill-envs/ 下（canonicalize 解析符号链接）。

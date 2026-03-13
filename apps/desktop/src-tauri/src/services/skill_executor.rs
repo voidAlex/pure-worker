@@ -485,14 +485,18 @@ impl SkillExecutorService {
                 ))
             })?;
 
-        let sep = std::path::MAIN_SEPARATOR;
-        let agents_skills_pattern = format!("{sep}.agents{sep}skills{sep}");
-        if !canonical_source
-            .to_string_lossy()
-            .contains(&agents_skills_pattern)
-        {
+        // 组件级校验：检查 source 是否位于 .agents/skills/ 目录结构下
+        if !is_under_agents_skills_dir(&canonical_source) {
             return Err(AppError::PermissionDenied(format!(
                 "Python 技能 source 目录逃逸出 .agents/skills/ 范围：'{}'",
+                canonical_source.display()
+            )));
+        }
+
+        // 校验必须位于允许的根目录内（home 或 temp_dir）
+        if !is_under_allowed_roots(&canonical_source) {
+            return Err(AppError::PermissionDenied(format!(
+                "Python 技能 source 必须位于用户目录或临时目录内：'{}'",
                 canonical_source.display()
             )));
         }
@@ -547,6 +551,50 @@ impl SkillExecutorService {
 /// 生成调用唯一标识。
 fn generate_invoke_id() -> String {
     Uuid::new_v4().to_string()
+}
+
+/// 组件级判断路径是否位于 .agents/skills/ 目录结构下。
+fn is_under_agents_skills_dir(path: &std::path::Path) -> bool {
+    let mut components = path.components().peekable();
+    while let Some(component) = components.next() {
+        if let std::path::Component::Normal(name) = component {
+            if name == ".agents" {
+                if let Some(std::path::Component::Normal(next)) = components.peek() {
+                    if *next == "skills" {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 校验路径是否位于允许的根目录内（用户 home 或系统临时目录）。
+fn is_under_allowed_roots(path: &std::path::Path) -> bool {
+    // 获取 home 目录
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE").ok()
+    } else {
+        std::env::var("HOME").ok()
+    };
+
+    if let Some(home_str) = home {
+        if let Ok(home_path) = std::path::Path::new(&home_str).canonicalize() {
+            if path.starts_with(&home_path) {
+                return true;
+            }
+        }
+    }
+
+    // 检查 temp_dir
+    if let Ok(canonical_temp) = std::env::temp_dir().canonicalize() {
+        if path.starts_with(&canonical_temp) {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// 简易哈希函数（FNV-1a 64 位），用于生成 env_path 的摘要标识。

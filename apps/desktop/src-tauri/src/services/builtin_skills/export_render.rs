@@ -278,22 +278,27 @@ fn render_docx_blocking(
         .map_err(|e| format!("生成 Word 文档失败：{e}"))?;
 
     // 原子写入：先写临时文件再 rename，防止 TOCTOU symlink 替换攻击
-    let tmp_name = format!(
-        ".tmp-docx-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let tmp_path = parent.join(&tmp_name);
-
-    let file =
-        std::fs::File::create(&tmp_path).map_err(|e| format!("创建临时输出文件失败：{e}"))?;
-    std::io::Write::write_all(&mut std::io::BufWriter::new(file), buf.get_ref()).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        format!("写入 Word 文档到临时文件失败：{e}")
-    })?;
+    // 使用 UUID 临时文件名 + create_new 拒绝预占位
+    let tmp_path = loop {
+        let tmp_name = format!(".tmp-docx-{}", uuid::Uuid::new_v4());
+        let path = parent.join(&tmp_name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => {
+                std::io::Write::write_all(&mut std::io::BufWriter::new(file), buf.get_ref())
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&path);
+                        format!("写入 Word 文档到临时文件失败：{e}")
+                    })?;
+                break path;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("创建临时输出文件失败：{e}")),
+        }
+    };
 
     std::fs::rename(&tmp_path, output_path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);
@@ -374,20 +379,20 @@ fn render_xlsx_blocking(
     }
 
     // 原子写入：先保存到临时文件再 rename，防止 TOCTOU symlink 替换攻击
-    let tmp_name = format!(
-        ".tmp-xlsx-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let tmp_path = parent.join(&tmp_name);
-
-    workbook.save(&tmp_path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        format!("保存 Excel 到临时文件失败：{e}")
-    })?;
+    // 使用 UUID 临时文件名 + 写前检测已存在则重试
+    let tmp_path = loop {
+        let tmp_name = format!(".tmp-xlsx-{}", uuid::Uuid::new_v4());
+        let path = parent.join(&tmp_name);
+        // 若已存在（包括 symlink）则重试新 UUID
+        if path.symlink_metadata().is_ok() {
+            continue;
+        }
+        workbook.save(&path).map_err(|e| {
+            let _ = std::fs::remove_file(&path);
+            format!("保存 Excel 到临时文件失败：{e}")
+        })?;
+        break path;
+    };
 
     std::fs::rename(&tmp_path, output_path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);
