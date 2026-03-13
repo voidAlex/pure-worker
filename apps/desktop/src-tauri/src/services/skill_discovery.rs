@@ -121,6 +121,7 @@ impl SkillDiscoveryService {
 
             // Python 技能在自动发现时没有环境（env_path 为空），
             // 标记为 disabled + unhealthy，需用户手动安装环境后启用。
+            // 如果标记失败则回滚（删除刚创建的记录），避免残留 enabled + 无 env_path 的不可用技能。
             if skill.skill_type == "python" {
                 let update = UpdateSkillInput {
                     display_name: None,
@@ -129,17 +130,34 @@ impl SkillDiscoveryService {
                     config_json: None,
                     status: Some(String::from("disabled")),
                 };
-                let _ = SkillService::update_skill(pool, &created.id, update).await;
+                if let Err(e) = SkillService::update_skill(pool, &created.id, update).await {
+                    eprintln!(
+                        "[技能发现] 标记 Python 技能 '{}' 为 disabled 失败，回滚注册：{e}",
+                        skill.name
+                    );
+                    let _ = SkillService::delete_skill(pool, &created.id).await;
+                    skill.already_installed = false;
+                    continue;
+                }
 
                 let now = chrono::Utc::now().to_rfc3339();
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "UPDATE skill_registry SET health_status = 'unhealthy', last_health_check = ?, updated_at = ? WHERE id = ? AND is_deleted = 0",
                 )
                 .bind(&now)
                 .bind(&now)
                 .bind(&created.id)
                 .execute(pool)
-                .await;
+                .await
+                {
+                    eprintln!(
+                        "[技能发现] 标记 Python 技能 '{}' 健康状态为 unhealthy 失败，回滚注册：{e}",
+                        skill.name
+                    );
+                    let _ = SkillService::delete_skill(pool, &created.id).await;
+                    skill.already_installed = false;
+                    continue;
+                }
             }
 
             if let Err(e) = AuditService::log(

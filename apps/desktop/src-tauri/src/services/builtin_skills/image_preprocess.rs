@@ -242,6 +242,10 @@ fn process_image(
         }
     };
 
+    // 写入前二次校验输出路径（防止 TOCTOU：首次校验与实际写入之间路径被替换为 symlink）
+    crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
+        .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
+
     processed
         .save(output_path)
         .map_err(|e| format!("保存处理后的图片失败：{e}"))?;

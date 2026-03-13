@@ -254,6 +254,10 @@ fn render_docx_blocking(
 ) -> Result<serde_json::Value, String> {
     use docx_rs::{Docx, Paragraph, Run};
 
+    // 写入前二次校验输出路径（防止 TOCTOU：首次校验与实际写入之间路径被替换为 symlink）
+    crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
+        .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
+
     if let Some(parent) = Path::new(output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
     }
@@ -287,6 +291,10 @@ fn render_xlsx_blocking(
     output_path: &str,
 ) -> Result<serde_json::Value, String> {
     use rust_xlsxwriter::Workbook;
+
+    // 写入前二次校验输出路径（防止 TOCTOU：首次校验与实际写入之间路径被替换为 symlink）
+    crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
+        .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
 
     if let Some(parent) = Path::new(output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
