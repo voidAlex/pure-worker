@@ -258,9 +258,11 @@ fn render_docx_blocking(
     crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
         .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
 
-    if let Some(parent) = Path::new(output_path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
-    }
+    let output = Path::new(output_path);
+    let parent = output
+        .parent()
+        .ok_or_else(|| "输出路径缺少父目录".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
 
     let mut doc = Docx::new();
     for text in paragraphs {
@@ -268,15 +270,33 @@ fn render_docx_blocking(
         doc = doc.add_paragraph(paragraph);
     }
 
-    let file = std::fs::File::create(output_path).map_err(|e| format!("创建输出文件失败：{e}"))?;
-
     let mut buf = Cursor::new(Vec::new());
     doc.build()
         .pack(&mut buf)
         .map_err(|e| format!("生成 Word 文档失败：{e}"))?;
 
-    std::io::Write::write_all(&mut std::io::BufWriter::new(file), buf.get_ref())
-        .map_err(|e| format!("写入 Word 文档失败：{e}"))?;
+    // 原子写入：先写临时文件再 rename，防止 TOCTOU symlink 替换攻击
+    let tmp_name = format!(
+        ".tmp-docx-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let tmp_path = parent.join(&tmp_name);
+
+    let file =
+        std::fs::File::create(&tmp_path).map_err(|e| format!("创建临时输出文件失败：{e}"))?;
+    std::io::Write::write_all(&mut std::io::BufWriter::new(file), buf.get_ref()).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("写入 Word 文档到临时文件失败：{e}")
+    })?;
+
+    std::fs::rename(&tmp_path, output_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("将临时文件重命名到最终输出路径失败：{e}")
+    })?;
 
     Ok(serde_json::json!({
         "format": "docx",
@@ -296,9 +316,11 @@ fn render_xlsx_blocking(
     crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
         .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
 
-    if let Some(parent) = Path::new(output_path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
-    }
+    let output = Path::new(output_path);
+    let parent = output
+        .parent()
+        .ok_or_else(|| "输出路径缺少父目录".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
 
     let mut workbook = Workbook::new();
     let worksheet = workbook
@@ -347,9 +369,26 @@ fn render_xlsx_blocking(
         }
     }
 
-    workbook
-        .save(output_path)
-        .map_err(|e| format!("保存 Excel 文件失败：{e}"))?;
+    // 原子写入：先保存到临时文件再 rename，防止 TOCTOU symlink 替换攻击
+    let tmp_name = format!(
+        ".tmp-xlsx-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let tmp_path = parent.join(&tmp_name);
+
+    workbook.save(&tmp_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("保存 Excel 到临时文件失败：{e}")
+    })?;
+
+    std::fs::rename(&tmp_path, output_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("将临时文件重命名到最终输出路径失败：{e}")
+    })?;
 
     Ok(serde_json::json!({
         "format": "xlsx",

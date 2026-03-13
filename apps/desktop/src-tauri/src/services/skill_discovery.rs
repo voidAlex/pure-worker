@@ -201,6 +201,40 @@ impl SkillDiscoveryService {
                 continue;
             }
 
+            // 安全校验：SKILL.md 必须是普通文件（拒绝 symlink，防止读取技能目录外的任意文件）
+            match skill_md_path.symlink_metadata() {
+                Ok(meta) => {
+                    if meta.file_type().is_symlink() {
+                        eprintln!(
+                            "[技能发现] SKILL.md 是符号链接，已跳过：'{}'",
+                            skill_md_path.display()
+                        );
+                        continue;
+                    }
+                    if !meta.is_file() {
+                        continue;
+                    }
+                }
+                Err(_) => continue,
+            }
+
+            // 边界校验：canonicalize 后确认 SKILL.md 仍在扫描目录内
+            let canonical_dir = match dir.canonicalize() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let canonical_md = match skill_md_path.canonicalize() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if !canonical_md.starts_with(&canonical_dir) {
+                eprintln!(
+                    "[技能发现] SKILL.md canonicalize 后逃逸出扫描目录，已跳过：'{}'",
+                    canonical_md.display()
+                );
+                continue;
+            }
+
             let content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
                 AppError::FileOperation(format!(
                     "读取 SKILL.md 失败 '{}'：{e}",
@@ -290,19 +324,95 @@ impl SkillDiscoveryService {
         Ok((name, description, version))
     }
 
-    /// 获取用户级技能目录路径。
+    /// 获取用户级技能目录路径（带 symlink 安全校验）。
     ///
     /// 通过 HOME（Unix）或 USERPROFILE（Windows）环境变量定位。
+    /// 对 `~/.agents` 和 `~/.agents/skills` 逐级校验：
+    /// 1. 拒绝 symlink（防止 symlink 指向白名单外目录导致扫描越权）
+    /// 2. canonicalize 后确认仍在用户主目录内（边界校验）
     fn get_user_skills_dir() -> Option<PathBuf> {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .ok()?;
 
-        let dir = PathBuf::from(home).join(".agents").join("skills");
-        if dir.exists() {
-            Some(dir)
+        let home_path = PathBuf::from(&home);
+
+        // canonicalize HOME 本身，作为边界基准
+        let canonical_home = match home_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[技能发现] 用户主目录 canonicalize 失败：{e}");
+                return None;
+            }
+        };
+
+        let agents_dir = home_path.join(".agents");
+
+        // 校验 ~/.agents 不是 symlink
+        if agents_dir.symlink_metadata().is_ok() {
+            let meta = match agents_dir.symlink_metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("[技能发现] 读取 ~/.agents 元数据失败：{e}");
+                    return None;
+                }
+            };
+            if meta.file_type().is_symlink() {
+                eprintln!(
+                    "[技能发现] 用户级 ~/.agents 目录是符号链接，已拒绝扫描：'{}'",
+                    agents_dir.display()
+                );
+                return None;
+            }
+            if !meta.is_dir() {
+                return None;
+            }
         } else {
-            None
+            // ~/.agents 不存在
+            return None;
         }
+
+        let skills_dir = agents_dir.join("skills");
+
+        // 校验 ~/.agents/skills 不是 symlink
+        if skills_dir.symlink_metadata().is_ok() {
+            let meta = match skills_dir.symlink_metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("[技能发现] 读取 ~/.agents/skills 元数据失败：{e}");
+                    return None;
+                }
+            };
+            if meta.file_type().is_symlink() {
+                eprintln!(
+                    "[技能发现] 用户级 ~/.agents/skills 目录是符号链接，已拒绝扫描：'{}'",
+                    skills_dir.display()
+                );
+                return None;
+            }
+            if !meta.is_dir() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        // canonicalize 后确认 skills_dir 仍在用户主目录内
+        let canonical_skills = match skills_dir.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[技能发现] 用户级 skills 目录 canonicalize 失败：{e}");
+                return None;
+            }
+        };
+        if !canonical_skills.starts_with(&canonical_home) {
+            eprintln!(
+                "[技能发现] 用户级 skills 目录 canonicalize 后逃逸出主目录：'{}'",
+                canonical_skills.display()
+            );
+            return None;
+        }
+
+        Some(canonical_skills)
     }
 }

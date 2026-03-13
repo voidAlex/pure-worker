@@ -112,9 +112,20 @@ impl SkillStoreService {
             )));
         }
 
-        // Python 技能：始终创建虚拟环境，有 requirements.txt 时额外安装依赖
+        // Python 技能：校验 requirements.txt 安全性后创建虚拟环境并安装依赖
         let env_path = if skill.skill_type == "python" {
             let skill_dir = std::path::Path::new(&skill.source_path);
+            // 校验 requirements.txt（若存在）不是 symlink
+            let requirements_path = skill_dir.join("requirements.txt");
+            if requirements_path.exists() {
+                if let Ok(canonical_skill_dir) = skill_dir.canonicalize() {
+                    Self::validate_repo_file(
+                        &requirements_path,
+                        &canonical_skill_dir,
+                        "requirements.txt",
+                    )?;
+                }
+            }
             Some(Self::setup_python_env_always(&skill.name, skill_dir).await?)
         } else {
             None
@@ -279,7 +290,7 @@ impl SkillStoreService {
             )));
         }
 
-        // 预克隆检查：目标路径若已存在，确保不是 symlink
+        // 检查最终目标路径是否已被占用
         if target_dir.symlink_metadata().is_ok() {
             let target_meta = target_dir.symlink_metadata().map_err(|e| {
                 AppError::FileOperation(format!(
@@ -293,18 +304,51 @@ impl SkillStoreService {
                     target_dir.display()
                 )));
             }
-            // 目录或文件已存在（非 symlink），提示用户
             return Err(AppError::InvalidInput(format!(
                 "目标目录已存在：'{}'，请先手动删除或选择其他名称",
                 target_dir.display()
             )));
         }
 
-        // 浅克隆仓库（depth=1 减少下载量）
-        Self::git_clone(git_url, &target_dir).await?;
+        // 原子落位：先 clone 到同目录下的临时目录，成功后 rename 到最终位置
+        // 防止 TOCTOU（检查 target_dir 不存在后、git clone 前被抢占替换为 symlink）
+        let tmp_name = format!(".tmp-install-{}", uuid::Uuid::new_v4().as_simple());
+        let tmp_dir = skills_dir.join(&tmp_name);
 
-        // clone 成功后的所有步骤统一走 cleanup-on-error：
-        // 任何失败都清理 target_dir，避免半成品目录残留阻塞重试。
+        // 确保临时目录名不冲突（极端情况 UUID 碰撞）
+        if tmp_dir.exists() {
+            let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+        }
+
+        Self::git_clone(git_url, &tmp_dir).await?;
+
+        // clone 后校验临时目录是真实目录（非 symlink）且仍在 skills_dir 内
+        match tmp_dir.symlink_metadata() {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() || !meta.is_dir() {
+                    let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+                    return Err(AppError::PermissionDenied(
+                        "克隆结果不是真实目录，已清理".to_string(),
+                    ));
+                }
+            }
+            Err(e) => {
+                let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+                return Err(AppError::FileOperation(format!(
+                    "读取克隆临时目录元数据失败：{e}"
+                )));
+            }
+        }
+
+        // 原子 rename 到最终位置（同文件系统内 rename 是原子操作）
+        if let Err(e) = tokio::fs::rename(&tmp_dir, &target_dir).await {
+            let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+            return Err(AppError::FileOperation(format!(
+                "将克隆目录重命名到最终位置失败：{e}"
+            )));
+        }
+
+        // rename 成功后的所有步骤统一走 cleanup-on-error
         match Self::post_clone_setup(pool, git_url, &target_dir).await {
             Ok(item) => Ok(item),
             Err(e) => {
@@ -322,7 +366,16 @@ impl SkillStoreService {
         git_url: &str,
         target_dir: &Path,
     ) -> Result<SkillStoreItem, AppError> {
+        let canonical_target = target_dir.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "克隆目录 canonicalize 失败 '{}'：{e}",
+                target_dir.display()
+            ))
+        })?;
+
+        // 校验 SKILL.md：拒绝 symlink + 确认 canonicalize 后仍在 target_dir 内
         let skill_md_path = target_dir.join("SKILL.md");
+        Self::validate_repo_file(&skill_md_path, &canonical_target, "SKILL.md")?;
         if !skill_md_path.exists() {
             return Err(AppError::InvalidInput(format!(
                 "Git 仓库 '{git_url}' 缺少 SKILL.md 文件，不符合技能目录规范"
@@ -335,8 +388,22 @@ impl SkillStoreService {
 
         let (skill_name, description, version) = Self::parse_skill_md_content(&skill_md_content)?;
 
-        // Python 技能始终创建 venv（确保 env_path 非空），仅在有 requirements.txt 时安装依赖
-        let env_path = Self::setup_python_env_always(&skill_name, target_dir).await?;
+        // 校验 requirements.txt（若存在）：拒绝 symlink + 边界校验
+        let requirements_path = target_dir.join("requirements.txt");
+        let has_valid_requirements = if requirements_path.exists() {
+            Self::validate_repo_file(&requirements_path, &canonical_target, "requirements.txt")?;
+            true
+        } else {
+            false
+        };
+
+        // Python 技能始终创建 venv，仅在有合法 requirements.txt 时安装依赖
+        let env_path = if has_valid_requirements {
+            Self::setup_python_env_always(&skill_name, target_dir).await?
+        } else {
+            // 无 requirements.txt 时只创建空 venv
+            UvManager::create_skill_env(&skill_name, None).await?
+        };
 
         let input = CreateSkillInput {
             name: skill_name.clone(),
@@ -545,6 +612,7 @@ impl SkillStoreService {
     /// 为 Python 技能始终创建虚拟环境，有 requirements.txt 时额外安装依赖。
     ///
     /// 确保所有 Python 技能都有 env_path，避免"安装成功但无法执行"的问题。
+    /// requirements.txt 在传入前已经过 symlink 校验（由调用方保证）。
     async fn setup_python_env_always(
         skill_name: &str,
         skill_dir: &Path,
@@ -557,5 +625,55 @@ impl SkillStoreService {
         }
 
         Ok(env_path)
+    }
+
+    /// 校验仓库内文件：拒绝 symlink，确认 canonicalize 后仍在仓库目录内。
+    ///
+    /// 防止恶意 Git 仓库通过 symlink 文件读取仓库目录外的任意文件。
+    fn validate_repo_file(
+        file_path: &Path,
+        canonical_repo_dir: &Path,
+        file_label: &str,
+    ) -> Result<(), AppError> {
+        if !file_path.exists() {
+            return Ok(());
+        }
+
+        let meta = file_path.symlink_metadata().map_err(|e| {
+            AppError::FileOperation(format!(
+                "无法读取 {file_label} 元数据 '{}'：{e}",
+                file_path.display()
+            ))
+        })?;
+
+        if meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(format!(
+                "技能包中的 {file_label} 是符号链接，存在安全风险，已拒绝：'{}'",
+                file_path.display()
+            )));
+        }
+
+        if !meta.is_file() {
+            return Err(AppError::InvalidInput(format!(
+                "技能包中的 {file_label} 不是普通文件：'{}'",
+                file_path.display()
+            )));
+        }
+
+        let canonical_file = file_path.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "{file_label} canonicalize 失败 '{}'：{e}",
+                file_path.display()
+            ))
+        })?;
+
+        if !canonical_file.starts_with(canonical_repo_dir) {
+            return Err(AppError::PermissionDenied(format!(
+                "技能包中的 {file_label} canonicalize 后逃逸出仓库目录，已拒绝：'{}'",
+                canonical_file.display()
+            )));
+        }
+
+        Ok(())
     }
 }

@@ -246,9 +246,31 @@ fn process_image(
     crate::services::path_whitelist::PathWhitelistService::validate_write_path(output_path)
         .map_err(|e| format!("写入前二次路径校验失败：{e}"))?;
 
-    processed
-        .save(output_path)
-        .map_err(|e| format!("保存处理后的图片失败：{e}"))?;
+    // 原子写入：先保存到同目录临时文件，再 rename 到最终路径
+    // 防止写入过程中 output_path 被替换为 symlink 导致任意文件覆盖
+    let output = std::path::Path::new(output_path);
+    let parent = output
+        .parent()
+        .ok_or_else(|| "输出路径缺少父目录".to_string())?;
+    let tmp_name = format!(
+        ".tmp-img-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let tmp_path = parent.join(&tmp_name);
+
+    processed.save(&tmp_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("保存处理后的图片到临时文件失败：{e}")
+    })?;
+
+    std::fs::rename(&tmp_path, output_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("将临时文件重命名到最终输出路径失败：{e}")
+    })?;
 
     Ok(serde_json::json!({
         "operation": operation,
