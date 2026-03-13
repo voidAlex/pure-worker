@@ -223,14 +223,16 @@ impl SkillStoreService {
         // 从 URL 中提取仓库名称作为技能目录名
         let repo_name = Self::extract_repo_name(git_url)?;
 
-        // 校验 repo_name 合法性，防止目录穿越
-        if repo_name == "."
+        // 校验 repo_name 合法性：严格白名单 [A-Za-z0-9._-]，防止目录穿越和盘符逃逸
+        if repo_name.is_empty()
+            || repo_name == "."
             || repo_name == ".."
-            || repo_name.contains('/')
-            || repo_name.contains('\\')
+            || !repo_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
         {
             return Err(AppError::InvalidInput(format!(
-                "从 Git URL 提取的仓库名称不合法：'{repo_name}'"
+                "从 Git URL 提取的仓库名称不合法（仅允许字母、数字、点、下划线和连字符）：'{repo_name}'"
             )));
         }
 
@@ -251,6 +253,20 @@ impl SkillStoreService {
             .map_err(|e| AppError::FileOperation(format!("创建技能目录失败：{e}")))?;
 
         let target_dir = skills_dir.join(&repo_name);
+
+        // 规范化后校验 target_dir 仍在 skills_dir 下，兜底防护路径逃逸
+        let canonical_skills = skills_dir
+            .canonicalize()
+            .map_err(|e| AppError::FileOperation(format!("无法规范化技能目录路径：{e}")))?;
+        let absolute_target = std::path::absolute(&target_dir)
+            .map_err(|e| AppError::FileOperation(format!("无法获取目标目录绝对路径：{e}")))?;
+        if !absolute_target.starts_with(&canonical_skills) {
+            return Err(AppError::InvalidInput(format!(
+                "目标安装路径逃逸出技能目录，已拒绝：'{}'",
+                absolute_target.display()
+            )));
+        }
+
         if target_dir.exists() {
             return Err(AppError::InvalidInput(format!(
                 "目标目录已存在：'{}'，请先手动删除或选择其他名称",
