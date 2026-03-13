@@ -155,13 +155,14 @@ impl SkillService {
                 }
                 validate_python_source_path(source)?;
 
-                let env_path = input.env_path.as_deref().unwrap_or("").trim();
-                if env_path.is_empty() {
-                    return Err(AppError::InvalidInput(String::from(
-                        "Python 技能必须提供 env_path（虚拟环境目录路径）",
-                    )));
+                // env_path 允许为空（自动发现时尚未创建虚拟环境，后续安装时补全）
+                // 有值时必须通过路径边界校验
+                if let Some(ref ep) = input.env_path {
+                    let ep_trimmed = ep.trim();
+                    if !ep_trimmed.is_empty() {
+                        validate_python_env_path(ep_trimmed)?;
+                    }
                 }
-                validate_python_env_path(env_path)?;
             }
             other => {
                 return Err(AppError::InvalidInput(format!(

@@ -65,7 +65,19 @@ impl SkillDiscoveryService {
         match PathWhitelistService::validate_skills_dir(workspace_path) {
             Ok((_canonical_workspace, project_skills_dir)) => {
                 if project_skills_dir.exists() {
-                    Self::scan_directory(&project_skills_dir, &existing_names, &mut skills_map)?;
+                    // 扫描前二次校验（防止 TOCTOU：validate 与 scan 之间 .agents 被替换为 symlink）
+                    match PathWhitelistService::validate_skills_dir(workspace_path) {
+                        Ok((_cw2, verified_skills_dir)) => {
+                            Self::scan_directory(
+                                &verified_skills_dir,
+                                &existing_names,
+                                &mut skills_map,
+                            )?;
+                        }
+                        Err(e2) => {
+                            eprintln!("[技能发现] 扫描前二次校验失败，跳过扫描：{e2}");
+                        }
+                    }
                 }
             }
             Err(e) => {
