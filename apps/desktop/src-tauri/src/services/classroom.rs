@@ -26,12 +26,10 @@ async fn resolve_teacher_id(pool: &SqlitePool) -> Result<String, AppError> {
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
-        "INSERT INTO teacher_profile (id, name, gender, phone, email, avatar_path, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+        "INSERT INTO teacher_profile (id, name, stage, subject, textbook_version, tone_preset, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, ?)",
     )
     .bind(&teacher_id)
     .bind("我的教师档案")
-    .bind("")
-    .bind("")
     .bind("")
     .bind("")
     .bind(&now)
