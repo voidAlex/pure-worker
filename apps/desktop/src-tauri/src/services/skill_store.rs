@@ -223,6 +223,17 @@ impl SkillStoreService {
         // 从 URL 中提取仓库名称作为技能目录名
         let repo_name = Self::extract_repo_name(git_url)?;
 
+        // 校验 repo_name 合法性，防止目录穿越
+        if repo_name == "."
+            || repo_name == ".."
+            || repo_name.contains('/')
+            || repo_name.contains('\\')
+        {
+            return Err(AppError::InvalidInput(format!(
+                "从 Git URL 提取的仓库名称不合法：'{repo_name}'"
+            )));
+        }
+
         // 检查是否已安装同名技能
         if SkillService::get_skill_by_name(pool, &repo_name)
             .await
