@@ -350,6 +350,25 @@ impl LlmProviderService {
             .build()
     }
 
+    /// 创建携带工具集的 Agent（使用 Chat Completions API）。
+    ///
+    /// 与 `create_agent` 相同的基础配置，但额外注册一组工具，
+    /// 使 Agent 可以在对话中通过函数调用执行技能。
+    pub fn create_agent_with_tools(
+        client: &openai::CompletionsClient,
+        model: &str,
+        preamble: &str,
+        temperature: f64,
+        tools: Vec<Box<dyn rig::tool::ToolDyn>>,
+    ) -> rig::agent::Agent<openai::completion::CompletionModel> {
+        client
+            .agent(model)
+            .preamble(preamble)
+            .temperature(temperature)
+            .tools(tools)
+            .build()
+    }
+
     /// 按 ID 获取配置记录。
     pub async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<AiConfig, AppError> {
         let item = sqlx::query_as::<_, AiConfig>(

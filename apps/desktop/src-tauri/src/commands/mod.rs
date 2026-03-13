@@ -20,6 +20,8 @@ pub mod score_record;
 pub mod semester_comment;
 pub mod settings;
 pub mod skill;
+pub mod skill_executor;
+pub mod skill_store;
 pub mod storage_lifecycle;
 pub mod student;
 pub mod student_import;

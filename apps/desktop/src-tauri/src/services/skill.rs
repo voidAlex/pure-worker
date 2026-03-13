@@ -39,6 +39,19 @@ impl SkillService {
         Ok(item)
     }
 
+    /// 根据名称获取技能（取最新版本）。
+    pub async fn get_skill_by_name(pool: &SqlitePool, name: &str) -> Result<SkillRecord, AppError> {
+        let item = sqlx::query_as::<_, SkillRecord>(
+            "SELECT id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check FROM skill_registry WHERE name = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("技能不存在：{name}")))?;
+
+        Ok(item)
+    }
+
     /// 创建技能。
     pub async fn create_skill(
         pool: &SqlitePool,
