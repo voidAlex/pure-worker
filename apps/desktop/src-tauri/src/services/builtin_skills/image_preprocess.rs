@@ -3,42 +3,86 @@
 //! 提供基础图像处理操作，包括灰度转换、缩放和旋转。
 //! 底层使用 image 库，CPU 密集操作通过 spawn_blocking 异步执行。
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::time::Instant;
 
 use image::ImageReader;
 
 use crate::error::AppError;
 use crate::services::unified_tool::{
-    create_error_result, create_success_result, ToolResult, ToolRiskLevel,
+    create_error_result, create_success_result, ToolResult, ToolRiskLevel, UnifiedTool,
 };
 
-/// 执行图像预处理技能。
-///
-/// 根据 `operation` 字段分发到对应的图像处理操作。
-/// 所有操作均需要 `input_path` 和 `output_path` 参数。
-///
-/// # 支持的操作
-/// - `grayscale`: 灰度转换
-/// - `resize`: 缩放（需要 `width` 和 `height` 参数）
-/// - `rotate`: 旋转（需要 `degrees` 参数，支持 90/180/270）
-///
-/// # 输入格式
-/// ```json
-/// {
-///   "operation": "grayscale",
-///   "input_path": "/path/to/input.png",
-///   "output_path": "/path/to/output.png"
-/// }
-/// ```
-pub async fn execute(
+/// 图像预处理内置技能。
+pub struct ImagePreprocessSkill;
+
+impl UnifiedTool for ImagePreprocessSkill {
+    fn name(&self) -> &str {
+        "image.preprocess"
+    }
+
+    fn description(&self) -> &str {
+        "图像预处理：支持灰度转换、缩放、旋转操作"
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["grayscale", "resize", "rotate"],
+                    "description": "操作类型"
+                },
+                "input_path": { "type": "string", "description": "输入图片路径" },
+                "output_path": { "type": "string", "description": "输出图片路径" },
+                "width": { "type": "integer", "description": "缩放目标宽度（resize 时必填）" },
+                "height": { "type": "integer", "description": "缩放目标高度（resize 时必填）" },
+                "degrees": { "type": "integer", "enum": [90, 180, 270], "description": "旋转角度（rotate 时必填）" }
+            },
+            "required": ["operation", "input_path", "output_path"]
+        })
+    }
+
+    fn output_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "operation": { "type": "string" },
+                "input_path": { "type": "string" },
+                "output_path": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" }
+            }
+        })
+    }
+
+    fn risk_level(&self) -> ToolRiskLevel {
+        ToolRiskLevel::Medium
+    }
+
+    fn invoke(
+        &self,
+        input: serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>> {
+        Box::pin(async move {
+            let start = Instant::now();
+            let invoke_id = uuid::Uuid::new_v4().to_string();
+            execute_inner(input, &invoke_id, &start).await
+        })
+    }
+}
+
+/// 图像预处理内部执行逻辑。
+async fn execute_inner(
     input: serde_json::Value,
     invoke_id: &str,
     start: &Instant,
 ) -> Result<ToolResult, AppError> {
     let skill_name = "image.preprocess";
 
-    // 提取必填参数
     let operation = match input.get("operation").and_then(|v| v.as_str()) {
         Some(op) => op.to_string(),
         None => {
@@ -81,7 +125,6 @@ pub async fn execute(
         }
     };
 
-    // 校验输入文件存在
     if !Path::new(&input_path).exists() {
         let duration_ms = start.elapsed().as_millis() as u64;
         return Ok(create_error_result(
@@ -93,13 +136,11 @@ pub async fn execute(
         ));
     }
 
-    // 克隆参数供 spawn_blocking 使用
     let input_clone = input.clone();
     let op = operation.clone();
     let in_path = input_path.clone();
     let out_path = output_path.clone();
 
-    // 在阻塞线程中执行图像操作
     let result =
         tokio::task::spawn_blocking(move || process_image(&op, &in_path, &out_path, &input_clone))
             .await
@@ -126,8 +167,6 @@ pub async fn execute(
 }
 
 /// 在阻塞线程中执行具体的图像处理操作。
-///
-/// 返回 Ok(JSON) 表示成功，Err(String) 表示业务错误。
 fn process_image(
     operation: &str,
     input_path: &str,
@@ -187,4 +226,13 @@ fn process_image(
         "width": processed.width(),
         "height": processed.height(),
     }))
+}
+
+/// 向后兼容的执行入口。
+pub async fn execute(
+    input: serde_json::Value,
+    invoke_id: &str,
+    start: &Instant,
+) -> Result<ToolResult, AppError> {
+    execute_inner(input, invoke_id, start).await
 }

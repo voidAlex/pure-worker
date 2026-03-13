@@ -48,7 +48,7 @@ impl MultimodalGradingService {
             "has_scoring_rules": scoring_rules_json.is_some(),
         });
 
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "system",
             "multimodal_llm_grading_attempt",
@@ -58,7 +58,10 @@ impl MultimodalGradingService {
             false,
             Some(&detail_json.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录多模态批改尝试审计失败：{e}");
+        }
 
         let config = match LlmProviderService::get_active_config(pool).await {
             Ok(config) => config,
@@ -280,7 +283,7 @@ impl MultimodalGradingService {
                 "merged_score": merged_score,
             });
 
-            let _ = AuditService::log_with_detail(
+            if let Err(e) = AuditService::log_with_detail(
                 pool,
                 "system",
                 "multimodal_fusion_update",
@@ -290,7 +293,10 @@ impl MultimodalGradingService {
                 false,
                 Some(&detail_json.to_string()),
             )
-            .await;
+            .await
+            {
+                eprintln!("[审计日志] 记录多模态融合更新审计失败：{e}");
+            }
         }
 
         let updated_rows = sqlx::query_as::<_, AssignmentOcrResult>(
@@ -362,7 +368,7 @@ impl MultimodalGradingService {
                         "mode": "enhanced",
                         "strategy": "OCR + 多模态 LLM 融合",
                     });
-                    let _ = AuditService::log_with_detail(
+                    if let Err(e) = AuditService::log_with_detail(
                         pool,
                         "system",
                         "multimodal_enhanced_grading",
@@ -372,7 +378,10 @@ impl MultimodalGradingService {
                         false,
                         Some(&detail_json.to_string()),
                     )
-                    .await;
+                    .await
+                    {
+                        eprintln!("[审计日志] 记录增强批改审计失败：{e}");
+                    }
 
                     Self::fuse_results(pool, asset_id, job_id).await
                 }
@@ -385,7 +394,7 @@ impl MultimodalGradingService {
                         "strategy": "当多模态 LLM 未配置、不可用或超时时，自动回落 OCR + 规则判分",
                         "reason": format!("{err:?}"),
                     });
-                    let _ = AuditService::log_with_detail(
+                    if let Err(e) = AuditService::log_with_detail(
                         pool,
                         "system",
                         "multimodal_grading_degraded",
@@ -395,7 +404,10 @@ impl MultimodalGradingService {
                         false,
                         Some(&detail_json.to_string()),
                     )
-                    .await;
+                    .await
+                    {
+                        eprintln!("[审计日志] 记录批改降级审计失败：{e}");
+                    }
 
                     Self::fuse_results(pool, asset_id, job_id)
                         .await
@@ -411,7 +423,7 @@ impl MultimodalGradingService {
                 "strategy": "当多模态 LLM 未配置、不可用或超时时，自动回落 OCR + 规则判分",
             });
 
-            let _ = AuditService::log_with_detail(
+            if let Err(e) = AuditService::log_with_detail(
                 pool,
                 "system",
                 "multimodal_grading_degraded",
@@ -421,7 +433,10 @@ impl MultimodalGradingService {
                 false,
                 Some(&detail_json.to_string()),
             )
-            .await;
+            .await
+            {
+                eprintln!("[审计日志] 记录批改降级审计失败：{e}");
+            }
 
             let rows = sqlx::query_as::<_, AssignmentOcrResult>(
                 "SELECT * FROM assignment_ocr_result WHERE asset_id = ? AND job_id = ? AND is_deleted = 0",
@@ -512,7 +527,7 @@ impl MultimodalGradingService {
                 "strategy": "使用标准答案进行简单包含匹配，命中判满分，未命中判 0 分",
             });
 
-            let _ = AuditService::log_with_detail(
+            if let Err(e) = AuditService::log_with_detail(
                 pool,
                 "system",
                 "multimodal_rule_based_scoring",
@@ -522,7 +537,10 @@ impl MultimodalGradingService {
                 false,
                 Some(&detail_json.to_string()),
             )
-            .await;
+            .await
+            {
+                eprintln!("[审计日志] 记录规则判分审计失败：{e}");
+            }
 
             let updated_rows = sqlx::query_as::<_, AssignmentOcrResult>(
                 "SELECT * FROM assignment_ocr_result WHERE asset_id = ? AND job_id = ? AND is_deleted = 0",

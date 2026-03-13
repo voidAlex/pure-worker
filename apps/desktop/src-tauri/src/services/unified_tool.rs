@@ -12,6 +12,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 
 use crate::error::AppError;
 
@@ -21,10 +23,12 @@ pub type ToolInput = serde_json::Value;
 /// 工具输出类型别名（JSON 值）。
 pub type ToolOutput = serde_json::Value;
 
-/// 统一工具协议 trait。
+/// 统一工具协议 trait（对象安全版本）。
 ///
 /// 所有工具（内置技能、Python 技能、MCP 工具）必须实现此 trait，
 /// 以确保统一的调用接口、Schema 声明和审计能力。
+///
+/// 使用 `Pin<Box<dyn Future>>` 返回类型以支持 trait 对象（`dyn UnifiedTool`）。
 pub trait UnifiedTool: Send + Sync {
     /// 获取工具名称。
     fn name(&self) -> &str;
@@ -44,10 +48,11 @@ pub trait UnifiedTool: Send + Sync {
     /// 执行工具调用。
     ///
     /// 接收 JSON 格式的输入参数，返回统一的 `ToolResult` 结果。
+    /// 返回 `Pin<Box<dyn Future>>` 以保持 trait 对象安全。
     fn invoke(
         &self,
         input: serde_json::Value,
-    ) -> impl std::future::Future<Output = Result<ToolResult, AppError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>>;
 }
 
 /// 统一工具返回结构。

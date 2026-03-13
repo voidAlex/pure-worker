@@ -2,19 +2,21 @@
 //!
 //! 提供技能的安装、卸载和列表功能。
 //! 合并已安装技能与自动发现的可用技能，按名称去重（已安装优先）。
+//! 支持从 Git 仓库远程安装技能（clone → 解析 SKILL.md → 创建虚拟环境 → 安装依赖 → 注册）。
 //! 内置技能禁止卸载。
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 use crate::models::skill::CreateSkillInput;
 use crate::services::audit::AuditService;
 use crate::services::skill::SkillService;
 use crate::services::skill_discovery::SkillDiscoveryService;
+use crate::services::uv_manager::UvManager;
 
 /// 技能商店条目。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -125,7 +127,7 @@ impl SkillStoreService {
             "skill_name": skill_name,
             "source_path": skill.source_path,
         });
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "system",
             "install_skill",
@@ -135,7 +137,10 @@ impl SkillStoreService {
             false,
             Some(&detail.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录技能安装审计失败：{e}");
+        }
 
         Ok(SkillStoreItem {
             name: record.name,
@@ -166,7 +171,7 @@ impl SkillStoreService {
             "skill_name": skill_name,
             "skill_id": skill.id,
         });
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "system",
             "uninstall_skill",
@@ -176,7 +181,262 @@ impl SkillStoreService {
             false,
             Some(&detail.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录技能卸载审计失败：{e}");
+        }
+
+        Ok(())
+    }
+
+    /// 从 Git 仓库远程安装技能。
+    ///
+    /// 完整流程：
+    /// 1. 校验 Git URL 来源白名单
+    /// 2. 浅克隆仓库到本地技能目录（`{workspace}/.agents/skills/{repo_name}`）
+    /// 3. 解析 SKILL.md frontmatter 获取技能元信息
+    /// 4. 若存在 requirements.txt，通过 uv 创建虚拟环境并安装依赖
+    /// 5. 注册技能到数据库并写入审计日志
+    pub async fn install_from_git(
+        pool: &SqlitePool,
+        git_url: &str,
+        workspace_path: &Path,
+    ) -> Result<SkillStoreItem, AppError> {
+        // 校验 Git URL 非空
+        let git_url = git_url.trim();
+        if git_url.is_empty() {
+            return Err(AppError::InvalidInput(String::from("Git URL 不能为空")));
+        }
+
+        // 校验来源白名单（仅允许 github.com 和 gitee.com）
+        Self::validate_git_url(git_url)?;
+
+        // 从 URL 中提取仓库名称作为技能目录名
+        let repo_name = Self::extract_repo_name(git_url)?;
+
+        // 检查是否已安装同名技能
+        if SkillService::get_skill_by_name(pool, &repo_name)
+            .await
+            .is_ok()
+        {
+            return Err(AppError::InvalidInput(format!(
+                "技能 '{repo_name}' 已存在，如需重新安装请先卸载"
+            )));
+        }
+
+        // 构建目标目录：{workspace}/.agents/skills/{repo_name}
+        let skills_dir = workspace_path.join(".agents").join("skills");
+        tokio::fs::create_dir_all(&skills_dir)
+            .await
+            .map_err(|e| AppError::FileOperation(format!("创建技能目录失败：{e}")))?;
+
+        let target_dir = skills_dir.join(&repo_name);
+        if target_dir.exists() {
+            return Err(AppError::InvalidInput(format!(
+                "目标目录已存在：'{}'，请先手动删除或选择其他名称",
+                target_dir.display()
+            )));
+        }
+
+        // 浅克隆仓库（depth=1 减少下载量）
+        Self::git_clone(git_url, &target_dir).await?;
+
+        // 解析 SKILL.md
+        let skill_md_path = target_dir.join("SKILL.md");
+        if !skill_md_path.exists() {
+            // 克隆成功但缺少 SKILL.md，清理目录
+            let _ = tokio::fs::remove_dir_all(&target_dir).await;
+            return Err(AppError::InvalidInput(format!(
+                "Git 仓库 '{git_url}' 缺少 SKILL.md 文件，不符合技能目录规范"
+            )));
+        }
+
+        let skill_md_content = tokio::fs::read_to_string(&skill_md_path)
+            .await
+            .map_err(|e| AppError::FileOperation(format!("读取 SKILL.md 失败：{e}")))?;
+
+        let (skill_name, description, version) = Self::parse_skill_md_content(&skill_md_content)?;
+
+        // 安装 Python 依赖（如果存在 requirements.txt）
+        let requirements_path = target_dir.join("requirements.txt");
+        if requirements_path.exists() {
+            Self::setup_python_env(&skill_name, &requirements_path).await?;
+        }
+
+        // 注册到数据库
+        let input = CreateSkillInput {
+            name: skill_name.clone(),
+            version: version.clone(),
+            source: Some(target_dir.to_string_lossy().to_string()),
+            permission_scope: Some(String::from("read_only")),
+            display_name: Some(skill_name.clone()),
+            description: Some(description.clone()),
+            skill_type: String::from("python"),
+            config_json: None,
+        };
+
+        let record = SkillService::create_skill(pool, input).await?;
+
+        // 写入审计日志
+        let detail = serde_json::json!({
+            "skill_name": skill_name,
+            "git_url": git_url,
+            "target_dir": target_dir.to_string_lossy(),
+            "version": version,
+        });
+        if let Err(e) = AuditService::log_with_detail(
+            pool,
+            "system",
+            "install_skill_from_git",
+            "skill_registry",
+            Some(&record.id),
+            "high",
+            false,
+            Some(&detail.to_string()),
+        )
+        .await
+        {
+            eprintln!("[审计日志] 记录 Git 技能安装审计失败：{e}");
+        }
+
+        Ok(SkillStoreItem {
+            name: record.name,
+            display_name: record.display_name.unwrap_or_default(),
+            description: record.description.unwrap_or_else(|| String::from("无描述")),
+            version: record.version,
+            source: String::from("git"),
+            installed: true,
+            skill_type: record.skill_type,
+        })
+    }
+
+    /// 校验 Git URL 来源是否在白名单内。
+    ///
+    /// 仅允许 github.com 和 gitee.com 域名，防止从不受信来源安装代码。
+    fn validate_git_url(url: &str) -> Result<(), AppError> {
+        let allowed_hosts = ["github.com", "gitee.com"];
+
+        let is_allowed = allowed_hosts
+            .iter()
+            .any(|host| url.contains(&format!("{host}/")) || url.contains(&format!("{host}:")));
+
+        if !is_allowed {
+            return Err(AppError::PermissionDenied(format!(
+                "Git 来源不在白名单内，仅允许：{}。收到：{url}",
+                allowed_hosts.join("、")
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// 从 Git URL 中提取仓库名称。
+    ///
+    /// 支持 HTTPS（`https://github.com/user/repo.git`）和
+    /// SSH（`git@github.com:user/repo.git`）格式。
+    fn extract_repo_name(url: &str) -> Result<String, AppError> {
+        let name = url
+            .rsplit('/')
+            .next()
+            .or_else(|| url.rsplit(':').next())
+            .unwrap_or(url);
+
+        let name = name.strip_suffix(".git").unwrap_or(name);
+        let name = name.trim();
+
+        if name.is_empty() {
+            return Err(AppError::InvalidInput(format!(
+                "无法从 Git URL 提取仓库名称：{url}"
+            )));
+        }
+
+        Ok(name.to_string())
+    }
+
+    /// 执行 git clone --depth 1 浅克隆。
+    ///
+    /// 使用系统 git 命令，设置 120 秒超时。
+    async fn git_clone(url: &str, target: &PathBuf) -> Result<(), AppError> {
+        let output = tokio::process::Command::new("git")
+            .args(["clone", "--depth", "1", url])
+            .arg(target)
+            .output()
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "执行 git clone 失败（请确认系统已安装 git）：{e}"
+                ))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::ExternalService(format!(
+                "git clone 失败：{stderr}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// 解析 SKILL.md 的 YAML frontmatter。
+    ///
+    /// 复用 `SkillDiscoveryService` 中相同的逐行解析逻辑，
+    /// 提取 name（必填）、description（必填）和 version（可选）。
+    fn parse_skill_md_content(content: &str) -> Result<(String, String, Option<String>), AppError> {
+        let lines: Vec<&str> = content.lines().collect();
+
+        if lines.is_empty() || lines[0].trim() != "---" {
+            return Err(AppError::InvalidInput(String::from(
+                "SKILL.md 缺少 YAML frontmatter（需以 --- 开头）",
+            )));
+        }
+
+        let end_idx = lines
+            .iter()
+            .skip(1)
+            .position(|line| line.trim() == "---")
+            .map(|pos| pos + 1)
+            .ok_or_else(|| {
+                AppError::InvalidInput(String::from("SKILL.md frontmatter 缺少结束标记 ---"))
+            })?;
+
+        let mut name: Option<String> = None;
+        let mut description: Option<String> = None;
+        let mut version: Option<String> = None;
+
+        for line in &lines[1..end_idx] {
+            let trimmed = line.trim();
+            if let Some((key, value)) = trimmed.split_once(':') {
+                let key = key.trim();
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                match key {
+                    "name" => name = Some(value.to_string()),
+                    "description" => description = Some(value.to_string()),
+                    "version" => version = Some(value.to_string()),
+                    _ => {}
+                }
+            }
+        }
+
+        let name = name.ok_or_else(|| {
+            AppError::InvalidInput(String::from("SKILL.md frontmatter 缺少必填字段 'name'"))
+        })?;
+        let description = description.ok_or_else(|| {
+            AppError::InvalidInput(String::from(
+                "SKILL.md frontmatter 缺少必填字段 'description'",
+            ))
+        })?;
+
+        Ok((name, description, version))
+    }
+
+    /// 为技能创建 Python 虚拟环境并安装依赖。
+    ///
+    /// 调用 `UvManager` 创建隔离环境，再通过 `uv pip install -r` 安装 requirements。
+    async fn setup_python_env(skill_name: &str, requirements_path: &Path) -> Result<(), AppError> {
+        let env_path = UvManager::create_skill_env(skill_name, None).await?;
+
+        UvManager::install_skill_deps(&env_path, &requirements_path.to_string_lossy()).await?;
 
         Ok(())
     }

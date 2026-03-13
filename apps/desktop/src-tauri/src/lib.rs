@@ -155,6 +155,7 @@ fn create_specta_builder() -> Builder<tauri::Wry> {
         commands::skill_executor::discover_skills,
         commands::skill_store::list_store_skills,
         commands::skill_store::install_store_skill,
+        commands::skill_store::install_store_skill_from_git,
         commands::skill_store::uninstall_store_skill,
         commands::uv_manager::check_uv_health,
         commands::uv_manager::create_skill_env,

@@ -3,48 +3,91 @@
 //! 将结构化数据渲染为 Word（docx）或 Excel（xlsx）文档并导出。
 //! 使用 docx-rs 生成 Word 文档，rust_xlsxwriter 生成 Excel 文档。
 
+use std::future::Future;
 use std::io::Cursor;
 use std::path::Path;
+use std::pin::Pin;
 use std::time::Instant;
 
 use crate::error::AppError;
 use crate::services::unified_tool::{
-    create_error_result, create_success_result, ToolResult, ToolRiskLevel,
+    create_error_result, create_success_result, ToolResult, ToolRiskLevel, UnifiedTool,
 };
 
-/// 执行导出渲染技能。
-///
-/// 根据 `format` 字段选择导出格式，将结构化数据渲染为对应格式的文档。
-///
-/// # 支持的格式
-/// - `docx`: Word 文档（需要 `paragraphs` 和 `output_path` 参数）
-/// - `xlsx`: Excel 文档（需要 `rows` 和 `output_path` 参数）
-///
-/// # 输入格式（docx）
-/// ```json
-/// {
-///   "format": "docx",
-///   "output_path": "/path/to/output.docx",
-///   "paragraphs": ["第一段", "第二段"]
-/// }
-/// ```
-///
-/// # 输入格式（xlsx）
-/// ```json
-/// {
-///   "format": "xlsx",
-///   "output_path": "/path/to/output.xlsx",
-///   "rows": [["姓名", "成绩"], ["张三", "95"]]
-/// }
-/// ```
-pub async fn execute(
+/// 导出渲染内置技能。
+pub struct ExportRenderSkill;
+
+impl UnifiedTool for ExportRenderSkill {
+    fn name(&self) -> &str {
+        "export.render"
+    }
+
+    fn description(&self) -> &str {
+        "文档导出渲染：将结构化数据渲染为 Word（docx）或 Excel（xlsx）文件"
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": ["docx", "xlsx"],
+                    "description": "导出格式"
+                },
+                "output_path": { "type": "string", "description": "输出文件路径" },
+                "paragraphs": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "段落文本数组（docx 格式时必填）"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": { "type": "array", "items": {} },
+                    "description": "行数据二维数组（xlsx 格式时必填）"
+                }
+            },
+            "required": ["format", "output_path"]
+        })
+    }
+
+    fn output_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "format": { "type": "string" },
+                "output_path": { "type": "string" },
+                "paragraph_count": { "type": "integer" },
+                "row_count": { "type": "integer" },
+                "cell_count": { "type": "integer" }
+            }
+        })
+    }
+
+    fn risk_level(&self) -> ToolRiskLevel {
+        ToolRiskLevel::High
+    }
+
+    fn invoke(
+        &self,
+        input: serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>> {
+        Box::pin(async move {
+            let start = Instant::now();
+            let invoke_id = uuid::Uuid::new_v4().to_string();
+            execute_inner(input, &invoke_id, &start).await
+        })
+    }
+}
+
+/// 导出渲染内部执行逻辑。
+async fn execute_inner(
     input: serde_json::Value,
     invoke_id: &str,
     start: &Instant,
 ) -> Result<ToolResult, AppError> {
     let skill_name = "export.render";
 
-    // 提取导出格式
     let format = match input.get("format").and_then(|v| v.as_str()) {
         Some(f) => f.to_string(),
         None => {
@@ -59,7 +102,6 @@ pub async fn execute(
         }
     };
 
-    // 提取输出路径
     let output_path = match input.get("output_path").and_then(|v| v.as_str()) {
         Some(p) => p.to_string(),
         None => {
@@ -91,8 +133,6 @@ pub async fn execute(
 }
 
 /// 渲染 Word 文档。
-///
-/// 从输入中提取段落文本数组，生成 Word 文档并保存到指定路径。
 async fn execute_render_docx(
     input: serde_json::Value,
     invoke_id: &str,
@@ -101,7 +141,6 @@ async fn execute_render_docx(
 ) -> Result<ToolResult, AppError> {
     let skill_name = "export.render";
 
-    // 提取段落内容
     let paragraphs = match input.get("paragraphs").and_then(|v| v.as_array()) {
         Some(arr) => arr
             .iter()
@@ -121,7 +160,6 @@ async fn execute_render_docx(
 
     let out = output_path.to_string();
 
-    // 在阻塞线程中生成 Word 文档
     let result = tokio::task::spawn_blocking(move || render_docx_blocking(&paragraphs, &out))
         .await
         .map_err(|e| AppError::TaskExecution(format!("Word 文档渲染任务执行失败：{e}")))?;
@@ -147,8 +185,6 @@ async fn execute_render_docx(
 }
 
 /// 渲染 Excel 文档。
-///
-/// 从输入中提取行数据二维数组，生成 Excel 文档并保存到指定路径。
 async fn execute_render_xlsx(
     input: serde_json::Value,
     invoke_id: &str,
@@ -157,7 +193,6 @@ async fn execute_render_xlsx(
 ) -> Result<ToolResult, AppError> {
     let skill_name = "export.render";
 
-    // 提取行数据
     let rows = match input.get("rows").and_then(|v| v.as_array()) {
         Some(arr) => arr.clone(),
         None => {
@@ -174,7 +209,6 @@ async fn execute_render_xlsx(
 
     let out = output_path.to_string();
 
-    // 在阻塞线程中生成 Excel 文档
     let result = tokio::task::spawn_blocking(move || render_xlsx_blocking(&rows, &out))
         .await
         .map_err(|e| AppError::TaskExecution(format!("Excel 文档渲染任务执行失败：{e}")))?;
@@ -206,7 +240,6 @@ fn render_docx_blocking(
 ) -> Result<serde_json::Value, String> {
     use docx_rs::{Docx, Paragraph, Run};
 
-    // 确保输出目录存在
     if let Some(parent) = Path::new(output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
     }
@@ -241,7 +274,6 @@ fn render_xlsx_blocking(
 ) -> Result<serde_json::Value, String> {
     use rust_xlsxwriter::Workbook;
 
-    // 确保输出目录存在
     if let Some(parent) = Path::new(output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
     }
@@ -281,9 +313,7 @@ fn render_xlsx_blocking(
                             .write_boolean(r, c, *b)
                             .map_err(|e| format!("写入单元格失败：{e}"))?;
                     }
-                    serde_json::Value::Null => {
-                        // 空单元格，跳过
-                    }
+                    serde_json::Value::Null => {}
                     other => {
                         worksheet
                             .write_string(r, c, other.to_string())
@@ -305,4 +335,13 @@ fn render_xlsx_blocking(
         "row_count": rows.len(),
         "cell_count": total_cells,
     }))
+}
+
+/// 向后兼容的执行入口。
+pub async fn execute(
+    input: serde_json::Value,
+    invoke_id: &str,
+    start: &Instant,
+) -> Result<ToolResult, AppError> {
+    execute_inner(input, invoke_id, start).await
 }

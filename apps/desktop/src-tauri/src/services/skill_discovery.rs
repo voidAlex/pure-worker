@@ -98,7 +98,7 @@ impl SkillDiscoveryService {
             let _ = SkillService::create_skill(pool, input).await?;
             skill.already_installed = true;
 
-            let _ = AuditService::log(
+            if let Err(e) = AuditService::log(
                 pool,
                 "system",
                 "auto_register_skill",
@@ -107,7 +107,10 @@ impl SkillDiscoveryService {
                 "medium",
                 false,
             )
-            .await;
+            .await
+            {
+                eprintln!("[审计日志] 记录技能自动注册审计失败：{e}");
+            }
         }
 
         Ok(discovered)

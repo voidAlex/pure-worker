@@ -101,7 +101,7 @@ impl SkillExecutorService {
             "success": result.success,
             "duration_ms": result.audit.duration_ms,
         });
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "ai",
             "execute_skill",
@@ -111,7 +111,10 @@ impl SkillExecutorService {
             false,
             Some(&detail.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录技能执行审计失败：{e}");
+        }
 
         Ok(result)
     }
@@ -253,16 +256,56 @@ impl SkillExecutorService {
             ));
         }
 
-        // 解析 stdout 为 JSON
+        // 解析 stdout 为 JSON。
+        // 优先尝试解析为完整的 ToolResult 协议格式（包含 success/data/error 字段），
+        // 若不符合协议格式则将整个 JSON 包装为 data 字段。
         let stdout = String::from_utf8_lossy(&output.stdout);
         match serde_json::from_str::<serde_json::Value>(&stdout) {
-            Ok(data) => Ok(create_success_result(
-                skill_name,
-                invoke_id,
-                ToolRiskLevel::Medium,
-                duration_ms,
-                data,
-            )),
+            Ok(parsed) => {
+                // 检查是否符合 ToolResult 协议格式（必须包含 success 布尔字段）
+                if let Some(success) = parsed.get("success").and_then(|v| v.as_bool()) {
+                    let data = parsed.get("data").cloned();
+                    let error = parsed
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let degraded_to = parsed
+                        .get("degraded_to")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+
+                    let mut result = if success {
+                        create_success_result(
+                            skill_name,
+                            invoke_id,
+                            ToolRiskLevel::Medium,
+                            duration_ms,
+                            data.unwrap_or(serde_json::Value::Null),
+                        )
+                    } else {
+                        create_error_result(
+                            skill_name,
+                            invoke_id,
+                            ToolRiskLevel::Medium,
+                            duration_ms,
+                            error.unwrap_or_else(|| {
+                                "Python 技能返回失败但未提供错误信息".to_string()
+                            }),
+                        )
+                    };
+                    result.degraded_to = degraded_to;
+                    Ok(result)
+                } else {
+                    // 非协议格式，将整个 JSON 包装为 data
+                    Ok(create_success_result(
+                        skill_name,
+                        invoke_id,
+                        ToolRiskLevel::Medium,
+                        duration_ms,
+                        parsed,
+                    ))
+                }
+            }
             Err(e) => Ok(create_error_result(
                 skill_name,
                 invoke_id,

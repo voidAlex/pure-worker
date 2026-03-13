@@ -100,7 +100,7 @@ impl OcrService {
             "message": "开始尝试加载 OCR 模型",
         });
 
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "system",
             "ocr_model_loading_attempt",
@@ -110,7 +110,10 @@ impl OcrService {
             false,
             Some(&detail.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录 OCR 模型加载审计失败：{e}");
+        }
 
         let model_path = Self::resolve_model_path(preprocessed_path);
         if model_path.exists() {
@@ -132,7 +135,7 @@ impl OcrService {
             "message": "模型文件缺失，已回退到 OCR 模拟识别并写入结果",
             "attempt_at": Utc::now().to_rfc3339(),
         });
-        let _ = AuditService::log_with_detail(
+        if let Err(e) = AuditService::log_with_detail(
             pool,
             "system",
             "ocr_simulation_generated",
@@ -142,7 +145,10 @@ impl OcrService {
             false,
             Some(&simulation_detail.to_string()),
         )
-        .await;
+        .await
+        {
+            eprintln!("[审计日志] 记录 OCR 模拟识别审计失败：{e}");
+        }
 
         Ok(simulated_rows)
     }

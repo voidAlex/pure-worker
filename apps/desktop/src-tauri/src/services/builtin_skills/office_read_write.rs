@@ -1,42 +1,86 @@
 //! 文档读写内置技能模块
 //!
 //! 提供 Office 文档（Excel、Word）的读取能力。
-//! Excel 读取使用 calamine 库，Word 读取功能开发中。
+//! Excel 读取使用 calamine 库，Word 读取使用 zip 解析 docx。
 
+use std::future::Future;
+use std::io::Read;
 use std::path::Path;
+use std::pin::Pin;
 use std::time::Instant;
 
 use calamine::{open_workbook_auto, Data, Reader};
 
 use crate::error::AppError;
 use crate::services::unified_tool::{
-    create_error_result, create_success_result, ToolResult, ToolRiskLevel,
+    create_error_result, create_success_result, ToolResult, ToolRiskLevel, UnifiedTool,
 };
 
-/// 执行文档读写技能。
-///
-/// 根据 `operation` 字段分发到对应的文档处理操作。
-///
-/// # 支持的操作
-/// - `read_excel`: 读取 Excel 文件内容，返回 JSON 数组
-/// - `read_word`: Word 文档读取（开发中）
-///
-/// # 输入格式（read_excel）
-/// ```json
-/// {
-///   "operation": "read_excel",
-///   "file_path": "/path/to/file.xlsx",
-///   "sheet_name": "Sheet1"
-/// }
-/// ```
-pub async fn execute(
+/// 文档读写内置技能。
+pub struct OfficeReadWriteSkill;
+
+impl UnifiedTool for OfficeReadWriteSkill {
+    fn name(&self) -> &str {
+        "office.read_write"
+    }
+
+    fn description(&self) -> &str {
+        "Office 文档读取：支持 Excel（xlsx/xls/csv）和 Word（docx）文件读取"
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["read_excel", "read_word"],
+                    "description": "操作类型"
+                },
+                "file_path": { "type": "string", "description": "文件路径" },
+                "sheet_name": { "type": "string", "description": "Excel 工作表名称（可选，默认第一个）" }
+            },
+            "required": ["operation", "file_path"]
+        })
+    }
+
+    fn output_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "sheet_name": { "type": "string" },
+                "row_count": { "type": "integer" },
+                "rows": { "type": "array" },
+                "text": { "type": "string", "description": "Word 文档提取的文本内容" },
+                "paragraph_count": { "type": "integer" }
+            }
+        })
+    }
+
+    fn risk_level(&self) -> ToolRiskLevel {
+        ToolRiskLevel::Medium
+    }
+
+    fn invoke(
+        &self,
+        input: serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>> {
+        Box::pin(async move {
+            let start = Instant::now();
+            let invoke_id = uuid::Uuid::new_v4().to_string();
+            execute_inner(input, &invoke_id, &start).await
+        })
+    }
+}
+
+/// 文档读写内部执行逻辑。
+async fn execute_inner(
     input: serde_json::Value,
     invoke_id: &str,
     start: &Instant,
 ) -> Result<ToolResult, AppError> {
     let skill_name = "office.read_write";
 
-    // 提取操作类型
     let operation = match input.get("operation").and_then(|v| v.as_str()) {
         Some(op) => op.to_string(),
         None => {
@@ -53,16 +97,7 @@ pub async fn execute(
 
     match operation.as_str() {
         "read_excel" => execute_read_excel(input, invoke_id, start).await,
-        "read_word" => {
-            let duration_ms = start.elapsed().as_millis() as u64;
-            Ok(create_error_result(
-                skill_name,
-                invoke_id,
-                ToolRiskLevel::Medium,
-                duration_ms,
-                "Word 文档读取功能开发中，敬请期待".to_string(),
-            ))
-        }
+        "read_word" => execute_read_word(input, invoke_id, start).await,
         other => {
             let duration_ms = start.elapsed().as_millis() as u64;
             Ok(create_error_result(
@@ -77,9 +112,6 @@ pub async fn execute(
 }
 
 /// 执行 Excel 文件读取操作。
-///
-/// 使用 calamine 库打开 Excel 文件，读取指定工作表的内容。
-/// 若未指定工作表名称，默认读取第一个工作表。
 async fn execute_read_excel(
     input: serde_json::Value,
     invoke_id: &str,
@@ -87,7 +119,6 @@ async fn execute_read_excel(
 ) -> Result<ToolResult, AppError> {
     let skill_name = "office.read_write";
 
-    // 提取文件路径
     let file_path = match input.get("file_path").and_then(|v| v.as_str()) {
         Some(p) => p.to_string(),
         None => {
@@ -102,7 +133,6 @@ async fn execute_read_excel(
         }
     };
 
-    // 校验文件存在
     if !Path::new(&file_path).exists() {
         let duration_ms = start.elapsed().as_millis() as u64;
         return Ok(create_error_result(
@@ -119,7 +149,6 @@ async fn execute_read_excel(
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    // 在阻塞线程中读取 Excel
     let result = tokio::task::spawn_blocking(move || read_excel_blocking(&file_path, sheet_name))
         .await
         .map_err(|e| AppError::TaskExecution(format!("Excel 读取任务执行失败：{e}")))?;
@@ -144,9 +173,67 @@ async fn execute_read_excel(
     }
 }
 
-/// 在阻塞线程中读取 Excel 文件内容。
+/// 执行 Word 文档读取操作。
 ///
-/// 返回 JSON 对象，包含工作表名称和行数据数组。
+/// 使用 zip 库打开 .docx 文件（本质上是 ZIP 包），
+/// 读取 word/document.xml 内容，提取 `<w:t>` 标签中的文本。
+async fn execute_read_word(
+    input: serde_json::Value,
+    invoke_id: &str,
+    start: &Instant,
+) -> Result<ToolResult, AppError> {
+    let skill_name = "office.read_write";
+
+    let file_path = match input.get("file_path").and_then(|v| v.as_str()) {
+        Some(p) => p.to_string(),
+        None => {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return Ok(create_error_result(
+                skill_name,
+                invoke_id,
+                ToolRiskLevel::Medium,
+                duration_ms,
+                "缺少必填参数 'file_path'（Word 文件路径）".to_string(),
+            ));
+        }
+    };
+
+    if !Path::new(&file_path).exists() {
+        let duration_ms = start.elapsed().as_millis() as u64;
+        return Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            format!("Word 文件不存在：{file_path}"),
+        ));
+    }
+
+    let result = tokio::task::spawn_blocking(move || read_word_blocking(&file_path))
+        .await
+        .map_err(|e| AppError::TaskExecution(format!("Word 读取任务执行失败：{e}")))?;
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    match result {
+        Ok(data) => Ok(create_success_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            data,
+        )),
+        Err(err_msg) => Ok(create_error_result(
+            skill_name,
+            invoke_id,
+            ToolRiskLevel::Medium,
+            duration_ms,
+            err_msg,
+        )),
+    }
+}
+
+/// 在阻塞线程中读取 Excel 文件内容。
 fn read_excel_blocking(
     file_path: &str,
     sheet_name: Option<String>,
@@ -154,7 +241,6 @@ fn read_excel_blocking(
     let mut workbook =
         open_workbook_auto(file_path).map_err(|e| format!("打开 Excel 文件失败：{e}"))?;
 
-    // 确定要读取的工作表名称
     let target_sheet = match sheet_name {
         Some(name) => name,
         None => {
@@ -166,7 +252,6 @@ fn read_excel_blocking(
         }
     };
 
-    // 读取工作表数据
     let range = workbook
         .worksheet_range(&target_sheet)
         .map_err(|e| format!("读取工作表 '{target_sheet}' 失败：{e}"))?;
@@ -195,4 +280,80 @@ fn read_excel_blocking(
         "row_count": rows.len(),
         "rows": rows,
     }))
+}
+
+/// 在阻塞线程中读取 Word (.docx) 文件内容。
+///
+/// .docx 文件本质是 ZIP 包，核心文本在 word/document.xml 中。
+/// 通过正则提取 `<w:t ...>` 标签内文本，按 `<w:p>` 段落分隔。
+fn read_word_blocking(file_path: &str) -> Result<serde_json::Value, String> {
+    let file = std::fs::File::open(file_path).map_err(|e| format!("打开 Word 文件失败：{e}"))?;
+
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("解析 docx 文件失败（非有效 ZIP）：{e}"))?;
+
+    let mut document_xml = String::new();
+    {
+        let mut entry = archive
+            .by_name("word/document.xml")
+            .map_err(|e| format!("docx 中未找到 word/document.xml：{e}"))?;
+        entry
+            .read_to_string(&mut document_xml)
+            .map_err(|e| format!("读取 word/document.xml 失败：{e}"))?;
+    }
+
+    // 按 <w:p> 段落拆分，在每个段落内提取 <w:t> 文本
+    let paragraphs = extract_docx_paragraphs(&document_xml);
+
+    let full_text = paragraphs.join("\n");
+
+    Ok(serde_json::json!({
+        "text": full_text,
+        "paragraph_count": paragraphs.len(),
+        "paragraphs": paragraphs,
+    }))
+}
+
+/// 从 document.xml 内容中提取段落文本。
+///
+/// 使用正则按 `<w:p>` 拆分段落，再提取每个段落中的 `<w:t>` 文本内容。
+/// 同一段落内多个 `<w:t>` 的文本会拼接在一起。
+fn extract_docx_paragraphs(xml: &str) -> Vec<String> {
+    // 正则匹配 <w:p ...>...</w:p> 段落
+    let para_re = regex::Regex::new(r"(?s)<w:p[ >].*?</w:p>").unwrap_or_else(|_| {
+        // fallback: 不应发生，但保护性处理
+        regex::Regex::new(r"<w:p>.*?</w:p>").expect("正则编译失败")
+    });
+
+    // 正则匹配 <w:t> 或 <w:t xml:space="preserve"> 内的文本
+    let text_re = regex::Regex::new(r"<w:t[^>]*>([^<]*)</w:t>").expect("w:t 正则编译失败");
+
+    let mut paragraphs = Vec::new();
+
+    for para_match in para_re.find_iter(xml) {
+        let para_xml = para_match.as_str();
+        let mut para_text = String::new();
+
+        for cap in text_re.captures_iter(para_xml) {
+            if let Some(text) = cap.get(1) {
+                para_text.push_str(text.as_str());
+            }
+        }
+
+        // 只保留非空段落
+        if !para_text.is_empty() {
+            paragraphs.push(para_text);
+        }
+    }
+
+    paragraphs
+}
+
+/// 向后兼容的执行入口。
+pub async fn execute(
+    input: serde_json::Value,
+    invoke_id: &str,
+    start: &Instant,
+) -> Result<ToolResult, AppError> {
+    execute_inner(input, invoke_id, start).await
 }

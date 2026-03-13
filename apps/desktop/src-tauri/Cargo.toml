@@ -49,3 +49,4 @@ docx-rs = "0.4"
 meval = "0.2"
 keyring = "3"
 zip = "2"
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic"] }

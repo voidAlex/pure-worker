@@ -467,7 +467,7 @@ impl AiGenerationService {
                                 })
                                 .to_string();
 
-                                let _ = AuditService::log_with_detail(
+                                if let Err(e) = AuditService::log_with_detail(
                                     pool,
                                     "ai",
                                     "semester_comment_skipped_duplicate",
@@ -477,14 +477,17 @@ impl AiGenerationService {
                                     false,
                                     Some(&detail_json),
                                 )
-                                .await;
+                                .await
+                                {
+                                    eprintln!("[审计日志] 记录评语去重跳过审计失败：{e}");
+                                }
                                 continue;
                             }
                         }
                         Err(e) => {
                             // 去重检查失败，记录但不影响主流程
                             let err_msg = format!("duplicate_check_failed: {}", e);
-                            let _ = AuditService::log(
+                            if let Err(audit_err) = AuditService::log(
                                 pool,
                                 "ai",
                                 &err_msg,
@@ -493,7 +496,10 @@ impl AiGenerationService {
                                 "low",
                                 false,
                             )
-                            .await;
+                            .await
+                            {
+                                eprintln!("[审计日志] 记录去重检查失败审计失败：{audit_err}");
+                            }
                         }
                     }
                 }
@@ -509,7 +515,7 @@ impl AiGenerationService {
                 })
                 .to_string();
 
-                let _ = AuditService::log_with_detail(
+                if let Err(e) = AuditService::log_with_detail(
                     pool,
                     "ai",
                     "generate_semester_comment_failed",
@@ -519,7 +525,10 @@ impl AiGenerationService {
                     false,
                     Some(&detail_json),
                 )
-                .await;
+                .await
+                {
+                    eprintln!("[审计日志] 记录评语生成失败审计失败：{e}");
+                }
             } else {
                 completed += 1;
             }

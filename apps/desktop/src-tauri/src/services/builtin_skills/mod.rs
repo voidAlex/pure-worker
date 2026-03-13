@@ -1,7 +1,7 @@
 //! 内置技能模块
 //!
 //! 提供所有 Rust 原生实现的内置技能入口和分发逻辑。
-//! 根据技能名称自动路由到对应的技能处理函数。
+//! 每个技能均实现 UnifiedTool trait，支持 trait 对象分发。
 
 pub mod export_render;
 pub mod image_preprocess;
@@ -12,18 +12,35 @@ pub mod office_read_write;
 use std::time::Instant;
 
 use crate::error::AppError;
-use crate::services::unified_tool::{create_error_result, ToolResult, ToolRiskLevel};
+use crate::services::unified_tool::{create_error_result, ToolResult, ToolRiskLevel, UnifiedTool};
+
+/// 获取所有内置技能的 trait 对象列表。
+pub fn all_builtin_tools() -> Vec<Box<dyn UnifiedTool>> {
+    vec![
+        Box::new(math_compute::MathComputeSkill),
+        Box::new(image_preprocess::ImagePreprocessSkill),
+        Box::new(ocr_extract::OcrExtractSkill),
+        Box::new(office_read_write::OfficeReadWriteSkill),
+        Box::new(export_render::ExportRenderSkill),
+    ]
+}
+
+/// 按名称查找内置技能 trait 对象。
+pub fn get_builtin_tool(name: &str) -> Option<Box<dyn UnifiedTool>> {
+    match name {
+        "math.compute" => Some(Box::new(math_compute::MathComputeSkill)),
+        "image.preprocess" => Some(Box::new(image_preprocess::ImagePreprocessSkill)),
+        "ocr.extract" => Some(Box::new(ocr_extract::OcrExtractSkill)),
+        "office.read_write" => Some(Box::new(office_read_write::OfficeReadWriteSkill)),
+        "export.render" => Some(Box::new(export_render::ExportRenderSkill)),
+        _ => None,
+    }
+}
 
 /// 分发内置技能调用到对应的处理模块。
 ///
-/// 根据技能名称匹配已注册的内置技能，调用其 `execute` 函数。
+/// 优先通过 UnifiedTool trait 对象执行。
 /// 若技能名称不在已知列表中，返回错误结果。
-///
-/// # 参数
-/// - `skill_name`: 技能名称（如 "math.compute"）
-/// - `invoke_id`: 调用唯一标识
-/// - `input`: JSON 格式的输入参数
-/// - `start`: 计时起点，用于计算执行耗时
 pub async fn dispatch_builtin_skill(
     skill_name: &str,
     invoke_id: &str,
