@@ -224,7 +224,7 @@ impl SkillExecutorService {
         let entry_script = std::path::Path::new(source_dir).join("run.py");
 
         // 防御式二次校验：canonicalize 解析符号链接后验证路径边界
-        Self::validate_python_execution_paths(env_path, source_dir, &entry_script)?;
+        Self::validate_python_execution_paths(env_path, source_dir, &entry_script, &python_path)?;
 
         // 校验文件是否存在
         if !python_path.exists() {
@@ -428,10 +428,12 @@ impl SkillExecutorService {
     /// - `env_path` canonicalize 后必须落在 `~/.pureworker/skill-envs/` 下
     /// - `source_dir` canonicalize 后必须包含 `.agents/skills/` 子路径
     /// - `entry_script` canonicalize 后必须落在 `source_dir` canonical 下
+    /// - `python_path` canonicalize 后必须落在 `env_path` canonical 下，且为普通文件（非 symlink）
     fn validate_python_execution_paths(
         env_path: &str,
         source_dir: &str,
         entry_script: &std::path::Path,
+        python_path: &std::path::Path,
     ) -> Result<(), AppError> {
         let canonical_env = std::path::Path::new(env_path).canonicalize().map_err(|e| {
             AppError::Config(format!(
@@ -492,6 +494,34 @@ impl SkillExecutorService {
                 return Err(AppError::PermissionDenied(format!(
                     "入口脚本逃逸出技能目录：'{}'",
                     canonical_script.display()
+                )));
+            }
+        }
+
+        // python_path canonicalize 后必须落在 env_path canonical 内，且为普通文件（非 symlink）
+        if python_path.exists() {
+            let canonical_python = python_path.canonicalize().map_err(|e| {
+                AppError::Config(format!(
+                    "Python 可执行文件路径无法解析：'{}' — {e}",
+                    python_path.display()
+                ))
+            })?;
+            if !canonical_python.starts_with(&canonical_env) {
+                return Err(AppError::PermissionDenied(format!(
+                    "Python 可执行文件逃逸出 env_path 范围：'{}'",
+                    canonical_python.display()
+                )));
+            }
+            let python_meta = canonical_python.symlink_metadata().map_err(|e| {
+                AppError::Config(format!(
+                    "无法读取 Python 可执行文件元数据：'{}' — {e}",
+                    canonical_python.display()
+                ))
+            })?;
+            if !python_meta.is_file() {
+                return Err(AppError::PermissionDenied(format!(
+                    "Python 可执行文件路径不是普通文件：'{}'",
+                    canonical_python.display()
                 )));
             }
         }

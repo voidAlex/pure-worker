@@ -335,4 +335,86 @@ impl PathWhitelistService {
 
         Ok((canonical_workspace, skills_dir))
     }
+
+    /// 逐级安全创建 workspace 下的 `.agents/skills` 目录。
+    ///
+    /// 与 `create_dir_all` 不同，此方法在每一级创建后立即进行 symlink 检测，
+    /// 防止 TOCTOU 攻击（在 validate_skills_dir 与 create_dir_all 之间
+    /// 攻击者将 `.agents` 替换为 symlink 导致越权写入）。
+    ///
+    /// 流程：
+    /// 1. canonicalize workspace → `canonical_workspace`
+    /// 2. 对 `.agents`：不存在则 `create_dir`，然后 `symlink_metadata` 确认非 symlink
+    /// 3. 对 `.agents/skills`：同上
+    /// 4. 最终 canonicalize skills_dir 确认仍在 workspace 边界内
+    pub fn ensure_safe_skills_dir(workspace_path: &Path) -> Result<(PathBuf, PathBuf), AppError> {
+        if !workspace_path.is_dir() {
+            return Err(AppError::InvalidInput(format!(
+                "工作区路径不存在或不是目录：'{}'",
+                workspace_path.display()
+            )));
+        }
+
+        let canonical_workspace = workspace_path.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "工作区路径规范化失败 '{}'：{e}",
+                workspace_path.display()
+            ))
+        })?;
+
+        let agents_dir = canonical_workspace.join(".agents");
+
+        // 逐级创建并校验 .agents
+        Self::ensure_safe_dir_level(&agents_dir, ".agents")?;
+
+        let skills_dir = agents_dir.join("skills");
+
+        // 逐级创建并校验 .agents/skills
+        Self::ensure_safe_dir_level(&skills_dir, ".agents/skills")?;
+
+        // 最终 canonicalize 确认仍在 workspace 边界内
+        let canonical_skills = skills_dir.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "skills 目录规范化失败 '{}'：{e}",
+                skills_dir.display()
+            ))
+        })?;
+        if !canonical_skills.starts_with(&canonical_workspace) {
+            return Err(AppError::PermissionDenied(format!(
+                "skills 目录规范化后逃逸出工作区：'{}'",
+                canonical_skills.display()
+            )));
+        }
+
+        Ok((canonical_workspace, skills_dir))
+    }
+
+    /// 单级目录安全创建：不存在则 create_dir，创建后立即 symlink_metadata 检测。
+    fn ensure_safe_dir_level(dir: &Path, label: &str) -> Result<(), AppError> {
+        if !dir.exists() {
+            std::fs::create_dir(dir)
+                .map_err(|e| AppError::FileOperation(format!("创建 {label} 目录失败：{e}")))?;
+        }
+
+        let meta = dir.symlink_metadata().map_err(|e| {
+            AppError::FileOperation(format!(
+                "无法读取 {label} 目录元数据 '{}'：{e}",
+                dir.display()
+            ))
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(format!(
+                "工作区 {label} 目录是符号链接，已拒绝访问：'{}'",
+                dir.display()
+            )));
+        }
+        if !meta.is_dir() {
+            return Err(AppError::InvalidInput(format!(
+                "工作区 {label} 不是目录：'{}'",
+                dir.display()
+            )));
+        }
+
+        Ok(())
+    }
 }

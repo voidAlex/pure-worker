@@ -70,6 +70,30 @@ fn validate_python_env_path(env_path: &str) -> Result<(), AppError> {
     .map_err(|_| AppError::Config(String::from("未找到用户主目录环境变量")))?;
 
     let expected_base = Path::new(&home).join(".pureworker").join("skill-envs");
+
+    // 校验 ~/.pureworker 和 ~/.pureworker/skill-envs 非 symlink（防止 symlink 逃逸）
+    let pureworker_dir = Path::new(&home).join(".pureworker");
+    if pureworker_dir.exists() {
+        let meta = pureworker_dir.symlink_metadata().map_err(|e| {
+            AppError::InvalidInput(format!("无法读取 ~/.pureworker 目录元数据：{e}"))
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(String::from(
+                "~/.pureworker 是符号链接，拒绝校验 env_path",
+            )));
+        }
+    }
+    if expected_base.exists() {
+        let meta = expected_base.symlink_metadata().map_err(|e| {
+            AppError::InvalidInput(format!("无法读取 ~/.pureworker/skill-envs 目录元数据：{e}"))
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(String::from(
+                "~/.pureworker/skill-envs 是符号链接，拒绝校验 env_path",
+            )));
+        }
+    }
+
     let canonical_base = expected_base
         .canonicalize()
         .map_err(|e| AppError::InvalidInput(format!("技能环境根路径不存在或无法解析：{e}")))?;

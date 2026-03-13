@@ -260,32 +260,18 @@ impl SkillStoreService {
             )));
         }
 
-        // 校验 .agents/skills 目录安全性（symlink 防护 + workspace 边界校验）
+        // 逐级安全创建 .agents/skills 目录（每级创建后立即 symlink 检测，防止 TOCTOU）
         let (_canonical_workspace, skills_dir) =
-            PathWhitelistService::validate_skills_dir(workspace_path)?;
-        tokio::fs::create_dir_all(&skills_dir)
-            .await
-            .map_err(|e| AppError::FileOperation(format!("创建技能目录失败：{e}")))?;
-
-        // create_dir_all 后再次执行完整校验（防止 TOCTOU：创建过程中 .agents 或 skills 被替换为 symlink）
-        // validate_skills_dir 会重新 canonicalize workspace + 检查 .agents 和 skills 非 symlink + 边界校验
-        let (canonical_workspace_post, _skills_dir_post) =
-            PathWhitelistService::validate_skills_dir(workspace_path)?;
+            PathWhitelistService::ensure_safe_skills_dir(workspace_path)?;
 
         let target_dir = skills_dir.join(&repo_name);
 
-        // 再次校验 skills_dir canonicalize 后仍在 workspace 内（双重保障）
+        // 校验目标安装路径不逃逸出 skills 目录
+        let absolute_target = std::path::absolute(&target_dir)
+            .map_err(|e| AppError::FileOperation(format!("无法获取目标目录绝对路径：{e}")))?;
         let canonical_skills = skills_dir
             .canonicalize()
             .map_err(|e| AppError::FileOperation(format!("无法规范化技能目录路径：{e}")))?;
-        if !canonical_skills.starts_with(&canonical_workspace_post) {
-            return Err(AppError::PermissionDenied(format!(
-                "技能目录逃逸出工作区边界，已拒绝：'{}'",
-                canonical_skills.display()
-            )));
-        }
-        let absolute_target = std::path::absolute(&target_dir)
-            .map_err(|e| AppError::FileOperation(format!("无法获取目标目录绝对路径：{e}")))?;
         if !absolute_target.starts_with(&canonical_skills) {
             return Err(AppError::InvalidInput(format!(
                 "目标安装路径逃逸出技能目录，已拒绝：'{}'",
@@ -293,7 +279,21 @@ impl SkillStoreService {
             )));
         }
 
-        if target_dir.exists() {
+        // 预克隆检查：目标路径若已存在，确保不是 symlink
+        if target_dir.symlink_metadata().is_ok() {
+            let target_meta = target_dir.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "无法读取目标目录元数据 '{}'：{e}",
+                    target_dir.display()
+                ))
+            })?;
+            if target_meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(format!(
+                    "目标安装目录是符号链接，已拒绝：'{}'",
+                    target_dir.display()
+                )));
+            }
+            // 目录或文件已存在（非 symlink），提示用户
             return Err(AppError::InvalidInput(format!(
                 "目标目录已存在：'{}'，请先手动删除或选择其他名称",
                 target_dir.display()

@@ -87,6 +87,10 @@ impl UvManager {
 
         let base = Self::skill_env_base_dir()?;
         let env_path = base.join(skill_name);
+
+        // 逐级检查 ~/.pureworker 和 ~/.pureworker/skill-envs 非 symlink
+        Self::validate_env_base_dirs(&base)?;
+
         tokio::fs::create_dir_all(&base)
             .await
             .map_err(|error| AppError::FileOperation(error.to_string()))?;
@@ -192,6 +196,51 @@ impl UvManager {
         .map_err(|_| AppError::Config(String::from("未找到用户主目录环境变量")))?;
 
         Ok(Path::new(&home).join(".pureworker").join("skill-envs"))
+    }
+
+    /// 校验 `~/.pureworker` 和 `~/.pureworker/skill-envs` 两级目录非 symlink。
+    ///
+    /// 防止攻击者将 `~/.pureworker` 替换为指向任意位置的 symlink，
+    /// 导致 `create_skill_env` 在非预期目录创建虚拟环境。
+    fn validate_env_base_dirs(base: &Path) -> Result<(), AppError> {
+        // base = ~/.pureworker/skill-envs，parent = ~/.pureworker
+        if let Some(pureworker_dir) = base.parent() {
+            if pureworker_dir.exists() {
+                let meta = pureworker_dir.symlink_metadata().map_err(|e| {
+                    AppError::FileOperation(format!("无法读取 ~/.pureworker 目录元数据：{e}"))
+                })?;
+                if meta.file_type().is_symlink() {
+                    return Err(AppError::PermissionDenied(String::from(
+                        "~/.pureworker 是符号链接，已拒绝操作",
+                    )));
+                }
+                if !meta.is_dir() {
+                    return Err(AppError::InvalidInput(String::from(
+                        "~/.pureworker 不是目录",
+                    )));
+                }
+            }
+        }
+
+        if base.exists() {
+            let meta = base.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "无法读取 ~/.pureworker/skill-envs 目录元数据：{e}"
+                ))
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(String::from(
+                    "~/.pureworker/skill-envs 是符号链接，已拒绝操作",
+                )));
+            }
+            if !meta.is_dir() {
+                return Err(AppError::InvalidInput(String::from(
+                    "~/.pureworker/skill-envs 不是目录",
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     /// 探测单个 uv 候选路径。
