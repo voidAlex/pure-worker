@@ -118,6 +118,7 @@ impl SkillStoreService {
             display_name: Some(skill.name.clone()),
             description: Some(skill.description.clone()),
             skill_type: skill.skill_type.clone(),
+            env_path: None,
             config_json: None,
         };
 
@@ -259,11 +260,13 @@ impl SkillStoreService {
 
         // 安装 Python 依赖（如果存在 requirements.txt）
         let requirements_path = target_dir.join("requirements.txt");
-        if requirements_path.exists() {
-            Self::setup_python_env(&skill_name, &requirements_path).await?;
-        }
+        let env_path = if requirements_path.exists() {
+            Some(Self::setup_python_env(&skill_name, &requirements_path).await?)
+        } else {
+            None
+        };
 
-        // 注册到数据库
+        // 注册到数据库（包含 env_path 以确保 Python 技能可执行）
         let input = CreateSkillInput {
             name: skill_name.clone(),
             version: version.clone(),
@@ -272,6 +275,7 @@ impl SkillStoreService {
             display_name: Some(skill_name.clone()),
             description: Some(description.clone()),
             skill_type: String::from("python"),
+            env_path,
             config_json: None,
         };
 
@@ -312,18 +316,23 @@ impl SkillStoreService {
 
     /// 校验 Git URL 来源是否在白名单内。
     ///
-    /// 仅允许 github.com 和 gitee.com 域名，防止从不受信来源安装代码。
+    /// 仅允许 github.com 和 gitee.com 域名，使用前缀匹配防止绕过
+    /// （如 `evil-github.com` 不会通过 `starts_with("https://github.com/")` 校验）。
     fn validate_git_url(url: &str) -> Result<(), AppError> {
-        let allowed_hosts = ["github.com", "gitee.com"];
+        let allowed_prefixes = [
+            "https://github.com/",
+            "https://gitee.com/",
+            "git@github.com:",
+            "git@gitee.com:",
+        ];
 
-        let is_allowed = allowed_hosts
+        let is_allowed = allowed_prefixes
             .iter()
-            .any(|host| url.contains(&format!("{host}/")) || url.contains(&format!("{host}:")));
+            .any(|prefix| url.starts_with(prefix));
 
         if !is_allowed {
             return Err(AppError::PermissionDenied(format!(
-                "Git 来源不在白名单内，仅允许：{}。收到：{url}",
-                allowed_hosts.join("、")
+                "Git 来源不在白名单内，仅允许 github.com 和 gitee.com（HTTPS 或 SSH 协议）。收到：{url}"
             )));
         }
 
@@ -353,20 +362,28 @@ impl SkillStoreService {
         Ok(name.to_string())
     }
 
-    /// 执行 git clone --depth 1 浅克隆。
-    ///
-    /// 使用系统 git 命令，设置 120 秒超时。
+    /// git clone 超时时间（秒）。
+    const GIT_CLONE_TIMEOUT_SECS: u64 = 120;
+
+    /// 执行 git clone --depth 1 浅克隆（带超时保护）。
     async fn git_clone(url: &str, target: &PathBuf) -> Result<(), AppError> {
-        let output = tokio::process::Command::new("git")
-            .args(["clone", "--depth", "1", url])
-            .arg(target)
-            .output()
-            .await
-            .map_err(|e| {
-                AppError::ExternalService(format!(
-                    "执行 git clone 失败（请确认系统已安装 git）：{e}"
-                ))
-            })?;
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(Self::GIT_CLONE_TIMEOUT_SECS),
+            tokio::process::Command::new("git")
+                .args(["clone", "--depth", "1", url])
+                .arg(target)
+                .output(),
+        )
+        .await
+        .map_err(|_| {
+            AppError::ExternalService(format!(
+                "git clone 超时（{} 秒），请检查网络连接或仓库地址",
+                Self::GIT_CLONE_TIMEOUT_SECS
+            ))
+        })?
+        .map_err(|e| {
+            AppError::ExternalService(format!("执行 git clone 失败（请确认系统已安装 git）：{e}"))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -430,14 +447,17 @@ impl SkillStoreService {
         Ok((name, description, version))
     }
 
-    /// 为技能创建 Python 虚拟环境并安装依赖。
+    /// 为技能创建 Python 虚拟环境并安装依赖，返回环境路径。
     ///
     /// 调用 `UvManager` 创建隔离环境，再通过 `uv pip install -r` 安装 requirements。
-    async fn setup_python_env(skill_name: &str, requirements_path: &Path) -> Result<(), AppError> {
+    async fn setup_python_env(
+        skill_name: &str,
+        requirements_path: &Path,
+    ) -> Result<String, AppError> {
         let env_path = UvManager::create_skill_env(skill_name, None).await?;
 
         UvManager::install_skill_deps(&env_path, &requirements_path.to_string_lossy()).await?;
 
-        Ok(())
+        Ok(env_path)
     }
 }

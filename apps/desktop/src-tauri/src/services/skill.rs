@@ -68,7 +68,7 @@ impl SkillService {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            "INSERT INTO skill_registry (id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?, 'unknown', NULL)",
+            "INSERT INTO skill_registry (id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'unknown', NULL)",
         )
         .bind(&id)
         .bind(&input.name)
@@ -80,6 +80,7 @@ impl SkillService {
         .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.skill_type)
+        .bind(&input.env_path)
         .bind(&input.config_json)
         .bind(&now)
         .execute(pool)

@@ -92,6 +92,7 @@ impl SkillDiscoveryService {
                 display_name: Some(skill.name.clone()),
                 description: Some(skill.description.clone()),
                 skill_type: skill.skill_type.clone(),
+                env_path: None,
                 config_json: None,
             };
 

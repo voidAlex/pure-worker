@@ -37,9 +37,9 @@ pub fn get_builtin_tool(name: &str) -> Option<Box<dyn UnifiedTool>> {
     }
 }
 
-/// 分发内置技能调用到对应的处理模块。
+/// 通过 UnifiedTool trait 对象分发内置技能调用。
 ///
-/// 优先通过 UnifiedTool trait 对象执行。
+/// 根据技能名称查找对应的 trait 对象并执行 `invoke()`。
 /// 若技能名称不在已知列表中，返回错误结果。
 pub async fn dispatch_builtin_skill(
     skill_name: &str,
@@ -47,13 +47,9 @@ pub async fn dispatch_builtin_skill(
     input: serde_json::Value,
     start: &Instant,
 ) -> Result<ToolResult, AppError> {
-    match skill_name {
-        "math.compute" => math_compute::execute(input, invoke_id, start).await,
-        "image.preprocess" => image_preprocess::execute(input, invoke_id, start).await,
-        "ocr.extract" => ocr_extract::execute(input, invoke_id, start).await,
-        "office.read_write" => office_read_write::execute(input, invoke_id, start).await,
-        "export.render" => export_render::execute(input, invoke_id, start).await,
-        _ => {
+    match get_builtin_tool(skill_name) {
+        Some(tool) => tool.invoke(input).await,
+        None => {
             let duration_ms = start.elapsed().as_millis() as u64;
             Ok(create_error_result(
                 skill_name,

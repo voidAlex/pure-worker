@@ -257,8 +257,10 @@ impl SkillExecutorService {
         }
 
         // 解析 stdout 为 JSON。
-        // 优先尝试解析为完整的 ToolResult 协议格式（包含 success/data/error 字段），
-        // 若不符合协议格式则将整个 JSON 包装为 data 字段。
+        // 尝试解析为完整的 ToolResult 协议格式：
+        // - 必须包含 success (bool)、audit (object with tool_name/invoke_id/risk_level/duration_ms)
+        // - 校验 audit.tool_name 与预期技能名称一致
+        // - 非协议格式 JSON 标记为 degraded_to="raw_json_wrapped"
         let stdout = String::from_utf8_lossy(&output.stdout);
         match serde_json::from_str::<serde_json::Value>(&stdout) {
             Ok(parsed) => {
@@ -274,20 +276,57 @@ impl SkillExecutorService {
                         .and_then(|v| v.as_str())
                         .map(String::from);
 
+                    // 解析 audit 子对象，提取 Python 端的审计字段
+                    let py_audit = parsed.get("audit");
+                    let py_tool_name = py_audit
+                        .and_then(|a| a.get("tool_name"))
+                        .and_then(|v| v.as_str());
+                    let py_invoke_id = py_audit
+                        .and_then(|a| a.get("invoke_id"))
+                        .and_then(|v| v.as_str());
+                    let py_risk_level = py_audit
+                        .and_then(|a| a.get("risk_level"))
+                        .and_then(|v| v.as_str());
+                    let py_duration_ms = py_audit
+                        .and_then(|a| a.get("duration_ms"))
+                        .and_then(|v| v.as_u64());
+
+                    // 校验 tool_name 一致性（Python 返回的 tool_name 应与技能名匹配）
+                    if let Some(reported_name) = py_tool_name {
+                        if reported_name != skill_name {
+                            eprintln!(
+                                "[技能协议] 技能 '{skill_name}' 返回的 tool_name '{reported_name}' 不一致，以实际技能名为准"
+                            );
+                        }
+                    }
+
+                    // 采用 Python 端的 risk_level（如有），否则默认 Medium
+                    let risk_level = match py_risk_level {
+                        Some("low") => ToolRiskLevel::Low,
+                        Some("high") => ToolRiskLevel::High,
+                        _ => ToolRiskLevel::Medium,
+                    };
+
+                    // 采用 Python 端的 invoke_id（如有），否则使用外部生成的
+                    let effective_invoke_id = py_invoke_id.unwrap_or(invoke_id);
+
+                    // 采用 Python 端的 duration_ms（如有），否则使用 Rust 侧测量值
+                    let effective_duration_ms = py_duration_ms.unwrap_or(duration_ms);
+
                     let mut result = if success {
                         create_success_result(
                             skill_name,
-                            invoke_id,
-                            ToolRiskLevel::Medium,
-                            duration_ms,
+                            effective_invoke_id,
+                            risk_level,
+                            effective_duration_ms,
                             data.unwrap_or(serde_json::Value::Null),
                         )
                     } else {
                         create_error_result(
                             skill_name,
-                            invoke_id,
-                            ToolRiskLevel::Medium,
-                            duration_ms,
+                            effective_invoke_id,
+                            risk_level,
+                            effective_duration_ms,
                             error.unwrap_or_else(|| {
                                 "Python 技能返回失败但未提供错误信息".to_string()
                             }),
@@ -296,14 +335,16 @@ impl SkillExecutorService {
                     result.degraded_to = degraded_to;
                     Ok(result)
                 } else {
-                    // 非协议格式，将整个 JSON 包装为 data
-                    Ok(create_success_result(
+                    // 非协议格式 JSON，标记为降级包装
+                    let mut result = create_success_result(
                         skill_name,
                         invoke_id,
                         ToolRiskLevel::Medium,
                         duration_ms,
                         parsed,
-                    ))
+                    );
+                    result.degraded_to = Some("raw_json_wrapped".to_string());
+                    Ok(result)
                 }
             }
             Err(e) => Ok(create_error_result(

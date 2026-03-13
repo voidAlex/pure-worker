@@ -20,7 +20,7 @@ INSERT OR IGNORE INTO skill_registry (
     '读取和写入 Office 文档（Word、Excel），支持内容提取和模板填充。',
     'builtin',
     NULL,
-    '{"inputSchema":{"type":"object","required":["operation"],"properties":{"operation":{"type":"string","enum":["read_excel","read_word"],"description":"操作类型"},"file_path":{"type":"string","description":"文件路径"},"sheet_name":{"type":"string","description":"工作表名称（read_excel 可选，默认第一个工作表）"}}},"outputSchema":{"type":"object","properties":{"sheet_name":{"type":"string","description":"工作表名称"},"row_count":{"type":"integer","description":"行数"},"rows":{"type":"array","description":"行数据数组","items":{"type":"array","items":{"type":["string","number","boolean","null"]}}},"paragraphs":{"type":"array","description":"Word 段落文本数组","items":{"type":"string"}}}}}',
+    '{"inputSchema":{"type":"object","required":["operation","file_path"],"properties":{"operation":{"type":"string","enum":["read_excel","read_word"],"description":"操作类型"},"file_path":{"type":"string","description":"文件路径"},"sheet_name":{"type":"string","description":"工作表名称（read_excel 可选，默认第一个工作表）"}}},"outputSchema":{"type":"object","properties":{"sheet_name":{"type":"string","description":"工作表名称（Excel）"},"row_count":{"type":"integer","description":"行数（Excel）"},"rows":{"type":"array","description":"行数据数组（Excel）","items":{"type":"array","items":{"type":["string","number","boolean","null"]}}},"text":{"type":"string","description":"文档提取的文本内容（Word）"},"paragraph_count":{"type":"integer","description":"段落数（Word）"},"paragraphs":{"type":"array","description":"段落文本数组（Word）","items":{"type":"string"}}}}}',
     '2026-01-01T00:00:00+00:00',
     'healthy',
     '2026-01-01T00:00:00+00:00'
@@ -44,7 +44,7 @@ INSERT OR IGNORE INTO skill_registry (
     '从图片中提取文字内容，支持作业、试卷等教育场景文档识别。',
     'builtin',
     NULL,
-    '{"inputSchema":{"type":"object","required":["image_path"],"properties":{"image_path":{"type":"string","description":"待识别图片的文件路径（支持 PNG/JPG/BMP/TIFF）"},"language":{"type":"string","description":"识别语言（默认 ch，可选 en）","default":"ch"}}},"outputSchema":{"type":"object","properties":{"text":{"type":"string","description":"识别出的完整文本"},"blocks":{"type":"array","description":"文本块列表（含位置坐标和置信度）","items":{"type":"object","properties":{"text":{"type":"string"},"confidence":{"type":"number"},"bbox":{"type":"array","items":{"type":"number"},"description":"边界框坐标 [x1,y1,x2,y2]"}}}}}}}',
+    '{"inputSchema":{"type":"object","required":["image_path"],"properties":{"image_path":{"type":"string","description":"待识别图片的文件路径（支持 PNG/JPG/BMP/TIFF）"},"language":{"type":"string","description":"识别语言（默认 ch，可选 en）","default":"ch"}}},"outputSchema":{"type":"object","properties":{"text":{"type":"string","description":"识别出的完整文本"},"regions":{"type":"array","description":"文字区域列表（含位置坐标和置信度）","items":{"type":"object","properties":{"text":{"type":"string"},"confidence":{"type":"number"},"bbox":{"type":"array","items":{"type":"number"},"description":"边界框坐标 [x1,y1,x2,y2]"}}}}}}}',
     '2026-01-01T00:00:00+00:00',
     'healthy',
     '2026-01-01T00:00:00+00:00'

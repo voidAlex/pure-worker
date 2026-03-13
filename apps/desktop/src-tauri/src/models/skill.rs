@@ -36,6 +36,8 @@ pub struct CreateSkillInput {
     pub display_name: Option<String>,
     pub description: Option<String>,
     pub skill_type: String,
+    /// Python 技能虚拟环境路径（Python 技能必填，内置技能为空）。
+    pub env_path: Option<String>,
     pub config_json: Option<String>,
 }
 
