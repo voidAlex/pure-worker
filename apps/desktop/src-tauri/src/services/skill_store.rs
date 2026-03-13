@@ -320,9 +320,29 @@ impl SkillStoreService {
             let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
         }
 
+        // 紧贴 clone 前二次校验 skills_dir：防止 ensure_safe_skills_dir 到此处之间
+        // .agents 或 .agents/skills 被替换为 symlink
+        PathWhitelistService::validate_skills_dir(workspace_path)?;
+
         Self::git_clone(git_url, &tmp_dir).await?;
 
-        // clone 后校验临时目录是真实目录（非 symlink）且仍在 skills_dir 内
+        // clone 后校验：canonicalize(tmp_dir) 必须仍在 skills_dir 内
+        let canonical_tmp = tmp_dir.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "克隆临时目录 canonicalize 失败 '{}'：{e}",
+                tmp_dir.display()
+            ))
+        })?;
+        if !canonical_tmp.starts_with(&canonical_skills) {
+            let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+            return Err(AppError::PermissionDenied(format!(
+                "克隆结果逃逸出技能目录边界（'{}' 不在 '{}' 内），已清理",
+                canonical_tmp.display(),
+                canonical_skills.display()
+            )));
+        }
+
+        // clone 后校验临时目录是真实目录（非 symlink）
         match tmp_dir.symlink_metadata() {
             Ok(meta) => {
                 if meta.file_type().is_symlink() || !meta.is_dir() {

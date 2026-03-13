@@ -94,9 +94,11 @@ impl UvManager {
         // 逐级检查 ~/.pureworker 和 ~/.pureworker/skill-envs 非 symlink
         Self::validate_env_base_dirs(&base)?;
 
-        tokio::fs::create_dir_all(&base)
-            .await
-            .map_err(|error| AppError::FileOperation(error.to_string()))?;
+        // 逐级安全创建（每级创建后立即 symlink 检测，防止 TOCTOU）
+        if let Some(pureworker_dir) = base.parent() {
+            Self::ensure_safe_env_dir(pureworker_dir, "~/.pureworker").await?;
+        }
+        Self::ensure_safe_env_dir(&base, "~/.pureworker/skill-envs").await?;
 
         // 校验目标 env_path：若已存在且为 symlink 或非目录，拒绝操作
         if env_path.exists() || env_path.symlink_metadata().is_ok() {
@@ -149,7 +151,24 @@ impl UvManager {
         }
 
         // rename 原子落位：若目标已存在（正常目录），先移除再 rename
-        if env_path.exists() {
+        // 紧贴删除前 symlink 复检，防止 TOCTOU 替换为 symlink 导致误删任意目录
+        if env_path.exists() || env_path.symlink_metadata().is_ok() {
+            if let Ok(meta) = env_path.symlink_metadata() {
+                if meta.file_type().is_symlink() {
+                    let _ = tokio::fs::remove_dir_all(&tmp_path).await;
+                    return Err(AppError::PermissionDenied(format!(
+                        "技能环境路径 '{}' 在操作过程中变为符号链接，已拒绝操作",
+                        env_path.display()
+                    )));
+                }
+                if !meta.is_dir() {
+                    let _ = tokio::fs::remove_dir_all(&tmp_path).await;
+                    return Err(AppError::InvalidInput(format!(
+                        "技能环境路径 '{}' 在操作过程中变为非目录类型",
+                        env_path.display()
+                    )));
+                }
+            }
             tokio::fs::remove_dir_all(&env_path).await.map_err(|e| {
                 AppError::FileOperation(format!(
                     "清理旧环境目录 '{}' 失败：{e}",
@@ -293,6 +312,36 @@ impl UvManager {
                     "~/.pureworker/skill-envs 不是目录",
                 )));
             }
+        }
+
+        Ok(())
+    }
+
+    /// 单级目录安全创建：不存在则 create_dir，创建后立即 symlink_metadata 检测。
+    async fn ensure_safe_env_dir(dir: &Path, label: &str) -> Result<(), AppError> {
+        if !dir.exists() {
+            tokio::fs::create_dir(dir)
+                .await
+                .map_err(|e| AppError::FileOperation(format!("创建 {label} 目录失败：{e}")))?;
+        }
+
+        let meta = dir.symlink_metadata().map_err(|e| {
+            AppError::FileOperation(format!(
+                "无法读取 {label} 目录元数据 '{}'：{e}",
+                dir.display()
+            ))
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(format!(
+                "{label} 目录是符号链接，已拒绝操作：'{}'",
+                dir.display()
+            )));
+        }
+        if !meta.is_dir() {
+            return Err(AppError::InvalidInput(format!(
+                "{label} 不是目录：'{}'",
+                dir.display()
+            )));
         }
 
         Ok(())
