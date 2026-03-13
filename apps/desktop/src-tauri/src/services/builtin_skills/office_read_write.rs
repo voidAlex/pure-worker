@@ -334,7 +334,8 @@ fn read_word_blocking(file_path: &str) -> Result<serde_json::Value, String> {
     }
 
     // 按 <w:p> 段落拆分，在每个段落内提取 <w:t> 文本
-    let paragraphs = extract_docx_paragraphs(&document_xml);
+    let paragraphs =
+        extract_docx_paragraphs(&document_xml).map_err(|e| format!("解析文档段落失败：{e}"))?;
 
     let full_text = paragraphs.join("\n");
 
@@ -349,15 +350,12 @@ fn read_word_blocking(file_path: &str) -> Result<serde_json::Value, String> {
 ///
 /// 使用正则按 `<w:p>` 拆分段落，再提取每个段落中的 `<w:t>` 文本内容。
 /// 同一段落内多个 `<w:t>` 的文本会拼接在一起。
-fn extract_docx_paragraphs(xml: &str) -> Vec<String> {
-    // 正则匹配 <w:p ...>...</w:p> 段落
-    let para_re = regex::Regex::new(r"(?s)<w:p[ >].*?</w:p>").unwrap_or_else(|_| {
-        // fallback: 不应发生，但保护性处理
-        regex::Regex::new(r"<w:p>.*?</w:p>").expect("正则编译失败")
-    });
+fn extract_docx_paragraphs(xml: &str) -> Result<Vec<String>, String> {
+    let para_re = regex::Regex::new(r"(?s)<w:p[ >].*?</w:p>")
+        .map_err(|e| format!("段落正则编译失败：{e}"))?;
 
-    // 正则匹配 <w:t> 或 <w:t xml:space="preserve"> 内的文本
-    let text_re = regex::Regex::new(r"<w:t[^>]*>([^<]*)</w:t>").expect("w:t 正则编译失败");
+    let text_re = regex::Regex::new(r"<w:t[^>]*>([^<]*)</w:t>")
+        .map_err(|e| format!("w:t 正则编译失败：{e}"))?;
 
     let mut paragraphs = Vec::new();
 
@@ -377,7 +375,7 @@ fn extract_docx_paragraphs(xml: &str) -> Vec<String> {
         }
     }
 
-    paragraphs
+    Ok(paragraphs)
 }
 
 /// 向后兼容的执行入口。

@@ -6,9 +6,16 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::process::Command;
 
 use crate::error::AppError;
+
+/// uv 子进程通用超时时间（秒）。
+const UV_COMMAND_TIMEOUT_SECS: u64 = 120;
+
+/// uv 健康探测超时时间（秒）。
+const UV_PROBE_TIMEOUT_SECS: u64 = 10;
 
 /// uv 健康检查结果。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -92,10 +99,7 @@ impl UvManager {
             }
         }
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|error| AppError::ExternalService(format!("执行 uv venv 失败：{error}")))?;
+        let output = run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv venv").await?;
         if !output.status.success() {
             return Err(AppError::ExternalService(format!(
                 "创建技能环境失败：{}",
@@ -126,16 +130,15 @@ impl UvManager {
             Path::new(env_path).join("bin").join("python")
         };
 
-        let output = Command::new("uv")
-            .arg("pip")
+        let mut cmd = Command::new("uv");
+        cmd.arg("pip")
             .arg("install")
             .arg("-r")
             .arg(requirements_path)
             .arg("--python")
-            .arg(&python_path)
-            .output()
-            .await
-            .map_err(|error| AppError::ExternalService(format!("执行 uv pip 失败：{error}")))?;
+            .arg(&python_path);
+        let output =
+            run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv pip install").await?;
 
         if !output.status.success() {
             return Err(AppError::ExternalService(format!(
@@ -193,9 +196,18 @@ impl UvManager {
 
     /// 探测单个 uv 候选路径。
     async fn probe_uv_candidate(candidate: &str) -> Result<Option<(String, String)>, AppError> {
-        let output = Command::new(candidate).arg("--version").output().await;
-        let Ok(output) = output else {
-            return Ok(None);
+        let timeout = Duration::from_secs(UV_PROBE_TIMEOUT_SECS);
+        let child = match Command::new(candidate)
+            .arg("--version")
+            .kill_on_drop(true)
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+        let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+            Ok(Ok(o)) => o,
+            _ => return Ok(None),
         };
         if !output.status.success() {
             return Ok(None);
@@ -224,26 +236,18 @@ impl UvManager {
     /// 执行 uv 安装脚本。
     async fn run_uv_installer() -> Result<UvInstallResult, AppError> {
         let output = if cfg!(target_os = "windows") {
-            Command::new("powershell")
-                .arg("-NoProfile")
+            let mut cmd = Command::new("powershell");
+            cmd.arg("-NoProfile")
                 .arg("-ExecutionPolicy")
                 .arg("Bypass")
                 .arg("-Command")
-                .arg("irm https://astral.sh/uv/install.ps1 | iex")
-                .output()
-                .await
-                .map_err(|error| {
-                    AppError::ExternalService(format!("执行 uv 安装脚本失败：{error}"))
-                })?
+                .arg("irm https://astral.sh/uv/install.ps1 | iex");
+            run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv 安装脚本").await?
         } else {
-            Command::new("sh")
-                .arg("-c")
-                .arg("curl -LsSf https://astral.sh/uv/install.sh | sh")
-                .output()
-                .await
-                .map_err(|error| {
-                    AppError::ExternalService(format!("执行 uv 安装脚本失败：{error}"))
-                })?
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c")
+                .arg("curl -LsSf https://astral.sh/uv/install.sh | sh");
+            run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv 安装脚本").await?
         };
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -262,5 +266,29 @@ impl UvManager {
             version: health.version,
             output: text_output,
         })
+    }
+}
+
+/// 带超时和 kill_on_drop 防护执行子进程命令。
+///
+/// 超时后子进程会被自动终止（kill_on_drop），防止僵尸进程。
+async fn run_command_with_timeout(
+    cmd: &mut Command,
+    timeout_secs: u64,
+    label: &str,
+) -> Result<std::process::Output, AppError> {
+    let child = cmd
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| AppError::ExternalService(format!("启动 {label} 失败：{e}")))?;
+
+    let timeout = Duration::from_secs(timeout_secs);
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(result) => {
+            result.map_err(|e| AppError::ExternalService(format!("等待 {label} 完成失败：{e}")))
+        }
+        Err(_) => Err(AppError::ExternalService(format!(
+            "{label} 执行超时（{timeout_secs} 秒）"
+        ))),
     }
 }

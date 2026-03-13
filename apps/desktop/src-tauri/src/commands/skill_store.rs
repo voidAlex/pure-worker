@@ -9,6 +9,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::error::AppError;
+use crate::services::path_whitelist::PathWhitelistService;
 use crate::services::skill_store::{SkillStoreItem, SkillStoreService};
 
 /// 列出商店技能输入参数。
@@ -57,6 +58,8 @@ pub async fn list_store_skills(
     pool: State<'_, SqlitePool>,
     input: ListStoreInput,
 ) -> Result<Vec<SkillStoreItem>, AppError> {
+    // 校验工作区路径合法性，防止前端传入任意路径遍历文件系统
+    PathWhitelistService::validate_workspace_path(&input.workspace_path)?;
     let workspace_path = Path::new(&input.workspace_path);
     SkillStoreService::list_available_skills(&pool, workspace_path).await
 }
@@ -68,6 +71,8 @@ pub async fn install_store_skill(
     pool: State<'_, SqlitePool>,
     input: InstallSkillInput,
 ) -> Result<SkillStoreItem, AppError> {
+    // 校验工作区路径合法性，防止前端传入任意路径
+    PathWhitelistService::validate_workspace_path(&input.workspace_path)?;
     let workspace_path = Path::new(&input.workspace_path);
     SkillStoreService::install_skill(&pool, &input.skill_name, workspace_path).await
 }
@@ -79,6 +84,8 @@ pub async fn install_store_skill_from_git(
     pool: State<'_, SqlitePool>,
     input: InstallFromGitInput,
 ) -> Result<SkillStoreItem, AppError> {
+    // 校验工作区路径合法性，防止前端传入任意路径
+    PathWhitelistService::validate_workspace_path(&input.workspace_path)?;
     let workspace_path = Path::new(&input.workspace_path);
     SkillStoreService::install_from_git(&pool, &input.git_url, workspace_path).await
 }

@@ -45,7 +45,7 @@ impl SkillExecutorService {
         let invoke_id = generate_invoke_id();
         let start = Instant::now();
 
-        let (result, skill_id, skill_type) =
+        let (result, skill_id, skill_type, skill_version, skill_env_path) =
             Self::execute_skill_inner(pool, skill_name, &invoke_id, input, &start).await;
 
         // 审计日志：无论执行结果如何都记录（"finally" 语义）
@@ -53,10 +53,15 @@ impl SkillExecutorService {
             Ok(r) => (r.audit.risk_level.clone(), r.success, r.audit.duration_ms),
             Err(_) => ("low".to_string(), false, start.elapsed().as_millis() as u64),
         };
+        let env_hash = skill_env_path
+            .as_deref()
+            .map(|p| format!("{:x}", md5_simple(p.as_bytes())));
         let detail = serde_json::json!({
             "invoke_id": invoke_id,
             "skill_name": skill_name,
             "skill_type": skill_type,
+            "version": skill_version,
+            "env_hash": env_hash,
             "success": audit_success,
             "duration_ms": audit_duration,
         });
@@ -80,23 +85,31 @@ impl SkillExecutorService {
 
     /// 技能执行核心逻辑（内部方法）。
     ///
-    /// 返回 `(执行结果, 技能ID, 技能类型)` 三元组，供外层统一记录审计日志。
+    /// 返回 `(执行结果, 技能ID, 技能类型, 技能版本, 技能环境路径)` 五元组，供外层统一记录审计日志。
     async fn execute_skill_inner(
         pool: &SqlitePool,
         skill_name: &str,
         invoke_id: &str,
         input: serde_json::Value,
         start: &Instant,
-    ) -> (Result<ToolResult, AppError>, Option<String>, String) {
+    ) -> (
+        Result<ToolResult, AppError>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    ) {
         let skill = match SkillService::get_skill_by_name(pool, skill_name).await {
             Ok(s) => s,
             Err(e) => {
-                return (Err(e), None, "unknown".to_string());
+                return (Err(e), None, "unknown".to_string(), None, None);
             }
         };
 
         let skill_id = Some(skill.id.clone());
         let skill_type = skill.skill_type.clone();
+        let skill_version = skill.version.clone();
+        let skill_env_path = skill.env_path.clone();
 
         if skill.status.as_deref() != Some("enabled") {
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -110,7 +123,13 @@ impl SkillExecutorService {
                     skill.status.as_deref().unwrap_or("未知")
                 ),
             );
-            return (Ok(result), skill_id, skill_type);
+            return (
+                Ok(result),
+                skill_id,
+                skill_type,
+                skill_version,
+                skill_env_path,
+            );
         }
 
         if skill.health_status == "unhealthy" {
@@ -122,7 +141,13 @@ impl SkillExecutorService {
                 duration_ms,
                 format!("技能 '{skill_name}' 健康检查不通过，请先修复"),
             );
-            return (Ok(result), skill_id, skill_type);
+            return (
+                Ok(result),
+                skill_id,
+                skill_type,
+                skill_version,
+                skill_env_path,
+            );
         }
 
         let result = match skill.skill_type.as_str() {
@@ -140,7 +165,7 @@ impl SkillExecutorService {
             }
         };
 
-        (result, skill_id, skill_type)
+        (result, skill_id, skill_type, skill_version, skill_env_path)
     }
 
     /// 执行内置技能。
@@ -399,4 +424,16 @@ impl SkillExecutorService {
 /// 生成调用唯一标识。
 fn generate_invoke_id() -> String {
     Uuid::new_v4().to_string()
+}
+
+/// 简易哈希函数（FNV-1a 64 位），用于生成 env_path 的摘要标识。
+///
+/// 不用于安全场景，仅作审计日志中环境路径的指纹标记。
+fn md5_simple(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in data {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
 }

@@ -153,6 +153,30 @@ impl PathWhitelistService {
         dirs
     }
 
+    /// 校验工作区路径是否在安全范围内。
+    ///
+    /// 工作区路径由前端 IPC 传入，需防止任意路径穿越。
+    /// 允许范围：用户主目录子目录、系统临时目录。
+    pub fn validate_workspace_path(path: &str) -> Result<(), AppError> {
+        let canonical = Self::resolve_path(path)?;
+        let mut allowed = Vec::new();
+
+        if let Some(home) = Self::get_home_dir() {
+            allowed.push(home);
+        }
+        allowed.push(std::env::temp_dir());
+
+        for dir in &allowed {
+            if canonical.starts_with(dir) {
+                return Ok(());
+            }
+        }
+
+        Err(AppError::PermissionDenied(format!(
+            "工作区路径不在安全范围内：'{path}'。仅允许用户主目录或临时目录下的路径"
+        )))
+    }
+
     /// 获取用户主目录。
     fn get_home_dir() -> Option<PathBuf> {
         std::env::var("HOME")
