@@ -70,16 +70,15 @@ impl PathWhitelistService {
         )))
     }
 
-    /// 解析并规范化路径（展开 `~`、转绝对路径、词法消除 `.`/`..`）。
+    /// 解析并规范化路径（展开 `~`、转绝对路径、词法消除 `.`/`..`、解析符号链接）。
     ///
     /// 安全策略：
     /// 1. 展开 `~` 为用户主目录
     /// 2. 相对路径转绝对路径
     /// 3. **词法规范化**：消除所有 `.` 和 `..` 组件，防止路径穿越攻击
-    ///    （例如 `~/Documents/nonexistent/../../evil.txt` → `~/evil.txt`）
-    /// 4. 若文件存在，额外使用 `canonicalize()` 解析符号链接
+    /// 4. **祖先 canonicalize**：向上查找最近的已存在祖先目录并 canonicalize，
+    ///    解析符号链接后重建路径，防止 symlink 逃逸绕过白名单
     fn resolve_path(path: &str) -> Result<PathBuf, AppError> {
-        // 第一步：展开 ~ 前缀
         let expanded = if let Some(stripped) = path.strip_prefix('~') {
             let home = Self::get_home_dir()
                 .ok_or_else(|| AppError::FileOperation("无法获取用户主目录".to_string()))?;
@@ -88,33 +87,70 @@ impl PathWhitelistService {
             PathBuf::from(path)
         };
 
-        // 第二步：转绝对路径（相对路径基于当前工作目录）
         let absolute = std::path::absolute(&expanded)
             .map_err(|e| AppError::FileOperation(format!("路径绝对化失败 '{path}'：{e}")))?;
 
-        // 第三步：词法规范化 —— 消除所有 . 和 .. 组件
         let normalized = Self::normalize_lexical(&absolute);
 
-        // 第四步：若文件/目录已存在，使用 canonicalize 解析符号链接
+        // 若完整路径存在，直接 canonicalize（解析所有符号链接）
         if normalized.exists() {
-            normalized
+            return normalized
                 .canonicalize()
-                .map_err(|e| AppError::FileOperation(format!("路径规范化失败 '{path}'：{e}")))
-        } else if let Some(parent) = normalized.parent() {
-            // 文件不存在但父目录存在时，canonicalize 父目录 + join 文件名
-            if parent.exists() {
-                let canonical_parent = parent.canonicalize().map_err(|e| {
-                    AppError::FileOperation(format!("父目录规范化失败 '{}'：{e}", parent.display()))
-                })?;
-                if let Some(file_name) = normalized.file_name() {
-                    return Ok(canonical_parent.join(file_name));
-                }
-            }
-            // 父目录也不存在：使用词法规范化结果（已消除 .. 和 .）
-            Ok(normalized)
-        } else {
-            Ok(normalized)
+                .map_err(|e| AppError::FileOperation(format!("路径规范化失败 '{path}'：{e}")));
         }
+
+        // 路径不存在时：向上查找最近的已存在祖先目录，canonicalize 后重建
+        // 这样能解析路径中任何已存在的 symlink，防止 symlink 逃逸
+        Self::canonicalize_nearest_ancestor(&normalized, path)
+    }
+
+    /// 向上查找最近的已存在祖先目录，canonicalize 后拼接剩余路径组件。
+    ///
+    /// 防止 symlink 逃逸攻击：如 `~/Documents/link -> /etc`，
+    /// 传入 `~/Documents/link/newdir/file.txt` 时，会发现 `~/Documents/link`
+    /// 已存在，canonicalize 为 `/etc`，重建为 `/etc/newdir/file.txt`，
+    /// 白名单检查即可正确拒绝。
+    fn canonicalize_nearest_ancestor(
+        normalized: &std::path::Path,
+        original_path: &str,
+    ) -> Result<PathBuf, AppError> {
+        let mut ancestor = normalized.to_path_buf();
+        let mut tail_components: Vec<std::ffi::OsString> = Vec::new();
+
+        // 逐级向上查找，收集不存在的尾部组件
+        loop {
+            if ancestor.exists() {
+                let canonical_ancestor = ancestor.canonicalize().map_err(|e| {
+                    AppError::FileOperation(format!(
+                        "祖先目录规范化失败 '{}'：{e}",
+                        ancestor.display()
+                    ))
+                })?;
+                // 按原始顺序（从祖先到叶子）重建路径
+                let mut result = canonical_ancestor;
+                for component in tail_components.iter().rev() {
+                    result.push(component);
+                }
+                return Ok(result);
+            }
+
+            // 取出最后一个组件加入尾部列表，继续向上
+            match ancestor.file_name() {
+                Some(name) => {
+                    tail_components.push(name.to_os_string());
+                    if !ancestor.pop() {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+
+        // 无法找到任何已存在的祖先（极端情况，如根目录不存在）
+        // Fail-closed：返回词法规范化结果（已消除 .. 和 .）
+        Err(AppError::FileOperation(format!(
+            "无法找到路径的任何已存在祖先目录：'{original_path}'"
+        )))
     }
 
     /// 词法级路径规范化：消除 `.` 和 `..` 组件，不依赖文件系统。
