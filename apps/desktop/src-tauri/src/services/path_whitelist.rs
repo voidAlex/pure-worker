@@ -395,6 +395,74 @@ impl PathWhitelistService {
         Ok((canonical_workspace, skills_dir))
     }
 
+    /// 逐级安全创建父目录（从白名单根目录到 target_parent 的每一级）。
+    ///
+    /// 用于替换 `create_dir_all`，防止 TOCTOU symlink 攻击。
+    /// 每级目录：不存在则 create_dir，创建后立即 symlink_metadata 检测非 symlink。
+    ///
+    /// # 参数
+    /// - `target_parent`: 需要创建到的目标父目录（如 `/home/user/Documents/export`）
+    /// - `whitelist_root`: 白名单根目录（如 `/home/user/Documents`），此目录必须已存在且非 symlink
+    ///
+    /// # 返回
+    /// 成功时返回 `Ok(())`
+    pub fn ensure_safe_parent_dirs(
+        target_parent: &Path,
+        whitelist_root: &Path,
+    ) -> Result<(), AppError> {
+        // 校验 whitelist_root 必须已存在且非 symlink
+        let root_meta = whitelist_root.symlink_metadata().map_err(|e| {
+            AppError::FileOperation(format!(
+                "无法读取白名单根目录元数据 '{}'：{e}",
+                whitelist_root.display()
+            ))
+        })?;
+        if root_meta.file_type().is_symlink() {
+            return Err(AppError::PermissionDenied(format!(
+                "白名单根目录是符号链接，已拒绝：'{}'",
+                whitelist_root.display()
+            )));
+        }
+        if !root_meta.is_dir() {
+            return Err(AppError::InvalidInput(format!(
+                "白名单根目录不是目录：'{}'",
+                whitelist_root.display()
+            )));
+        }
+
+        // 校验 target_parent 必须在 whitelist_root 内
+        if !target_parent.starts_with(whitelist_root) {
+            return Err(AppError::PermissionDenied(format!(
+                "目标父目录 '{}' 不在白名单根目录 '{}' 内",
+                target_parent.display(),
+                whitelist_root.display()
+            )));
+        }
+
+        // 从 whitelist_root 之后开始，逐级创建
+        let relative = target_parent
+            .strip_prefix(whitelist_root)
+            .map_err(|_| AppError::InvalidInput(String::from("无法计算相对路径")))?;
+
+        let mut current = whitelist_root.to_path_buf();
+        for component in relative.components() {
+            match component {
+                std::path::Component::Normal(name) => {
+                    current.push(name);
+                    Self::ensure_safe_dir_level(&current, &format!("'{}'", current.display()))?;
+                }
+                _ => {
+                    return Err(AppError::InvalidInput(format!(
+                        "目标父目录包含非法路径组件：'{}'",
+                        target_parent.display()
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// 单级目录安全创建：不存在则 create_dir，创建后立即 symlink_metadata 检测。
     fn ensure_safe_dir_level(dir: &Path, label: &str) -> Result<(), AppError> {
         if !dir.exists() {

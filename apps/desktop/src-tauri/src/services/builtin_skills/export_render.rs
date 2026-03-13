@@ -262,7 +262,9 @@ fn render_docx_blocking(
     let parent = output
         .parent()
         .ok_or_else(|| "输出路径缺少父目录".to_string())?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
+
+    // 逐级安全创建父目录（防止 create_dir_all 的 TOCTOU symlink 攻击）
+    ensure_safe_parent_dirs(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
 
     let mut doc = Docx::new();
     for text in paragraphs {
@@ -320,7 +322,9 @@ fn render_xlsx_blocking(
     let parent = output
         .parent()
         .ok_or_else(|| "输出路径缺少父目录".to_string())?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
+
+    // 逐级安全创建父目录（防止 create_dir_all 的 TOCTOU symlink 攻击）
+    ensure_safe_parent_dirs(parent).map_err(|e| format!("创建输出目录失败：{e}"))?;
 
     let mut workbook = Workbook::new();
     let worksheet = workbook
@@ -396,6 +400,78 @@ fn render_xlsx_blocking(
         "row_count": rows.len(),
         "cell_count": total_cells,
     }))
+}
+
+/// 逐级安全创建父目录（替代 create_dir_all，防止 TOCTOU symlink 攻击）。
+///
+/// 从白名单根目录向上追溯，对每一级：若不存在则 create_dir，创建后立即 symlink_metadata 检测。
+fn ensure_safe_parent_dirs(target_parent: &Path) -> Result<(), AppError> {
+    // 寻找已存在的祖先作为白名单根（必须是已存在的目录）
+    let mut whitelist_root = target_parent.to_path_buf();
+    while !whitelist_root.exists() {
+        if let Some(parent) = whitelist_root.parent() {
+            whitelist_root = parent.to_path_buf();
+        } else {
+            return Err(AppError::InvalidInput(String::from(
+                "无法找到已存在的祖先目录作为白名单根",
+            )));
+        }
+    }
+
+    // 校验白名单根非 symlink 且是目录
+    let root_meta = whitelist_root.symlink_metadata().map_err(|e| {
+        AppError::FileOperation(format!(
+            "无法读取白名单根目录元数据 '{}'：{e}",
+            whitelist_root.display()
+        ))
+    })?;
+    if root_meta.file_type().is_symlink() {
+        return Err(AppError::PermissionDenied(format!(
+            "白名单根目录是符号链接，已拒绝：'{}'",
+            whitelist_root.display()
+        )));
+    }
+    if !root_meta.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "白名单根目录不是目录：'{}'",
+            whitelist_root.display()
+        )));
+    }
+
+    // 从白名单根之后开始，逐级安全创建
+    let relative = target_parent
+        .strip_prefix(&whitelist_root)
+        .map_err(|_| AppError::InvalidInput(String::from("目标父目录不在白名单根目录内")))?;
+
+    let mut current = whitelist_root.clone();
+    for component in relative.components() {
+        if let std::path::Component::Normal(name) = component {
+            current.push(name);
+            if !current.exists() {
+                std::fs::create_dir(&current).map_err(|e| {
+                    AppError::FileOperation(format!("创建目录 '{}' 失败：{e}", current.display()))
+                })?;
+            }
+            // 创建/存在后立即校验非 symlink
+            let meta = current.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!("无法读取目录元数据 '{}'：{e}", current.display()))
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(format!(
+                    "目录是符号链接，已拒绝：'{}'",
+                    current.display()
+                )));
+            }
+            if !meta.is_dir() {
+                return Err(AppError::InvalidInput(format!(
+                    "路径不是目录：'{}'",
+                    current.display()
+                )));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// 向后兼容的执行入口。

@@ -369,7 +369,7 @@ impl SkillStoreService {
         }
 
         // rename 成功后的所有步骤统一走 cleanup-on-error
-        match Self::post_clone_setup(pool, git_url, &target_dir).await {
+        match Self::post_clone_setup(pool, git_url, &target_dir, &repo_name).await {
             Ok(item) => Ok(item),
             Err(e) => {
                 let _ = tokio::fs::remove_dir_all(&target_dir).await;
@@ -385,6 +385,7 @@ impl SkillStoreService {
         pool: &SqlitePool,
         git_url: &str,
         target_dir: &Path,
+        repo_name: &str,
     ) -> Result<SkillStoreItem, AppError> {
         let canonical_target = target_dir.canonicalize().map_err(|e| {
             AppError::FileOperation(format!(
@@ -407,6 +408,25 @@ impl SkillStoreService {
             .map_err(|e| AppError::FileOperation(format!("读取 SKILL.md 失败：{e}")))?;
 
         let (skill_name, description, version) = Self::parse_skill_md_content(&skill_md_content)?;
+
+        // 强制 skill_name 必须与 repo_name 一致，防止目录名/注册名不一致导致的安全歧义
+        if skill_name != repo_name {
+            return Err(AppError::InvalidInput(format!(
+                "SKILL.md 中的技能名称 '{}' 必须与仓库名称 '{}' 一致",
+                skill_name, repo_name
+            )));
+        }
+
+        // 再次检查 skill_name 是否已存在（防止 SKILL.md name 与现有技能冲突）
+        if SkillService::get_skill_by_name(pool, &skill_name)
+            .await
+            .is_ok()
+        {
+            return Err(AppError::InvalidInput(format!(
+                "技能 '{}' 已存在，如需重新安装请先卸载",
+                skill_name
+            )));
+        }
 
         // 校验 requirements.txt（若存在）：拒绝 symlink + 边界校验
         let requirements_path = target_dir.join("requirements.txt");
