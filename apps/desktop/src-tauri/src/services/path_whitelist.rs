@@ -10,7 +10,7 @@
 //!
 //! 写入操作额外限制：不允许写入用户主目录根级文件。
 
-use std::path::PathBuf;
+use std::path::{Component, PathBuf};
 
 use crate::error::AppError;
 
@@ -70,8 +70,16 @@ impl PathWhitelistService {
         )))
     }
 
-    /// 解析并规范化路径（展开 ~ 和相对路径）。
+    /// 解析并规范化路径（展开 `~`、转绝对路径、词法消除 `.`/`..`）。
+    ///
+    /// 安全策略：
+    /// 1. 展开 `~` 为用户主目录
+    /// 2. 相对路径转绝对路径
+    /// 3. **词法规范化**：消除所有 `.` 和 `..` 组件，防止路径穿越攻击
+    ///    （例如 `~/Documents/nonexistent/../../evil.txt` → `~/evil.txt`）
+    /// 4. 若文件存在，额外使用 `canonicalize()` 解析符号链接
     fn resolve_path(path: &str) -> Result<PathBuf, AppError> {
+        // 第一步：展开 ~ 前缀
         let expanded = if let Some(stripped) = path.strip_prefix('~') {
             let home = Self::get_home_dir()
                 .ok_or_else(|| AppError::FileOperation("无法获取用户主目录".to_string()))?;
@@ -80,31 +88,61 @@ impl PathWhitelistService {
             PathBuf::from(path)
         };
 
-        // 使用 dunce::canonicalize 或直接用父目录判断
-        // 注意：文件可能尚不存在（写入场景），因此先尝试规范化，
-        // 失败则使用绝对化后的路径
-        if expanded.exists() {
-            expanded
+        // 第二步：转绝对路径（相对路径基于当前工作目录）
+        let absolute = std::path::absolute(&expanded)
+            .map_err(|e| AppError::FileOperation(format!("路径绝对化失败 '{path}'：{e}")))?;
+
+        // 第三步：词法规范化 —— 消除所有 . 和 .. 组件
+        let normalized = Self::normalize_lexical(&absolute);
+
+        // 第四步：若文件/目录已存在，使用 canonicalize 解析符号链接
+        if normalized.exists() {
+            normalized
                 .canonicalize()
                 .map_err(|e| AppError::FileOperation(format!("路径规范化失败 '{path}'：{e}")))
-        } else {
-            // 文件不存在时，尝试规范化父目录
-            if let Some(parent) = expanded.parent() {
-                if parent.exists() {
-                    let canonical_parent = parent.canonicalize().map_err(|e| {
-                        AppError::FileOperation(format!(
-                            "父目录规范化失败 '{}'：{e}",
-                            parent.display()
-                        ))
-                    })?;
-                    if let Some(file_name) = expanded.file_name() {
-                        return Ok(canonical_parent.join(file_name));
-                    }
+        } else if let Some(parent) = normalized.parent() {
+            // 文件不存在但父目录存在时，canonicalize 父目录 + join 文件名
+            if parent.exists() {
+                let canonical_parent = parent.canonicalize().map_err(|e| {
+                    AppError::FileOperation(format!("父目录规范化失败 '{}'：{e}", parent.display()))
+                })?;
+                if let Some(file_name) = normalized.file_name() {
+                    return Ok(canonical_parent.join(file_name));
                 }
             }
-            // 最后兜底：使用绝对路径
-            Ok(std::path::absolute(&expanded).unwrap_or(expanded))
+            // 父目录也不存在：使用词法规范化结果（已消除 .. 和 .）
+            Ok(normalized)
+        } else {
+            Ok(normalized)
         }
+    }
+
+    /// 词法级路径规范化：消除 `.` 和 `..` 组件，不依赖文件系统。
+    ///
+    /// 与 `canonicalize()` 不同，此函数不要求路径存在，也不解析符号链接。
+    /// 它仅通过分析路径组件来消除穿越序列，确保白名单检查不被绕过。
+    ///
+    /// 示例：
+    /// - `/home/user/Documents/../.secret` → `/home/user/.secret`
+    /// - `/home/user/./test.txt` → `/home/user/test.txt`
+    fn normalize_lexical(path: &std::path::Path) -> PathBuf {
+        let mut result = PathBuf::new();
+        for component in path.components() {
+            match component {
+                Component::CurDir => {
+                    // `.` 组件直接跳过
+                }
+                Component::ParentDir => {
+                    // `..` 组件：弹出上一级（不能退到根以上）
+                    result.pop();
+                }
+                // RootDir、Prefix、Normal 原样保留
+                other => {
+                    result.push(other);
+                }
+            }
+        }
+        result
     }
 
     /// 获取读取操作的白名单目录列表。
