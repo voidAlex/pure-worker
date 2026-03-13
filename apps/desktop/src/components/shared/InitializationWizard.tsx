@@ -3,7 +3,7 @@
  * 引导用户完成工作目录选择和 AI 供应商配置，完成前阻止使用主应用
  */
 import React, { useState, useEffect } from 'react';
-import { commands, type AppError, type ProviderPreset, type ModelInfo, type CreateAiConfigInput } from '@/services/commandClient';
+import { commands, type AppError, type ProviderPreset, type CreateAiConfigInput } from '@/services/commandClient';
 import { Bot, Sparkles, Zap, Cpu, Activity, FolderOpen, Eye, EyeOff, CheckCircle2, XCircle, Loader2, ArrowRight, ArrowLeft, Rocket } from 'lucide-react';
 
 interface InitializationWizardProps {
