@@ -80,7 +80,21 @@ impl SkillExecutorService {
             eprintln!("[审计日志] 记录技能执行审计失败：{e}");
         }
 
-        result
+        // 统一返回结构：将所有 Err(AppError) 转为 Ok(ToolResult)，
+        // 确保调用方始终收到 success/data/error/degraded_to 结构化响应。
+        match result {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                Ok(create_error_result(
+                    skill_name,
+                    &invoke_id,
+                    ToolRiskLevel::Low,
+                    duration_ms,
+                    format!("{e}"),
+                ))
+            }
+        }
     }
 
     /// 技能执行核心逻辑（内部方法）。

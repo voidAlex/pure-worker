@@ -182,22 +182,28 @@ impl PathWhitelistService {
     }
 
     /// 获取读取操作的白名单目录列表。
+    ///
+    /// 读取白名单仅允许访问特定用户目录，而非整个 HOME 目录。
+    /// 避免暴露 `~/.ssh/`、浏览器配置、私钥等敏感路径。
     fn get_read_whitelist() -> Vec<PathBuf> {
         let mut dirs = Vec::new();
-
-        // 用户主目录（读取允许全部子目录）
-        if let Some(home) = Self::get_home_dir() {
-            dirs.push(home);
-        }
 
         // 系统临时目录
         dirs.push(std::env::temp_dir());
 
-        // .pureworker 目录（可能不在 home 下）
         if let Some(home) = Self::get_home_dir() {
-            let pureworker = home.join(".pureworker");
-            if !dirs.iter().any(|d| pureworker.starts_with(d)) {
-                dirs.push(pureworker);
+            // .pureworker 工作目录（技能环境、模型等）
+            dirs.push(home.join(".pureworker"));
+
+            // .agents 目录（技能发现需要读取 SKILL.md）
+            dirs.push(home.join(".agents"));
+
+            // 常用用户目录（支持中英文命名的 Documents/Desktop/Downloads）
+            for sub in &["Documents", "Desktop", "Downloads", "文档", "桌面", "下载"] {
+                let dir = home.join(sub);
+                if dir.exists() {
+                    dirs.push(dir);
+                }
             }
         }
 
