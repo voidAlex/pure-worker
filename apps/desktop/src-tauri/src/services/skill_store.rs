@@ -365,34 +365,48 @@ impl SkillStoreService {
     /// git clone 超时时间（秒）。
     const GIT_CLONE_TIMEOUT_SECS: u64 = 120;
 
-    /// 执行 git clone --depth 1 浅克隆（带超时保护）。
+    /// 执行 git clone --depth 1 浅克隆（带超时保护和显式进程终止）。
     async fn git_clone(url: &str, target: &PathBuf) -> Result<(), AppError> {
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(Self::GIT_CLONE_TIMEOUT_SECS),
-            tokio::process::Command::new("git")
-                .args(["clone", "--depth", "1", url])
-                .arg(target)
-                .output(),
-        )
-        .await
-        .map_err(|_| {
-            AppError::ExternalService(format!(
-                "git clone 超时（{} 秒），请检查网络连接或仓库地址",
-                Self::GIT_CLONE_TIMEOUT_SECS
-            ))
-        })?
-        .map_err(|e| {
-            AppError::ExternalService(format!("执行 git clone 失败（请确认系统已安装 git）：{e}"))
-        })?;
+        use tokio::process::Command;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::ExternalService(format!(
-                "git clone 失败：{stderr}"
-            )));
+        let child = Command::new("git")
+            .args(["clone", "--depth", "1", url])
+            .arg(target)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "执行 git clone 失败（请确认系统已安装 git）：{e}"
+                ))
+            })?;
+
+        let timeout_duration = std::time::Duration::from_secs(Self::GIT_CLONE_TIMEOUT_SECS);
+
+        match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
+            Ok(result) => {
+                let output = result.map_err(|e| {
+                    AppError::ExternalService(format!("等待 git clone 完成失败：{e}"))
+                })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::ExternalService(format!(
+                        "git clone 失败：{stderr}"
+                    )));
+                }
+
+                Ok(())
+            }
+            Err(_) => {
+                // 超时：wait_with_output() 的 future 被 drop，
+                // tokio::process::Child 的 Drop 实现会自动发送 kill 信号终止子进程。
+                Err(AppError::ExternalService(format!(
+                    "git clone 超时（{} 秒），请检查网络连接或仓库地址",
+                    Self::GIT_CLONE_TIMEOUT_SECS
+                )))
+            }
         }
-
-        Ok(())
     }
 
     /// 解析 SKILL.md 的 YAML frontmatter。

@@ -47,11 +47,13 @@ pub trait UnifiedTool: Send + Sync {
 
     /// 执行工具调用。
     ///
-    /// 接收 JSON 格式的输入参数，返回统一的 `ToolResult` 结果。
+    /// 接收 JSON 格式的输入参数和外部分配的 `invoke_id`，返回统一的 `ToolResult` 结果。
+    /// `invoke_id` 由执行引擎统一生成并传入，确保全链路审计可追踪。
     /// 返回 `Pin<Box<dyn Future>>` 以保持 trait 对象安全。
     fn invoke(
         &self,
         input: serde_json::Value,
+        invoke_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>>;
 }
 

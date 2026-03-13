@@ -54,16 +54,17 @@ impl UnifiedTool for MathComputeSkill {
     fn invoke(
         &self,
         input: serde_json::Value,
+        invoke_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>> {
-        Box::pin(async move { execute_inner(input).await })
+        let invoke_id = invoke_id.to_string();
+        Box::pin(async move { execute_inner(input, &invoke_id).await })
     }
 }
 
 /// 执行数学计算的内部逻辑。
-async fn execute_inner(input: serde_json::Value) -> Result<ToolResult, AppError> {
+async fn execute_inner(input: serde_json::Value, invoke_id: &str) -> Result<ToolResult, AppError> {
     let skill_name = "math.compute";
     let start = Instant::now();
-    let invoke_id = uuid::Uuid::new_v4().to_string();
 
     let expression = match input.get("expression").and_then(|v| v.as_str()) {
         Some(expr) => expr.to_string(),
@@ -71,7 +72,7 @@ async fn execute_inner(input: serde_json::Value) -> Result<ToolResult, AppError>
             let duration_ms = start.elapsed().as_millis() as u64;
             return Ok(create_error_result(
                 skill_name,
-                &invoke_id,
+                invoke_id,
                 ToolRiskLevel::Low,
                 duration_ms,
                 "缺少必填参数 'expression'（数学表达式）".to_string(),
@@ -83,7 +84,7 @@ async fn execute_inner(input: serde_json::Value) -> Result<ToolResult, AppError>
         let duration_ms = start.elapsed().as_millis() as u64;
         return Ok(create_error_result(
             skill_name,
-            &invoke_id,
+            invoke_id,
             ToolRiskLevel::Low,
             duration_ms,
             "表达式不能为空".to_string(),
@@ -99,7 +100,7 @@ async fn execute_inner(input: serde_json::Value) -> Result<ToolResult, AppError>
             });
             Ok(create_success_result(
                 skill_name,
-                &invoke_id,
+                invoke_id,
                 ToolRiskLevel::Low,
                 duration_ms,
                 data,
@@ -109,7 +110,7 @@ async fn execute_inner(input: serde_json::Value) -> Result<ToolResult, AppError>
             let duration_ms = start.elapsed().as_millis() as u64;
             Ok(create_error_result(
                 skill_name,
-                &invoke_id,
+                invoke_id,
                 ToolRiskLevel::Low,
                 duration_ms,
                 format!("数学表达式计算失败：{e}（表达式：{expression}）"),

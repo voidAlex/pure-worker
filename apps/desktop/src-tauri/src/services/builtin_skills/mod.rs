@@ -48,7 +48,7 @@ pub async fn dispatch_builtin_skill(
     start: &Instant,
 ) -> Result<ToolResult, AppError> {
     match get_builtin_tool(skill_name) {
-        Some(tool) => tool.invoke(input).await,
+        Some(tool) => tool.invoke(input, invoke_id).await,
         None => {
             let duration_ms = start.elapsed().as_millis() as u64;
             Ok(create_error_result(

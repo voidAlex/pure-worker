@@ -139,7 +139,7 @@ impl SkillExecutorService {
     ///
     /// # 约定
     /// - Python 可执行文件路径：`{env_path}/bin/python`（Unix）或 `{env_path}/Scripts/python.exe`（Windows）
-    /// - 入口脚本路径：`{env_path}/run.py`
+    /// - 入口脚本路径：`{source}/run.py`（source 为技能仓库目录）
     /// - 输入：通过 stdin 传入 JSON 字符串
     /// - 输出：stdout 为 JSON 格式的 ToolResult
     async fn execute_python_skill(
@@ -150,9 +150,16 @@ impl SkillExecutorService {
     ) -> Result<ToolResult, AppError> {
         let skill_name = &skill.name;
 
-        // 获取环境路径
+        // 获取环境路径（venv 目录，用于定位 Python 可执行文件）
         let env_path = skill.env_path.as_deref().ok_or_else(|| {
             AppError::Config(format!("Python 技能 '{skill_name}' 缺少 env_path 配置"))
+        })?;
+
+        // 获取技能仓库源目录（用于定位入口脚本 run.py）
+        let source_dir = skill.source.as_deref().ok_or_else(|| {
+            AppError::Config(format!(
+                "Python 技能 '{skill_name}' 缺少 source（仓库目录）配置"
+            ))
         })?;
 
         // 构建 Python 可执行文件路径
@@ -164,8 +171,8 @@ impl SkillExecutorService {
             std::path::Path::new(env_path).join("bin").join("python")
         };
 
-        // 构建入口脚本路径
-        let entry_script = std::path::Path::new(env_path).join("run.py");
+        // 构建入口脚本路径（位于技能仓库目录，而非 venv 目录）
+        let entry_script = std::path::Path::new(source_dir).join("run.py");
 
         // 校验文件是否存在
         if !python_path.exists() {

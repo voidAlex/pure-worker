@@ -52,7 +52,8 @@ impl UnifiedTool for OfficeReadWriteSkill {
                 "row_count": { "type": "integer" },
                 "rows": { "type": "array" },
                 "text": { "type": "string", "description": "Word 文档提取的文本内容" },
-                "paragraph_count": { "type": "integer" }
+                "paragraph_count": { "type": "integer" },
+                "paragraphs": { "type": "array", "items": { "type": "string" }, "description": "Word 文档段落文本数组" }
             }
         })
     }
@@ -64,10 +65,11 @@ impl UnifiedTool for OfficeReadWriteSkill {
     fn invoke(
         &self,
         input: serde_json::Value,
+        invoke_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult, AppError>> + Send + '_>> {
+        let invoke_id = invoke_id.to_string();
         Box::pin(async move {
             let start = Instant::now();
-            let invoke_id = uuid::Uuid::new_v4().to_string();
             execute_inner(input, &invoke_id, &start).await
         })
     }
