@@ -138,6 +138,7 @@ const INITIAL_SKILL_FORM: CreateSkillInput = {
   display_name: null,
   description: null,
   skill_type: 'builtin',
+  env_path: null,
   config_json: null,
 };
 
