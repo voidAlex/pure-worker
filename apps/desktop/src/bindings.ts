@@ -1416,6 +1416,72 @@ async checkSkillHealth(id: string) : Promise<Result<SkillHealthResult, AppError>
 }
 },
 /**
+ * 执行指定技能。
+ */
+async executeSkill(input: ExecuteSkillInput) : Promise<Result<ToolResult, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("execute_skill", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 扫描并发现可用技能。
+ */
+async discoverSkills(input: DiscoverSkillsInput) : Promise<Result<DiscoveredSkill[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("discover_skills", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 列出所有可用技能（已安装 + 已发现）。
+ */
+async listStoreSkills(input: ListStoreInput) : Promise<Result<SkillStoreItem[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_store_skills", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 安装指定技能（从本地发现的技能目录）。
+ */
+async installStoreSkill(input: InstallSkillInput) : Promise<Result<SkillStoreItem, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_store_skill", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 从 Git 仓库远程安装技能。
+ */
+async installStoreSkillFromGit(input: InstallFromGitInput) : Promise<Result<SkillStoreItem, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_store_skill_from_git", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 卸载指定技能。
+ */
+async uninstallStoreSkill(input: UninstallSkillInput) : Promise<Result<UninstallSkillResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("uninstall_store_skill", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 检查 uv 健康状态。
  */
 async checkUvHealth() : Promise<Result<UvHealthResult, AppError>> {
@@ -1847,7 +1913,11 @@ export type CreateSkillEnvInput = { skill_name: string; python_version: string |
 /**
  * 创建技能输入。
  */
-export type CreateSkillInput = { name: string; version: string | null; source: string | null; permission_scope: string | null; display_name: string | null; description: string | null; skill_type: string; config_json: string | null }
+export type CreateSkillInput = { name: string; version: string | null; source: string | null; permission_scope: string | null; display_name: string | null; description: string | null; skill_type: string; 
+/**
+ * Python 技能虚拟环境路径（Python 技能必填，内置技能为空）。
+ */
+env_path: string | null; config_json: string | null }
 export type CreateStudentInput = { student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null }
 /**
  * 创建模板文件输入
@@ -1982,6 +2052,42 @@ export type DeleteWatchFolderInput = { id: string }
  */
 export type DeleteWatchFolderResponse = { success: boolean }
 /**
+ * 发现技能输入参数。
+ */
+export type DiscoverSkillsInput = { 
+/**
+ * 工作区根目录路径。
+ */
+workspace_path: string }
+/**
+ * 发现的技能描述结构。
+ */
+export type DiscoveredSkill = { 
+/**
+ * 技能名称（来自 SKILL.md frontmatter）。
+ */
+name: string; 
+/**
+ * 技能描述（来自 SKILL.md frontmatter）。
+ */
+description: string; 
+/**
+ * 技能版本（可选，来自 SKILL.md frontmatter）。
+ */
+version: string | null; 
+/**
+ * 技能类型（固定为 "python"）。
+ */
+skill_type: string; 
+/**
+ * 技能目录的绝对路径。
+ */
+source_path: string; 
+/**
+ * 是否已安装到数据库。
+ */
+already_installed: boolean }
+/**
  * 擦除工作区输入。
  */
 export type EraseWorkspaceInput = { 
@@ -2037,6 +2143,18 @@ file_path: string | null;
  * 学科标签（可选）。
  */
 subject: string | null }
+/**
+ * 执行技能输入参数。
+ */
+export type ExecuteSkillInput = { 
+/**
+ * 技能名称。
+ */
+skill_name: string; 
+/**
+ * JSON 格式的技能输入参数。
+ */
+input: JsonValue }
 /**
  * 导出批改结果输入。
  */
@@ -2275,6 +2393,31 @@ has_workspace: boolean;
  */
 has_ai_config: boolean }
 /**
+ * 从 Git 安装技能输入参数。
+ */
+export type InstallFromGitInput = { 
+/**
+ * Git 仓库 URL（仅允许 github.com / gitee.com）。
+ */
+git_url: string; 
+/**
+ * 工作区根目录路径。
+ */
+workspace_path: string }
+/**
+ * 安装技能输入参数。
+ */
+export type InstallSkillInput = { 
+/**
+ * 要安装的技能名称。
+ */
+skill_name: string; 
+/**
+ * 工作区根目录路径。
+ */
+workspace_path: string }
+export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+/**
  * 列表查询输入
  */
 export type ListActivityAnnouncementsInput = { class_id: string; audience: string | null }
@@ -2324,6 +2467,14 @@ export type ListScheduleFilesInput = { class_id: string }
  * 列表查询输入
  */
 export type ListSemesterCommentsInput = { student_id: string | null; term: string | null; task_id: string | null }
+/**
+ * 列出商店技能输入参数。
+ */
+export type ListStoreInput = { 
+/**
+ * 工作区根目录路径。
+ */
+workspace_path: string }
 export type ListStudentObservationsInput = { student_id: string; limit: number | null; offset: number | null }
 /**
  * 列出学生练习卷的请求参数。
@@ -2703,6 +2854,38 @@ export type SkillHealthResult = { name: string; health_status: string; message: 
  */
 export type SkillRecord = { id: string; name: string; version: string | null; source: string | null; permission_scope: string | null; status: string | null; is_deleted: number; created_at: string; display_name: string | null; description: string | null; skill_type: string; env_path: string | null; config_json: string | null; updated_at: string | null; health_status: string; last_health_check: string | null }
 /**
+ * 技能商店条目。
+ */
+export type SkillStoreItem = { 
+/**
+ * 技能名称（唯一标识）。
+ */
+name: string; 
+/**
+ * 技能显示名称。
+ */
+display_name: string; 
+/**
+ * 技能描述。
+ */
+description: string; 
+/**
+ * 技能版本（可选）。
+ */
+version: string | null; 
+/**
+ * 技能来源（"local" 表示本地发现，"builtin" 表示内置）。
+ */
+source: string; 
+/**
+ * 是否已安装。
+ */
+installed: boolean; 
+/**
+ * 技能类型（"builtin" / "python"）。
+ */
+skill_type: string }
+/**
  * 启动批量批改任务输入。
  */
 export type StartGradingInput = { job_id: string }
@@ -2761,6 +2944,74 @@ export type TeacherProfile = { id: string; name: string; stage: string; subject:
  * 校本模板文件记录
  */
 export type TemplateFile = { id: string; type: string; school_scope: string | null; version: string | null; file_path: string; enabled: number; is_deleted: number; created_at: string }
+/**
+ * 工具审计信息。
+ * 
+ * 记录每次工具调用的追踪数据，用于审计日志和性能监控。
+ */
+export type ToolAuditInfo = { 
+/**
+ * 工具名称。
+ */
+tool_name: string; 
+/**
+ * 调用唯一标识。
+ */
+invoke_id: string; 
+/**
+ * 风险等级（"low"/"medium"/"high"）。
+ */
+risk_level: string; 
+/**
+ * 执行耗时（毫秒）。
+ */
+duration_ms: number; 
+/**
+ * 调用时间戳（ISO 8601 格式）。
+ */
+timestamp: string }
+/**
+ * 统一工具返回结构。
+ * 
+ * 所有工具调用的标准返回格式，包含执行结果、错误信息、降级标识和审计数据。
+ */
+export type ToolResult = { 
+/**
+ * 执行是否成功。
+ */
+success: boolean; 
+/**
+ * 成功时的返回数据（JSON 格式）。
+ */
+data: JsonValue | null; 
+/**
+ * 失败时的错误描述。
+ */
+error: string | null; 
+/**
+ * 降级回退标识（当原始工具不可用、自动降级到备选方案时填写）。
+ */
+degraded_to: string | null; 
+/**
+ * 审计信息。
+ */
+audit: ToolAuditInfo }
+/**
+ * 卸载技能输入参数。
+ */
+export type UninstallSkillInput = { 
+/**
+ * 要卸载的技能名称。
+ */
+skill_name: string }
+/**
+ * 卸载技能响应。
+ */
+export type UninstallSkillResponse = { 
+/**
+ * 操作是否成功。
+ */
+success: boolean }
 /**
  * 更新活动公告输入
  */
