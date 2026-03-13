@@ -223,6 +223,9 @@ impl SkillExecutorService {
         // 构建入口脚本路径（位于技能仓库目录，而非 venv 目录）
         let entry_script = std::path::Path::new(source_dir).join("run.py");
 
+        // 防御式二次校验：canonicalize 解析符号链接后验证路径边界
+        Self::validate_python_execution_paths(env_path, source_dir, &entry_script)?;
+
         // 校验文件是否存在
         if !python_path.exists() {
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -418,6 +421,79 @@ impl SkillExecutorService {
                 ),
             )),
         }
+    }
+
+    /// 防御式二次校验：在执行 Python 技能前，canonicalize 所有路径并验证边界。
+    ///
+    /// - `env_path` canonicalize 后必须落在 `~/.pureworker/skill-envs/` 下
+    /// - `source_dir` canonicalize 后必须包含 `.agents/skills/` 子路径
+    /// - `entry_script` canonicalize 后必须落在 `source_dir` canonical 下
+    fn validate_python_execution_paths(
+        env_path: &str,
+        source_dir: &str,
+        entry_script: &std::path::Path,
+    ) -> Result<(), AppError> {
+        let canonical_env = std::path::Path::new(env_path).canonicalize().map_err(|e| {
+            AppError::Config(format!(
+                "Python 技能 env_path 无法解析（可能不存在）：'{env_path}' — {e}"
+            ))
+        })?;
+
+        let home = if cfg!(windows) {
+            std::env::var("USERPROFILE")
+        } else {
+            std::env::var("HOME")
+        }
+        .map_err(|_| AppError::Config(String::from("未找到用户主目录环境变量")))?;
+
+        let env_base = std::path::Path::new(&home)
+            .join(".pureworker")
+            .join("skill-envs");
+        if let Ok(canonical_base) = env_base.canonicalize() {
+            if !canonical_env.starts_with(&canonical_base) {
+                return Err(AppError::PermissionDenied(format!(
+                    "Python 技能 env_path 逃逸出允许范围：'{}'",
+                    canonical_env.display()
+                )));
+            }
+        }
+
+        let canonical_source = std::path::Path::new(source_dir)
+            .canonicalize()
+            .map_err(|e| {
+                AppError::Config(format!(
+                    "Python 技能 source 目录无法解析：'{source_dir}' — {e}"
+                ))
+            })?;
+
+        let sep = std::path::MAIN_SEPARATOR;
+        let agents_skills_pattern = format!("{sep}.agents{sep}skills{sep}");
+        if !canonical_source
+            .to_string_lossy()
+            .contains(&agents_skills_pattern)
+        {
+            return Err(AppError::PermissionDenied(format!(
+                "Python 技能 source 目录逃逸出 .agents/skills/ 范围：'{}'",
+                canonical_source.display()
+            )));
+        }
+
+        if entry_script.exists() {
+            let canonical_script = entry_script.canonicalize().map_err(|e| {
+                AppError::Config(format!(
+                    "入口脚本路径无法解析：'{}' — {e}",
+                    entry_script.display()
+                ))
+            })?;
+            if !canonical_script.starts_with(&canonical_source) {
+                return Err(AppError::PermissionDenied(format!(
+                    "入口脚本逃逸出技能目录：'{}'",
+                    canonical_script.display()
+                )));
+            }
+        }
+
+        Ok(())
     }
 }
 
