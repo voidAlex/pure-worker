@@ -225,12 +225,13 @@ impl SkillExecutorService {
         let input_json = serde_json::to_string(&input)
             .map_err(|e| AppError::InvalidInput(format!("序列化技能输入参数失败：{e}")))?;
 
-        // 创建子进程
+        // 创建子进程（kill_on_drop 确保超时/异常时子进程被显式终止）
         let mut child = Command::new(&python_path)
             .arg(&entry_script)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| {
                 AppError::TaskExecution(format!(

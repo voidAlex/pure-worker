@@ -91,7 +91,7 @@ async fn execute_inner(
             return Ok(create_error_result(
                 skill_name,
                 invoke_id,
-                ToolRiskLevel::Medium,
+                ToolRiskLevel::High,
                 duration_ms,
                 "缺少必填参数 'operation'（操作类型：grayscale/resize/rotate）".to_string(),
             ));
@@ -105,7 +105,7 @@ async fn execute_inner(
             return Ok(create_error_result(
                 skill_name,
                 invoke_id,
-                ToolRiskLevel::Medium,
+                ToolRiskLevel::High,
                 duration_ms,
                 "缺少必填参数 'input_path'（输入图片路径）".to_string(),
             ));
@@ -119,7 +119,7 @@ async fn execute_inner(
             return Ok(create_error_result(
                 skill_name,
                 invoke_id,
-                ToolRiskLevel::Medium,
+                ToolRiskLevel::High,
                 duration_ms,
                 "缺少必填参数 'output_path'（输出图片路径）".to_string(),
             ));
@@ -134,7 +134,7 @@ async fn execute_inner(
         return Ok(create_error_result(
             skill_name,
             invoke_id,
-            ToolRiskLevel::Medium,
+            ToolRiskLevel::High,
             duration_ms,
             format!("输入路径校验失败：{e}"),
         ));
@@ -146,7 +146,7 @@ async fn execute_inner(
         return Ok(create_error_result(
             skill_name,
             invoke_id,
-            ToolRiskLevel::Medium,
+            ToolRiskLevel::High,
             duration_ms,
             format!("输出路径校验失败：{e}"),
         ));
@@ -157,7 +157,7 @@ async fn execute_inner(
         return Ok(create_error_result(
             skill_name,
             invoke_id,
-            ToolRiskLevel::Medium,
+            ToolRiskLevel::High,
             duration_ms,
             format!("输入图片文件不存在：{input_path}"),
         ));
@@ -179,14 +179,14 @@ async fn execute_inner(
         Ok(info) => Ok(create_success_result(
             skill_name,
             invoke_id,
-            ToolRiskLevel::Medium,
+            ToolRiskLevel::High,
             duration_ms,
             info,
         )),
         Err(err_msg) => Ok(create_error_result(
             skill_name,
             invoke_id,
-            ToolRiskLevel::Medium,
+            ToolRiskLevel::High,
             duration_ms,
             err_msg,
         )),

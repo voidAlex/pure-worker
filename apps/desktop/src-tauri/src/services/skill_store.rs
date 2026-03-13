@@ -386,11 +386,13 @@ impl SkillStoreService {
     async fn git_clone(url: &str, target: &PathBuf) -> Result<(), AppError> {
         use tokio::process::Command;
 
+        // kill_on_drop 确保超时/异常时 git 子进程被显式终止
         let child = Command::new("git")
             .args(["clone", "--depth", "1", url])
             .arg(target)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| {
                 AppError::ExternalService(format!(
