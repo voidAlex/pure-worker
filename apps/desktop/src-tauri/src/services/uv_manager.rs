@@ -75,6 +75,9 @@ impl UvManager {
     }
 
     /// 创建技能 Python 虚拟环境。
+    ///
+    /// 使用原子落位策略：先在临时目录创建 venv，成功后 rename 到目标路径，
+    /// 防止 TOCTOU 攻击和半成品残留。
     pub async fn create_skill_env(
         skill_name: &str,
         python_version: Option<&str>,
@@ -95,19 +98,71 @@ impl UvManager {
             .await
             .map_err(|error| AppError::FileOperation(error.to_string()))?;
 
+        // 校验目标 env_path：若已存在且为 symlink 或非目录，拒绝操作
+        if env_path.exists() || env_path.symlink_metadata().is_ok() {
+            let meta = env_path.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "无法读取技能环境目录元数据 '{}'：{e}",
+                    env_path.display()
+                ))
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(format!(
+                    "技能环境路径 '{}' 是符号链接，已拒绝操作",
+                    env_path.display()
+                )));
+            }
+            if !meta.is_dir() {
+                return Err(AppError::InvalidInput(format!(
+                    "技能环境路径 '{}' 不是目录",
+                    env_path.display()
+                )));
+            }
+        }
+
+        // 原子落位：先在临时目录创建 venv，成功后 rename 到目标位置
+        let tmp_name = format!(".tmp-venv-{}", uuid::Uuid::new_v4());
+        let tmp_path = base.join(&tmp_name);
+
         let mut cmd = Command::new("uv");
-        cmd.arg("venv").arg(&env_path);
+        cmd.arg("venv").arg(&tmp_path);
         if let Some(version) = python_version {
             if !version.trim().is_empty() {
                 cmd.arg("--python").arg(version.trim());
             }
         }
 
-        let output = run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv venv").await?;
-        if !output.status.success() {
-            return Err(AppError::ExternalService(format!(
-                "创建技能环境失败：{}",
-                String::from_utf8_lossy(&output.stderr)
+        let output = run_command_with_timeout(&mut cmd, UV_COMMAND_TIMEOUT_SECS, "uv venv").await;
+        match output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let _ = tokio::fs::remove_dir_all(&tmp_path).await;
+                return Err(AppError::ExternalService(format!(
+                    "创建技能环境失败：{}",
+                    String::from_utf8_lossy(&o.stderr)
+                )));
+            }
+            Err(e) => {
+                let _ = tokio::fs::remove_dir_all(&tmp_path).await;
+                return Err(e);
+            }
+        }
+
+        // rename 原子落位：若目标已存在（正常目录），先移除再 rename
+        if env_path.exists() {
+            tokio::fs::remove_dir_all(&env_path).await.map_err(|e| {
+                AppError::FileOperation(format!(
+                    "清理旧环境目录 '{}' 失败：{e}",
+                    env_path.display()
+                ))
+            })?;
+        }
+        if let Err(e) = tokio::fs::rename(&tmp_path, &env_path).await {
+            let _ = tokio::fs::remove_dir_all(&tmp_path).await;
+            return Err(AppError::FileOperation(format!(
+                "原子落位 rename 失败（'{}' → '{}'）：{e}",
+                tmp_path.display(),
+                env_path.display()
             )));
         }
 
@@ -248,6 +303,9 @@ impl UvManager {
         let timeout = Duration::from_secs(UV_PROBE_TIMEOUT_SECS);
         let child = match Command::new(candidate)
             .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()
         {
@@ -326,7 +384,11 @@ async fn run_command_with_timeout(
     timeout_secs: u64,
     label: &str,
 ) -> Result<std::process::Output, AppError> {
+    // wait_with_output() 需要 stdout/stderr 为 piped 才能捕获输出
     let child = cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| AppError::ExternalService(format!("启动 {label} 失败：{e}")))?;
