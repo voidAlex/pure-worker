@@ -10,7 +10,7 @@
 //!
 //! 写入操作额外限制：不允许写入用户主目录根级文件。
 
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::AppError;
 
@@ -257,5 +257,82 @@ impl PathWhitelistService {
             .or_else(|_| std::env::var("USERPROFILE"))
             .ok()
             .map(PathBuf::from)
+    }
+
+    /// 校验 workspace 下的 `.agents/skills` 目录安全性，防止 symlink 逃逸。
+    ///
+    /// 检查 `.agents` 和 `.agents/skills` 是否为符号链接（若存在），
+    /// 以及 canonicalize 后的 skills_dir 是否仍在 canonical_workspace 内。
+    /// 返回安全的 (canonical_workspace, skills_dir) 路径对。
+    ///
+    /// 此方法用于 skill_store（写入）和 skill_discovery（读取）场景。
+    pub fn validate_skills_dir(workspace_path: &Path) -> Result<(PathBuf, PathBuf), AppError> {
+        // workspace 必须存在且为目录
+        if !workspace_path.is_dir() {
+            return Err(AppError::InvalidInput(format!(
+                "工作区路径不存在或不是目录：'{}'",
+                workspace_path.display()
+            )));
+        }
+
+        let canonical_workspace = workspace_path.canonicalize().map_err(|e| {
+            AppError::FileOperation(format!(
+                "工作区路径规范化失败 '{}'：{e}",
+                workspace_path.display()
+            ))
+        })?;
+
+        let agents_dir = canonical_workspace.join(".agents");
+        let skills_dir = agents_dir.join("skills");
+
+        // 若 .agents 已存在，检查是否为 symlink
+        if agents_dir.exists() || agents_dir.symlink_metadata().is_ok() {
+            let meta = agents_dir.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "无法读取 .agents 目录元数据 '{}'：{e}",
+                    agents_dir.display()
+                ))
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(format!(
+                    "工作区 .agents 目录是符号链接，已拒绝访问：'{}'",
+                    agents_dir.display()
+                )));
+            }
+        }
+
+        // 若 .agents/skills 已存在，检查是否为 symlink
+        if skills_dir.exists() || skills_dir.symlink_metadata().is_ok() {
+            let meta = skills_dir.symlink_metadata().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "无法读取 skills 目录元数据 '{}'：{e}",
+                    skills_dir.display()
+                ))
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(AppError::PermissionDenied(format!(
+                    "工作区 .agents/skills 目录是符号链接，已拒绝访问：'{}'",
+                    skills_dir.display()
+                )));
+            }
+        }
+
+        // 若 skills_dir 已存在，二次确认 canonicalize 后仍在 workspace 内
+        if skills_dir.exists() {
+            let canonical_skills = skills_dir.canonicalize().map_err(|e| {
+                AppError::FileOperation(format!(
+                    "skills 目录规范化失败 '{}'：{e}",
+                    skills_dir.display()
+                ))
+            })?;
+            if !canonical_skills.starts_with(&canonical_workspace) {
+                return Err(AppError::PermissionDenied(format!(
+                    "skills 目录规范化后逃逸出工作区：'{}'",
+                    canonical_skills.display()
+                )));
+            }
+        }
+
+        Ok((canonical_workspace, skills_dir))
     }
 }

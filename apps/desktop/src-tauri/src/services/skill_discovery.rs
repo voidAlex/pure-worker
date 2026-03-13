@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use crate::error::AppError;
 use crate::models::skill::{CreateSkillInput, UpdateSkillInput};
 use crate::services::audit::AuditService;
+use crate::services::path_whitelist::PathWhitelistService;
 use crate::services::skill::SkillService;
 
 /// 发现的技能描述结构。
@@ -60,9 +61,16 @@ impl SkillDiscoveryService {
         }
 
         // 扫描项目级目录（优先级高，覆盖同名）
-        let project_skills_dir = workspace_path.join(".agents").join("skills");
-        if project_skills_dir.exists() {
-            Self::scan_directory(&project_skills_dir, &existing_names, &mut skills_map)?;
+        // 校验 .agents/skills 安全性（symlink 防护 + workspace 边界校验）
+        match PathWhitelistService::validate_skills_dir(workspace_path) {
+            Ok((_canonical_workspace, project_skills_dir)) => {
+                if project_skills_dir.exists() {
+                    Self::scan_directory(&project_skills_dir, &existing_names, &mut skills_map)?;
+                }
+            }
+            Err(e) => {
+                eprintln!("[技能发现] 项目级技能目录校验失败，跳过扫描：{e}");
+            }
         }
 
         let mut result: Vec<DiscoveredSkill> = skills_map.into_values().collect();

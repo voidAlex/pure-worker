@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use crate::error::AppError;
 use crate::models::skill::CreateSkillInput;
 use crate::services::audit::AuditService;
+use crate::services::path_whitelist::PathWhitelistService;
 use crate::services::skill::SkillService;
 use crate::services::skill_discovery::SkillDiscoveryService;
 use crate::services::uv_manager::UvManager;
@@ -246,15 +247,16 @@ impl SkillStoreService {
             )));
         }
 
-        // 构建目标目录：{workspace}/.agents/skills/{repo_name}
-        let skills_dir = workspace_path.join(".agents").join("skills");
+        // 校验 .agents/skills 目录安全性（symlink 防护 + workspace 边界校验）
+        let (_canonical_workspace, skills_dir) =
+            PathWhitelistService::validate_skills_dir(workspace_path)?;
         tokio::fs::create_dir_all(&skills_dir)
             .await
             .map_err(|e| AppError::FileOperation(format!("创建技能目录失败：{e}")))?;
 
         let target_dir = skills_dir.join(&repo_name);
 
-        // 规范化后校验 target_dir 仍在 skills_dir 下，兜底防护路径逃逸
+        // create_dir_all 后再次校验 skills_dir（防止 TOCTOU：创建过程中被替换为 symlink）
         let canonical_skills = skills_dir
             .canonicalize()
             .map_err(|e| AppError::FileOperation(format!("无法规范化技能目录路径：{e}")))?;
