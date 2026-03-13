@@ -17,6 +17,7 @@ use crate::services::audit::AuditService;
 use crate::services::path_whitelist::PathWhitelistService;
 use crate::services::skill::SkillService;
 use crate::services::skill_discovery::SkillDiscoveryService;
+use crate::services::skill_executor::md5_simple;
 use crate::services::uv_manager::UvManager;
 
 /// 技能商店条目。
@@ -133,9 +134,15 @@ impl SkillStoreService {
 
         let record = SkillService::create_skill(pool, input).await?;
 
+        let env_hash = record
+            .env_path
+            .as_deref()
+            .map(|p| format!("{:x}", md5_simple(p.as_bytes())));
         let detail = serde_json::json!({
             "skill_name": skill_name,
             "source_path": skill.source_path,
+            "version": record.version,
+            "env_hash": env_hash,
         });
         if let Err(e) = AuditService::log_with_detail(
             pool,
@@ -177,9 +184,15 @@ impl SkillStoreService {
 
         SkillService::delete_skill(pool, &skill.id).await?;
 
+        let env_hash = skill
+            .env_path
+            .as_deref()
+            .map(|p| format!("{:x}", md5_simple(p.as_bytes())));
         let detail = serde_json::json!({
             "skill_name": skill_name,
             "skill_id": skill.id,
+            "version": skill.version,
+            "env_hash": env_hash,
         });
         if let Err(e) = AuditService::log_with_detail(
             pool,
@@ -339,11 +352,16 @@ impl SkillStoreService {
 
         let record = SkillService::create_skill(pool, input).await?;
 
+        let env_hash = record
+            .env_path
+            .as_deref()
+            .map(|p| format!("{:x}", md5_simple(p.as_bytes())));
         let detail = serde_json::json!({
             "skill_name": skill_name,
             "git_url": git_url,
             "target_dir": target_dir.to_string_lossy(),
             "version": version,
+            "env_hash": env_hash,
         });
         if let Err(e) = AuditService::log_with_detail(
             pool,

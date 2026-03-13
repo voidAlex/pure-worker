@@ -508,7 +508,8 @@ fn generate_invoke_id() -> String {
 /// 简易哈希函数（FNV-1a 64 位），用于生成 env_path 的摘要标识。
 ///
 /// 不用于安全场景，仅作审计日志中环境路径的指纹标记。
-fn md5_simple(data: &[u8]) -> u64 {
+/// `pub(crate)` 可供 `skill_store` 等模块复用。
+pub(crate) fn md5_simple(data: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &byte in data {
         hash ^= u64::from(byte);
