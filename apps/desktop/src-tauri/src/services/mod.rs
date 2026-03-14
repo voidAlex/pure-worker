@@ -8,6 +8,7 @@ pub mod async_task;
 pub mod audit;
 pub mod builtin_skills;
 pub mod classroom;
+pub mod conversation_service;
 pub mod desensitize;
 pub mod global_shortcut;
 pub mod high_risk_gate;
