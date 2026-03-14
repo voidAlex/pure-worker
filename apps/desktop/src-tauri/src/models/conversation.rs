@@ -82,6 +82,8 @@ pub struct ChatStreamInput {
     pub conversation_id: Option<String>,
     pub message: String,
     pub agent_role: String,
+    /// 是否启用 Agentic Search 自动检索上下文
+    pub use_agentic_search: Option<bool>,
 }
 
 /// 流式聊天事件类型

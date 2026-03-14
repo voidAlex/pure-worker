@@ -229,6 +229,7 @@ impl AiGenerationService {
                 adopted_text: None,
                 status: Some(String::from("draft")),
                 evidence_json: Some(evidence_json),
+                lesson_record_id: None,
             },
         )
         .await?;

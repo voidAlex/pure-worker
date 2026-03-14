@@ -7,12 +7,16 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqlitePool;
 use tauri::Emitter;
+use tauri::Manager;
 use tauri::State;
 
 use crate::error::AppError;
+use crate::models::agentic_search::AgenticSearchInput;
 use crate::models::conversation::{
     ChatStreamEvent, ChatStreamInput, CreateConversationInput, CreateMessageInput,
 };
+use crate::services::agentic_search::AgenticSearchOrchestrator;
+use crate::services::agentic_search_agent::format_search_result_for_prompt;
 use crate::services::conversation_service::ConversationService;
 use crate::services::llm_provider::LlmProviderService;
 use crate::services::skill_tool_adapter::build_all_enabled_skill_tools;
@@ -24,6 +28,8 @@ pub struct ChatInput {
     pub message: String,
     /// AI 角色标识（homeroom/grading/communication/ops）。
     pub agent_role: String,
+    /// 是否启用 Agentic Search 自动检索上下文。
+    pub use_agentic_search: Option<bool>,
 }
 
 /// 聊天响应输出。
@@ -50,6 +56,7 @@ fn get_system_prompt(agent_role: &str) -> &'static str {
 #[tauri::command]
 #[specta::specta]
 pub async fn chat_with_ai(
+    app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
     input: ChatInput,
 ) -> Result<ChatResponse, AppError> {
@@ -60,7 +67,34 @@ pub async fn chat_with_ai(
     let config = LlmProviderService::get_active_config(&pool).await?;
     let model_name = config.default_model.clone();
     let client = LlmProviderService::create_client(&config)?;
-    let system_prompt = get_system_prompt(&input.agent_role);
+    let base_system_prompt = get_system_prompt(&input.agent_role);
+
+    // 如果启用 Agentic Search，执行检索并增强上下文
+    let (enhanced_prompt, search_context) = if input.use_agentic_search.unwrap_or(false) {
+        let workspace_path = resolve_workspace_path(&app_handle)?;
+        let orchestrator = AgenticSearchOrchestrator::new();
+        let search_result = orchestrator
+            .search(
+                &pool,
+                &workspace_path,
+                AgenticSearchInput {
+                    query: input.message.clone(),
+                    session_id: None,
+                    force_refresh: None,
+                },
+            )
+            .await?;
+
+        let evidence_context = format_search_result_for_prompt(&search_result);
+        let enhanced = format!(
+            "{}\n\n在回答前，请参考以下检索到的相关证据（如没有相关证据则直接回答）：\n\n{}",
+            base_system_prompt, evidence_context
+        );
+
+        (enhanced, Some(search_result))
+    } else {
+        (base_system_prompt.to_string(), None)
+    };
 
     let skill_tools = build_all_enabled_skill_tools(&pool)
         .await
@@ -68,7 +102,7 @@ pub async fn chat_with_ai(
 
     let response: String = if skill_tools.is_empty() {
         let agent =
-            LlmProviderService::create_agent(&client, &config.default_model, system_prompt, 0.7);
+            LlmProviderService::create_agent(&client, &config.default_model, &enhanced_prompt, 0.7);
         agent
             .prompt(&input.message)
             .await
@@ -77,7 +111,7 @@ pub async fn chat_with_ai(
         let agent = LlmProviderService::create_agent_with_tools(
             &client,
             &config.default_model,
-            system_prompt,
+            &enhanced_prompt,
             0.7,
             skill_tools,
         );
@@ -87,8 +121,28 @@ pub async fn chat_with_ai(
             .map_err(|error| AppError::ExternalService(format!("AI 对话调用失败：{error}")))?
     };
 
+    // 如果有搜索结果，在响应中附加引用信息
+    let final_content = if let Some(search_result) = search_context {
+        if !search_result.evidence_sources.is_empty() {
+            format!(
+                "{}\n\n---\n参考来源：{}",
+                response,
+                search_result
+                    .evidence_sources
+                    .iter()
+                    .map(|s| format!("[{}]", s.source_type.description()))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        } else {
+            response
+        }
+    } else {
+        response
+    };
+
     Ok(ChatResponse {
-        content: response,
+        content: final_content,
         model: model_name,
     })
 }
@@ -194,4 +248,16 @@ async fn get_current_teacher_id(pool: &SqlitePool) -> Result<String, AppError> {
             .await?;
 
     teacher_id.ok_or_else(|| AppError::NotFound(String::from("未找到教师档案")))
+}
+
+/// 解析工作区路径。
+fn resolve_workspace_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
+    let app_data_dir = app_handle.path().app_data_dir().map_err(|error| {
+        AppError::Config(format!(
+            "获取应用数据目录失败，无法推导 workspace_path：{}",
+            error
+        ))
+    })?;
+
+    Ok(app_data_dir.join("workspace"))
 }

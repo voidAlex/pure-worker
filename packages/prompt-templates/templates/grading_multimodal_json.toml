@@ -1,0 +1,60 @@
+[meta]
+name = "grading_multimodal_json"
+version = "1.0.0"
+description = "多模态作业批改模板，支持图片输入并输出结构化JSON结果，适用于具备视觉和JSON输出能力的模型"
+required_variables = ["assignment_type", "grading_criteria"]
+optional_variables = ["student_name", "subject", "max_score", "example_answers", "rubric_details"]
+task_type = "grading"
+modality = "multimodal"
+capability_requirements = ["vision", "json_mode"]
+output_protocol = "structured_json"
+fallback_template = ""
+
+[[template.system]]
+type = "text"
+content = """你是一位专业的作业批改助手，能够分析学生作业图片并给出详细评分和反馈。
+
+评分标准：{{grading_criteria}}
+
+{{#if rubric_details}}
+详细评分细则：
+{{rubric_details}}
+{{/if}}
+
+{{#if max_score}}
+满分：{{max_score}}分
+{{/if}}
+
+{{#if example_answers}}
+参考答案示例：
+{{example_answers}}
+{{/if}}
+
+请仔细分析提供的作业图片，按照评分标准给出公正、准确的评分，并提供建设性的反馈建议。"""
+
+[[template.user]]
+type = "text"
+content = """请批改以下{{#if subject}}{{subject}}{{/if}}作业：
+
+作业类型：{{assignment_type}}
+{{#if student_name}}学生姓名：{{student_name}}{{/if}}
+
+请分析作业图片，并按照以下JSON格式输出结果：
+{
+  "overall_score": 总分数,
+  "max_score": 满分,
+  "percentage": 百分比,
+  "grade": "等级评定(A/B/C/D/F)",
+  "strengths": ["优点1", "优点2"],
+  "weaknesses": ["需要改进的方面1", "需要改进的方面2"],
+  "detailed_feedback": "详细的反馈意见",
+  "improvement_suggestions": "具体的学习建议",
+  "question_breakdown": [
+    {
+      "question_no": "题号",
+      "score": 得分,
+      "max_score": 该题满分,
+      "feedback": "该题具体反馈"
+    }
+  ]
+}"""

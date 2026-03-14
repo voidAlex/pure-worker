@@ -30,6 +30,8 @@ pub struct GradingJob {
     pub is_deleted: i32,
     pub created_at: String,
     pub updated_at: String,
+    /// 关联的课程记录 ID
+    pub lesson_record_id: Option<String>,
 }
 
 /// 创建批改任务输入。
@@ -47,6 +49,8 @@ pub struct CreateGradingJobInput {
     pub task_id: Option<String>,
     /// 导出文件路径
     pub output_path: Option<String>,
+    /// 关联的课程记录 ID
+    pub lesson_record_id: Option<String>,
 }
 
 /// 更新批改任务输入。
@@ -60,6 +64,7 @@ pub struct UpdateGradingJobInput {
     pub scoring_rules_json: Option<String>,
     pub task_id: Option<String>,
     pub output_path: Option<String>,
+    pub lesson_record_id: Option<String>,
 }
 
 /// 作业资产记录（含 M4 扩展字段）。
@@ -89,6 +94,8 @@ pub struct AssignmentAsset {
     /// 预处理后的文件路径
     pub preprocessed_path: Option<String>,
     pub updated_at: String,
+    /// 关联的课程记录 ID
+    pub lesson_record_id: Option<String>,
 }
 
 /// 批量添加作业资产输入。

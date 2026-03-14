@@ -13,6 +13,7 @@ pub struct ScoreRecord {
     pub exam_date: String,
     pub is_deleted: i32,
     pub updated_at: String,
+    pub lesson_record_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Type)]
@@ -24,6 +25,7 @@ pub struct CreateScoreRecordInput {
     pub full_score: f64,
     pub rank_in_class: Option<i32>,
     pub exam_date: String,
+    pub lesson_record_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Type)]
@@ -35,4 +37,5 @@ pub struct UpdateScoreRecordInput {
     pub full_score: Option<f64>,
     pub rank_in_class: Option<i32>,
     pub exam_date: Option<String>,
+    pub lesson_record_id: Option<String>,
 }
