@@ -18,16 +18,17 @@ use crate::error::AppError;
 const DB_NAME: &str = "pureworker.db";
 
 /// Get the default database directory (app data directory)
-fn get_default_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
+fn get_default_db_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
-        .expect("Failed to get app data directory");
+        .map_err(|e| AppError::Internal(format!("无法获取应用数据目录：{}", e)))?;
 
     // Create directory if it doesn't exist
-    std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| AppError::Internal(format!("无法创建应用数据目录：{}", e)))?;
 
-    app_data_dir.join(DB_NAME)
+    Ok(app_data_dir.join(DB_NAME))
 }
 
 /// Initialize SQLite connection pool with PRAGMA settings and run migrations
@@ -44,7 +45,7 @@ fn get_default_db_path(app_handle: &tauri::AppHandle) -> PathBuf {
 /// - PRAGMA settings fail
 /// - Migrations fail
 pub async fn init_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, AppError> {
-    let db_path = get_default_db_path(app_handle);
+    let db_path = get_default_db_path(app_handle)?;
 
     println!("[Database] Initializing database at: {:?}", db_path);
 
