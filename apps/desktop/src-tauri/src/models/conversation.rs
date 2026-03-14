@@ -97,4 +97,29 @@ pub enum ChatStreamEvent {
     Complete,
     #[serde(rename = "Error")]
     Error { message: String },
+    /// 思考状态更新
+    #[serde(rename = "ThinkingStatus")]
+    ThinkingStatus { stage: String, description: String },
+    /// 工具调用
+    #[serde(rename = "ToolCall")]
+    ToolCall {
+        tool_name: String,
+        input: serde_json::Value,
+    },
+    /// 工具调用结果
+    #[serde(rename = "ToolResult")]
+    ToolResult {
+        tool_name: String,
+        output: String,
+        success: bool,
+    },
+    /// 搜索结果摘要
+    #[serde(rename = "SearchSummary")]
+    SearchSummary {
+        sources: Vec<String>,
+        evidence_count: usize,
+    },
+    /// 推理摘要
+    #[serde(rename = "Reasoning")]
+    Reasoning { summary: String },
 }

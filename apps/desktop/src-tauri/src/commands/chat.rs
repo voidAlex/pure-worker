@@ -160,7 +160,7 @@ pub async fn chat_stream(
     }
 
     // 获取或创建会话
-    let conversation_id = if let Some(id) = input.conversation_id {
+    let conversation_id = if let Some(id) = input.conversation_id.clone() {
         ConversationService::get_conversation_by_id(&pool, &id).await?;
         id
     } else {
@@ -210,34 +210,260 @@ pub async fn chat_stream(
         },
     );
 
-    // 获取 AI 配置并生成响应（简化版 - 非流式）
-    let config = LlmProviderService::get_active_config(&pool).await?;
-    let _client = LlmProviderService::create_client(&config)?;
+    // 执行流式生成
+    let result = stream_chat_response(
+        app.clone(),
+        &pool,
+        &input,
+        &assistant_message.id,
+        &conversation_id,
+    )
+    .await;
 
-    // 获取对话历史
-    let _history =
-        ConversationService::get_conversation_history(&pool, &conversation_id, 20).await?;
-
-    // TODO: 实现真正的流式生成
-    // 目前先使用简单实现，逐字发送模拟流式效果
-    let full_content = "这是一条模拟的 AI 响应消息。实际实现需要接入 Rig 的流式 API。".to_string();
-
-    // 模拟流式发送
-    for chunk in full_content.chars().collect::<Vec<_>>().chunks(5) {
-        let chunk_str: String = chunk.iter().collect();
-        let _ = app.emit("chat-stream", ChatStreamEvent::Chunk { content: chunk_str });
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    // 根据执行结果发送完成或错误事件
+    match result {
+        Ok(_) => {
+            let _ = app.emit("chat-stream", ChatStreamEvent::Complete);
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            let _ = app.emit(
+                "chat-stream",
+                ChatStreamEvent::Error {
+                    message: error_msg.clone(),
+                },
+            );
+            return Err(e);
+        }
     }
 
-    // 更新 AI 消息
-    let _ =
-        ConversationService::update_message_content(&pool, &assistant_message.id, &full_content)
+    Ok(conversation_id)
+}
+
+/// 流式生成聊天响应
+///
+/// 使用项目适配器的流式 API 逐步生成响应，同时发送事件到前端。
+/// 如果生成过程中发生错误，已生成的内容会被保存到数据库。
+async fn stream_chat_response(
+    app: tauri::AppHandle,
+    pool: &SqlitePool,
+    input: &ChatStreamInput,
+    assistant_message_id: &str,
+    conversation_id: &str,
+) -> Result<(), AppError> {
+    // 获取 AI 配置
+    let config = LlmProviderService::get_active_config(pool).await?;
+    let base_system_prompt = get_system_prompt(&input.agent_role);
+
+    // 获取对话历史用于上下文
+    let _history = ConversationService::get_conversation_history(pool, conversation_id, 20).await?;
+
+    // 如果启用 Agentic Search，执行检索并增强上下文
+    let (enhanced_prompt, search_context) = if input.use_agentic_search.unwrap_or(false) {
+        // 发送搜索开始状态
+        let _ = app.emit(
+            "chat-stream",
+            ChatStreamEvent::ThinkingStatus {
+                stage: String::from("searching"),
+                description: String::from("正在检索相关证据..."),
+            },
+        );
+
+        let workspace_path = resolve_workspace_path(&app)?;
+        let orchestrator = AgenticSearchOrchestrator::new();
+        let search_result = orchestrator
+            .search(
+                pool,
+                &workspace_path,
+                AgenticSearchInput {
+                    query: input.message.clone(),
+                    session_id: Some(conversation_id.to_string()),
+                    force_refresh: None,
+                },
+            )
             .await;
 
-    // 发送完成事件
-    let _ = app.emit("chat-stream", ChatStreamEvent::Complete);
+        match search_result {
+            Ok(result) => {
+                // 发送搜索结果摘要事件
+                let sources: Vec<String> = result
+                    .evidence_sources
+                    .iter()
+                    .map(|s| s.source_type.description().to_string())
+                    .collect();
+                let evidence_count = result.evidence_sources.len();
 
-    Ok(conversation_id)
+                if evidence_count > 0 {
+                    let _ = app.emit(
+                        "chat-stream",
+                        ChatStreamEvent::SearchSummary {
+                            sources: sources.clone(),
+                            evidence_count,
+                        },
+                    );
+                }
+
+                // 发送推理事件
+                let _ = app.emit(
+                    "chat-stream",
+                    ChatStreamEvent::Reasoning {
+                        summary: format!("基于 {} 条证据进行分析", evidence_count),
+                    },
+                );
+
+                // 发送搜索完成状态
+                let _ = app.emit(
+                    "chat-stream",
+                    ChatStreamEvent::ThinkingStatus {
+                        stage: String::from("reasoning"),
+                        description: format!("已找到 {} 条相关证据", evidence_count),
+                    },
+                );
+
+                let evidence_context = format_search_result_for_prompt(&result);
+                let enhanced = format!(
+                    "{}\n\n在回答前，请参考以下检索到的相关证据（如没有相关证据则直接回答）：\n\n{}",
+                    base_system_prompt, evidence_context
+                );
+
+                (enhanced, Some(result))
+            }
+            Err(e) => {
+                // 搜索失败但不阻断流程，继续用基础提示词
+                eprintln!("[chat_stream] Agentic Search 失败: {}", e);
+                let _ = app.emit(
+                    "chat-stream",
+                    ChatStreamEvent::ThinkingStatus {
+                        stage: String::from("search_failed"),
+                        description: String::from("检索失败，将直接回答"),
+                    },
+                );
+                (base_system_prompt.to_string(), None)
+            }
+        }
+    } else {
+        (base_system_prompt.to_string(), None)
+    };
+
+    // 发送生成开始状态
+    let _ = app.emit(
+        "chat-stream",
+        ChatStreamEvent::ThinkingStatus {
+            stage: String::from("generating"),
+            description: String::from("正在生成回答..."),
+        },
+    );
+
+    // 使用非流式方式生成（简化实现）
+    // 实际流式实现需要使用 ProviderAdapter 的 chat_stream 方法
+    let accumulated_content = generate_with_agent(
+        pool,
+        &config,
+        &enhanced_prompt,
+        &input.message,
+        &app,
+        assistant_message_id,
+    )
+    .await?;
+
+    // 如果有搜索结果，在响应末尾附加引用信息
+    if let Some(search_result) = search_context {
+        if !search_result.evidence_sources.is_empty() {
+            let citation = format!(
+                "\n\n---\n参考来源：{}",
+                search_result
+                    .evidence_sources
+                    .iter()
+                    .map(|s| format!("[{}]", s.source_type.description()))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            let full_content = format!("{}{}", accumulated_content, citation);
+
+            // 更新最终内容到数据库
+            ConversationService::update_message_content(pool, assistant_message_id, &full_content)
+                .await?;
+        }
+    }
+
+    // 发送生成完成状态
+    let _ = app.emit(
+        "chat-stream",
+        ChatStreamEvent::ThinkingStatus {
+            stage: String::from("complete"),
+            description: String::from("回答生成完成"),
+        },
+    );
+
+    Ok(())
+}
+
+/// 使用 Agent 生成响应（非流式，但模拟流式事件）
+///
+/// TODO: 使用 ProviderAdapter 的 chat_stream 方法实现真正的流式生成
+async fn generate_with_agent(
+    pool: &SqlitePool,
+    config: &crate::models::ai_config::AiConfig,
+    system_prompt: &str,
+    user_message: &str,
+    app: &tauri::AppHandle,
+    message_id: &str,
+) -> Result<String, AppError> {
+    let client = LlmProviderService::create_client(config)?;
+
+    // 获取技能工具
+    let skill_tools = build_all_enabled_skill_tools(pool)
+        .await
+        .unwrap_or_default();
+
+    let response: String = if skill_tools.is_empty() {
+        let agent =
+            LlmProviderService::create_agent(&client, &config.default_model, system_prompt, 0.7);
+        agent
+            .prompt(user_message)
+            .await
+            .map_err(|error| AppError::ExternalService(format!("AI 对话调用失败：{error}")))?
+    } else {
+        let agent = LlmProviderService::create_agent_with_tools(
+            &client,
+            &config.default_model,
+            system_prompt,
+            0.7,
+            skill_tools,
+        );
+        agent
+            .prompt(user_message)
+            .await
+            .map_err(|error| AppError::ExternalService(format!("AI 对话调用失败：{error}")))?
+    };
+
+    // 模拟流式发送 - 按句子分割发送
+    let sentences: Vec<&str> = response
+        .split_inclusive(&['.', '。', '!', '！', '?', '？', '\n'][..])
+        .collect();
+    let mut accumulated = String::new();
+
+    for sentence in sentences {
+        if !sentence.is_empty() {
+            accumulated.push_str(sentence);
+            // 发送 chunk 事件到前端
+            let _ = app.emit(
+                "chat-stream",
+                ChatStreamEvent::Chunk {
+                    content: sentence.to_string(),
+                },
+            );
+            // 小延迟模拟流式效果
+            tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+        }
+    }
+
+    // 保存完整响应到数据库
+    if !accumulated.is_empty() {
+        ConversationService::update_message_content(pool, message_id, &accumulated).await?;
+    }
+
+    Ok(accumulated)
 }
 
 /// 获取当前教师ID
@@ -260,4 +486,18 @@ fn resolve_workspace_path(app_handle: &tauri::AppHandle) -> Result<std::path::Pa
     })?;
 
     Ok(app_data_dir.join("workspace"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_system_prompt() {
+        assert!(get_system_prompt("homeroom").contains("班主任"));
+        assert!(get_system_prompt("grading").contains("批改"));
+        assert!(get_system_prompt("communication").contains("家校沟通"));
+        assert!(get_system_prompt("ops").contains("教务"));
+        assert!(get_system_prompt("unknown").contains("PureWorker"));
+    }
 }
