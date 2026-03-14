@@ -23,7 +23,7 @@ export const DashboardPage: React.FC = () => {
 
       {/* AI 聊天面板，填满剩余空间 */}
       <div className="flex-1 min-h-0 mt-6">
-        <ChatPanel agentRole="homeroom" />
+        <ChatPanel agentRole="homeroom" teacherId="current-teacher-id" />
       </div>
     </div>
   );

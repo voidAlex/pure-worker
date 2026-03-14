@@ -6,15 +6,25 @@
 
 import React, { useEffect, useState } from 'react';
 import { useChatStream } from '@/hooks/useChatStream';
+import { ConversationList } from './ConversationList';
+import { listConversations, ConversationListItem } from '@/services/chatService';
 
 export interface ChatPanelProps {
   conversationId?: string;
   agentRole?: string;
   className?: string;
+  teacherId: string;
 }
 
-export function ChatPanel({ conversationId, agentRole = 'homeroom', className = '' }: ChatPanelProps) {
+export function ChatPanel({ 
+  conversationId, 
+  agentRole = 'homeroom', 
+  className = '',
+  teacherId 
+}: ChatPanelProps) {
   const [mounted, setMounted] = useState(false);
+  const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(conversationId);
   
   const {
     messages,
@@ -23,9 +33,34 @@ export function ChatPanel({ conversationId, agentRole = 'homeroom', className = 
     sendMessage,
     clearError,
   } = useChatStream({
-    conversationId,
+    conversationId: currentConversationId,
     agentRole,
   });
+
+  // 加载会话列表
+  useEffect(() => {
+    loadConversations();
+  }, [teacherId]);
+
+  const loadConversations = async () => {
+    try {
+      const result = await listConversations({ 
+        teacherId, 
+        limit: 50 
+      });
+      setConversations(result.conversations);
+    } catch (e) {
+      console.error('加载会话列表失败:', e);
+    }
+  };
+
+  const handleSelectConversation = (id: string) => {
+    setCurrentConversationId(id);
+  };
+
+  const handleCreateNew = () => {
+    setCurrentConversationId(undefined);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -36,9 +71,19 @@ export function ChatPanel({ conversationId, agentRole = 'homeroom', className = 
   }
 
   return (
-    <div className={`flex flex-col h-full bg-white ${className}`}>
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className={`flex h-full bg-white ${className}`}>
+      {/* 左侧会话列表 */}
+      <ConversationList
+        conversations={conversations}
+        currentId={currentConversationId}
+        onSelect={handleSelectConversation}
+        onCreateNew={handleCreateNew}
+      />
+      
+      {/* 右侧聊天区域 */}
+      <div className="flex-1 flex flex-col h-full">
+        {/* 消息列表 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             <div className="text-center">
@@ -108,6 +153,7 @@ export function ChatPanel({ conversationId, agentRole = 'homeroom', className = 
       {/* 输入框 */}
       <div className="border-t border-gray-200 p-4">
         <ChatInput onSend={sendMessage} disabled={isStreaming} />
+      </div>
       </div>
     </div>
   );
