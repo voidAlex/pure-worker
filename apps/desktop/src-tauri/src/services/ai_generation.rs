@@ -34,7 +34,6 @@ use crate::services::parent_communication::ParentCommunicationService;
 use crate::services::prompt_template::PromptTemplateService;
 use crate::services::semester_comment::SemesterCommentService;
 use crate::services::skill::SkillService;
-use crate::services::template_file::TemplateFileService;
 
 /// 家长沟通文案 AI 生成结果。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -338,8 +337,8 @@ impl AiGenerationService {
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
         // 语义去重检查
-        let is_duplicate = if input.existing_comments_summary.is_some() {
-            check_semantic_duplicate(&response, &input.existing_comments_summary.unwrap()).await?
+        let _is_duplicate = if let Some(summary) = &input.existing_comments_summary {
+            check_semantic_duplicate(&response, summary).await?
         } else {
             (false, 0.0)
         };
@@ -465,7 +464,7 @@ impl AiGenerationService {
             let _ = AsyncTaskService::update_progress(pool, task_id, &progress_json).await;
         }
 
-        let status = if failed == 0 {
+        let _status = if failed == 0 {
             String::from("completed")
         } else if completed == 0 {
             String::from("failed")
@@ -480,9 +479,9 @@ impl AiGenerationService {
     /// 生成活动公告并保存为草稿记录。
     pub async fn generate_activity_announcement(
         pool: &SqlitePool,
-        workspace_path: &Path,
+        _workspace_path: &Path,
         templates_dir: &Path,
-        template_file_dir: &Path,
+        _template_file_dir: &Path,
         input: GenerateActivityAnnouncementInput,
     ) -> Result<ActivityAnnouncement, AppError> {
         let class_name = get_class_name(pool, &input.class_id).await?;
