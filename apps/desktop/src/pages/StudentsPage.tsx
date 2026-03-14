@@ -53,7 +53,13 @@ export const StudentsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
       success('学生创建成功');
       setIsModalOpen(false);
-      setFormData({ student_no: '', name: '', gender: '男', class_id: selectedClassId, meta_json: null });
+      setFormData({
+        student_no: '',
+        name: '',
+        gender: '男',
+        class_id: selectedClassId,
+        meta_json: null,
+      });
     },
     onError: (err) => error(`创建失败: ${err.message}`),
   });
@@ -64,7 +70,7 @@ export const StudentsPage: React.FC = () => {
   };
 
   const getClassName = (classId: string) => {
-    const cls = classes?.find(c => c.id === classId);
+    const cls = classes?.find((c) => c.id === classId);
     return cls ? `${cls.grade} ${cls.class_name}` : '未知班级';
   };
 
@@ -77,7 +83,10 @@ export const StudentsPage: React.FC = () => {
         </div>
         <button
           onClick={() => {
-            setFormData(prev => ({ ...prev, class_id: selectedClassId || (classes?.[0]?.id || '') }));
+            setFormData((prev) => ({
+              ...prev,
+              class_id: selectedClassId || classes?.[0]?.id || '',
+            }));
             setIsModalOpen(true);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors shadow-sm font-medium"
@@ -104,9 +113,9 @@ export const StudentsPage: React.FC = () => {
             </option>
           ))}
         </select>
-        
+
         <div className="flex-1"></div>
-        
+
         <div className="relative w-64">
           <input
             type="text"
@@ -133,21 +142,27 @@ export const StudentsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {students.map((student) => (
-                  <tr 
-                    key={student.id} 
+                  <tr
+                    key={student.id}
                     onClick={() => navigate(`/students/${student.id}`)}
                     className="hover:bg-brand-50/50 transition-colors cursor-pointer group"
                   >
-                    <td className="px-6 py-4 text-gray-500 font-mono text-sm">{student.student_no}</td>
+                    <td className="px-6 py-4 text-gray-500 font-mono text-sm">
+                      {student.student_no}
+                    </td>
                     <td className="px-6 py-4 font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
                       {student.name}
                     </td>
                     <td className="px-6 py-4 text-gray-600">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        student.gender === '男' ? 'bg-blue-50 text-blue-700' : 
-                        student.gender === '女' ? 'bg-pink-50 text-pink-700' : 
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          student.gender === '男'
+                            ? 'bg-blue-50 text-blue-700'
+                            : student.gender === '女'
+                              ? 'bg-pink-50 text-pink-700'
+                              : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
                         {student.gender || '未知'}
                       </span>
                     </td>
@@ -163,7 +178,7 @@ export const StudentsPage: React.FC = () => {
           <EmptyState
             icon={<GraduationCap className="w-8 h-8" />}
             title="暂无学生"
-            description={selectedClassId ? "该班级下暂无学生数据" : "系统中暂无学生数据"}
+            description={selectedClassId ? '该班级下暂无学生数据' : '系统中暂无学生数据'}
           />
         )}
       </div>
@@ -224,7 +239,9 @@ export const StudentsPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
                 >
-                  <option value="" disabled>请选择班级</option>
+                  <option value="" disabled>
+                    请选择班级
+                  </option>
                   {classes?.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {cls.grade} {cls.class_name}

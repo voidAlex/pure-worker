@@ -1,8 +1,4 @@
-import {
-  commands as tauriCommands,
-  type AppError,
-  type Result,
-} from '@/bindings';
+import { commands as tauriCommands, type AppError, type Result } from '@/bindings';
 import { isTauriRuntime } from '@/utils/runtime';
 
 const WEB_MODE_ERROR: AppError = {

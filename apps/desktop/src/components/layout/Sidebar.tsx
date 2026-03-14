@@ -5,11 +5,11 @@
 
 import React from 'react';
 import { NavLink } from 'react-router';
-import { 
-  LayoutDashboard, 
-  Users, 
-  GraduationCap, 
-  UploadCloud, 
+import {
+  LayoutDashboard,
+  Users,
+  GraduationCap,
+  UploadCloud,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -40,16 +40,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse })
   ];
 
   return (
-    <aside 
+    <aside
       className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
         isCollapsed ? 'w-16' : 'w-[220px]'
       }`}
     >
       <div className="h-14 flex items-center justify-between px-4 border-b border-gray-100">
-        {!isCollapsed && (
-          <span className="font-bold text-brand-700 truncate">PureWorker</span>
-        )}
-        <button 
+        {!isCollapsed && <span className="font-bold text-brand-700 truncate">PureWorker</span>}
+        <button
           onClick={toggleCollapse}
           className={`p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors ${
             isCollapsed ? 'mx-auto' : ''

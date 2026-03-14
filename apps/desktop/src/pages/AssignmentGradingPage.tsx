@@ -5,16 +5,18 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands,
-type Classroom,
-type GradingJob,
-type AssignmentAsset,
-type AssignmentOcrResult,
-type AsyncTask,
-type Student,
-type CreateGradingJobInput,
-type AddAssignmentAssetsInput,
-type ReviewOcrResultInput, } from '@/services/commandClient';
+import {
+  commands,
+  type Classroom,
+  type GradingJob,
+  type AssignmentAsset,
+  type AssignmentOcrResult,
+  type AsyncTask,
+  type Student,
+  type CreateGradingJobInput,
+  type AddAssignmentAssetsInput,
+  type ReviewOcrResultInput,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -66,7 +68,7 @@ export const AssignmentGradingPage: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteTargetType, setDeleteTargetType] = useState<'job' | 'asset' | null>(null);
-  
+
   // 创建任务表单状态
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newJobMode, setNewJobMode] = useState('standard');
@@ -227,7 +229,12 @@ export const AssignmentGradingPage: React.FC = () => {
 
   /** 批量审核 OCR 结果 */
   const batchReviewMutation = useMutation({
-    mutationFn: async (input: { ids: string[]; review_status: string; reviewed_by: string; final_score: number | null }) => {
+    mutationFn: async (input: {
+      ids: string[];
+      review_status: string;
+      reviewed_by: string;
+      final_score: number | null;
+    }) => {
       const result = await commands.batchReviewOcrResults(input);
       if (result.status === 'error') throw new Error(JSON.stringify(result.error));
       return result.data;
@@ -332,7 +339,15 @@ export const AssignmentGradingPage: React.FC = () => {
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [selectedJob?.task_id, isGrading, queryClient, selectedClassId, selectedJobId, success, error]);
+  }, [
+    selectedJob?.task_id,
+    isGrading,
+    queryClient,
+    selectedClassId,
+    selectedJobId,
+    success,
+    error,
+  ]);
 
   /** 处理创建任务 */
   const handleCreateJob = useCallback(() => {
@@ -393,7 +408,9 @@ export const AssignmentGradingPage: React.FC = () => {
   /** 计算进度百分比 */
   const progressPercent = useMemo(() => {
     if (!gradingProgress || gradingProgress.total === 0) return 0;
-    return Math.round(((gradingProgress.processed + gradingProgress.failed) / gradingProgress.total) * 100);
+    return Math.round(
+      ((gradingProgress.processed + gradingProgress.failed) / gradingProgress.total) * 100,
+    );
   }, [gradingProgress]);
 
   return (
@@ -509,7 +526,8 @@ export const AssignmentGradingPage: React.FC = () => {
                 </span>
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                共 {selectedJob.total_assets} 份作业，已处理 {selectedJob.processed_assets} 份，失败 {selectedJob.failed_assets} 份，冲突 {selectedJob.conflict_count} 处
+                共 {selectedJob.total_assets} 份作业，已处理 {selectedJob.processed_assets} 份，失败{' '}
+                {selectedJob.failed_assets} 份，冲突 {selectedJob.conflict_count} 处
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -527,7 +545,9 @@ export const AssignmentGradingPage: React.FC = () => {
               </button>
               <button
                 onClick={() => startGradingMutation.mutate(selectedJob.id)}
-                disabled={isGrading || selectedJob.total_assets === 0 || selectedJob.status === 'processing'}
+                disabled={
+                  isGrading || selectedJob.total_assets === 0 || selectedJob.status === 'processing'
+                }
                 className="flex items-center gap-2 px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Play className="w-4 h-4" />
@@ -557,7 +577,10 @@ export const AssignmentGradingPage: React.FC = () => {
                 <div className="flex items-center gap-4 text-sm text-gray-500">
                   {gradingProgress.current_filename && isGrading && (
                     <span>
-                      正在处理: <span className="font-medium text-gray-700">{gradingProgress.current_filename}</span>
+                      正在处理:{' '}
+                      <span className="font-medium text-gray-700">
+                        {gradingProgress.current_filename}
+                      </span>
                     </span>
                   )}
                   <span>
@@ -594,7 +617,9 @@ export const AssignmentGradingPage: React.FC = () => {
                 : 'border-2 border-dashed border-gray-300 rounded-xl p-8 text-center'
             }`}
           >
-            <Upload className={`w-8 h-8 mx-auto mb-3 ${isDragOver ? 'text-brand-500' : 'text-gray-400'}`} />
+            <Upload
+              className={`w-8 h-8 mx-auto mb-3 ${isDragOver ? 'text-brand-500' : 'text-gray-400'}`}
+            />
             <p className="text-sm text-gray-600 font-medium">将作业图片拖拽到此处</p>
             <p className="text-xs text-gray-400 mt-1">支持 JPG、PNG 格式，自动识别学生信息</p>
           </div>
@@ -602,11 +627,19 @@ export const AssignmentGradingPage: React.FC = () => {
           {/* 素材列表 */}
           {jobAssets && jobAssets.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">已上传作业 ({jobAssets.length})</h3>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                已上传作业 ({jobAssets.length})
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {jobAssets.map((asset: AssignmentAsset) => (
-                  <div key={asset.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="truncate text-sm text-gray-700" title={asset.original_filename || asset.file_path}>
+                  <div
+                    key={asset.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div
+                      className="truncate text-sm text-gray-700"
+                      title={asset.original_filename || asset.file_path}
+                    >
                       {asset.original_filename || asset.file_path.split(/[/\\]/).pop()}
                     </div>
                     <button
@@ -635,11 +668,20 @@ export const AssignmentGradingPage: React.FC = () => {
               </h3>
               <div className="space-y-3">
                 {conflictResults.map((conflict: AssignmentOcrResult) => (
-                  <div key={conflict.id} className="bg-white p-3 rounded border border-red-200 flex items-center justify-between">
+                  <div
+                    key={conflict.id}
+                    className="bg-white p-3 rounded border border-red-200 flex items-center justify-between"
+                  >
                     <div className="text-sm">
-                      <span className="font-medium text-gray-900 mr-3">{getStudentName(conflict.student_id)}</span>
-                      <span className="text-gray-600 mr-3">题号: {conflict.question_no || '未知'}</span>
-                      <span className="text-gray-600">识别结果: {conflict.answer_text || '空'}</span>
+                      <span className="font-medium text-gray-900 mr-3">
+                        {getStudentName(conflict.student_id)}
+                      </span>
+                      <span className="text-gray-600 mr-3">
+                        题号: {conflict.question_no || '未知'}
+                      </span>
+                      <span className="text-gray-600">
+                        识别结果: {conflict.answer_text || '空'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -669,7 +711,10 @@ export const AssignmentGradingPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleBatchApprove}
-                    disabled={batchReviewMutation.isPending || ocrResults.filter((r) => r.review_status === 'pending').length === 0}
+                    disabled={
+                      batchReviewMutation.isPending ||
+                      ocrResults.filter((r) => r.review_status === 'pending').length === 0
+                    }
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50"
                   >
                     <Check className="w-4 h-4" />
@@ -688,33 +733,61 @@ export const AssignmentGradingPage: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">题号</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">答案文本</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">置信度</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">得分</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        学生
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        题号
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        答案文本
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        置信度
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        得分
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        状态
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        操作
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {ocrResults.map((result: AssignmentOcrResult) => {
-                      const statusStyle = REVIEW_STATUS_STYLES[result.review_status] || REVIEW_STATUS_STYLES.pending;
+                      const statusStyle =
+                        REVIEW_STATUS_STYLES[result.review_status] || REVIEW_STATUS_STYLES.pending;
                       return (
                         <tr key={result.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{getStudentName(result.student_id)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{result.question_no || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]" title={result.answer_text || ''}>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {getStudentName(result.student_id)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {result.question_no || '-'}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-sm text-gray-500 truncate max-w-[200px]"
+                            title={result.answer_text || ''}
+                          >
                             {result.answer_text || '-'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {result.confidence ? `${(result.confidence * 100).toFixed(1)}%` : '-'}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            {result.final_score !== null ? result.final_score : result.score !== null ? result.score : '-'}
+                            {result.final_score !== null
+                              ? result.final_score
+                              : result.score !== null
+                                ? result.score
+                                : '-'}
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                            >
                               {statusStyle.label}
                             </span>
                           </td>
@@ -760,7 +833,11 @@ export const AssignmentGradingPage: React.FC = () => {
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title={deleteTargetType === 'job' ? '删除任务' : '删除素材'}
-        message={deleteTargetType === 'job' ? '确定要删除该批改任务吗？相关的素材和批改结果也将被删除。' : '确定要删除该作业图片吗？'}
+        message={
+          deleteTargetType === 'job'
+            ? '确定要删除该批改任务吗？相关的素材和批改结果也将被删除。'
+            : '确定要删除该作业图片吗？'
+        }
         confirmText="删除"
         onConfirm={() => {
           if (deleteTargetType === 'job' && deleteTargetId) {

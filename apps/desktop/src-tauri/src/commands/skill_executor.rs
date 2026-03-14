@@ -9,8 +9,9 @@ use std::path::Path;
 use tauri::State;
 
 use crate::error::AppError;
+use crate::models::skill::SkillMetadata;
 use crate::services::path_whitelist::PathWhitelistService;
-use crate::services::skill_discovery::{DiscoveredSkill, SkillDiscoveryService};
+use crate::services::skill_discovery::SkillDiscoveryService;
 use crate::services::skill_executor::SkillExecutorService;
 use crate::services::unified_tool::ToolResult;
 
@@ -46,7 +47,7 @@ pub async fn execute_skill(
 pub async fn discover_skills(
     pool: State<'_, SqlitePool>,
     input: DiscoverSkillsInput,
-) -> Result<Vec<DiscoveredSkill>, AppError> {
+) -> Result<Vec<SkillMetadata>, AppError> {
     // 校验工作区路径合法性，防止前端传入任意路径扫描文件系统
     PathWhitelistService::validate_workspace_path(&input.workspace_path)?;
     let workspace_path = Path::new(&input.workspace_path);

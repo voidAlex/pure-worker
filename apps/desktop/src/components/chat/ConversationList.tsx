@@ -8,11 +8,11 @@ export interface ConversationListProps {
   onCreateNew: () => void;
 }
 
-export function ConversationList({ 
-  conversations, 
-  currentId, 
+export function ConversationList({
+  conversations,
+  currentId,
   onSelect,
-  onCreateNew 
+  onCreateNew,
 }: ConversationListProps) {
   return (
     <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
@@ -26,13 +26,11 @@ export function ConversationList({
           <span>新会话</span>
         </button>
       </div>
-      
+
       {/* 会话列表 */}
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 ? (
-          <div className="p-4 text-center text-gray-400 text-sm">
-            暂无会话记录
-          </div>
+          <div className="p-4 text-center text-gray-400 text-sm">暂无会话记录</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {conversations.map((conv) => (
@@ -49,11 +47,7 @@ export function ConversationList({
                 <div className="text-xs text-gray-500 mt-1">
                   {conv.message_count} 条消息 · {new Date(conv.updated_at).toLocaleDateString()}
                 </div>
-                {conv.scenario && (
-                  <div className="text-xs text-blue-500 mt-1">
-                    {conv.scenario}
-                  </div>
-                )}
+                {conv.scenario && <div className="text-xs text-blue-500 mt-1">{conv.scenario}</div>}
               </button>
             ))}
           </div>

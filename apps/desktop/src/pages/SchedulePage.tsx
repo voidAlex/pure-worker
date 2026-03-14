@@ -5,7 +5,12 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, ScheduleEvent, CreateScheduleEventInput, UpdateScheduleEventInput } from '@/services/commandClient';
+import {
+  commands,
+  ScheduleEvent,
+  CreateScheduleEventInput,
+  UpdateScheduleEventInput,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -185,7 +190,9 @@ export const SchedulePage: React.FC = () => {
           onChange={(e) => setSelectedClassId(e.target.value)}
           className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-shadow min-w-[200px]"
         >
-          <option value="" disabled>请选择班级查看日程</option>
+          <option value="" disabled>
+            请选择班级查看日程
+          </option>
           {classes?.map((cls) => (
             <option key={cls.id} value={cls.id}>
               {cls.grade} {cls.class_name}
@@ -207,11 +214,14 @@ export const SchedulePage: React.FC = () => {
           <div className="p-6">
             <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
               {events.map((event) => (
-                <div key={event.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                <div
+                  key={event.id}
+                  className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active"
+                >
                   <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-brand-100 text-brand-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                     <Clock className="w-4 h-4" />
                   </div>
-                  
+
                   <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-1">
                       <time className="text-sm font-medium text-brand-600">
@@ -298,23 +308,36 @@ export const SchedulePage: React.FC = () => {
                   type="datetime-local"
                   required
                   value={formData.start_at.slice(0, 16)}
-                  onChange={(e) => setFormData({ ...formData, start_at: new Date(e.target.value).toISOString() })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, start_at: new Date(e.target.value).toISOString() })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">结束时间 (可选)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  结束时间 (可选)
+                </label>
                 <input
                   type="datetime-local"
                   value={formData.end_at ? formData.end_at.slice(0, 16) : ''}
-                  onChange={(e) => setFormData({ ...formData, end_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      end_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+                    })
+                  }
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">关联文件 (可选)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  关联文件 (可选)
+                </label>
                 <select
                   value={formData.linked_file_id || ''}
-                  onChange={(e) => setFormData({ ...formData, linked_file_id: e.target.value || null })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, linked_file_id: e.target.value || null })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow bg-white"
                 >
                   <option value="">不关联文件</option>

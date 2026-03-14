@@ -5,7 +5,12 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands, type Classroom, type ActivityAnnouncement, type TemplateFile } from '@/services/commandClient';
+import {
+  commands,
+  type Classroom,
+  type ActivityAnnouncement,
+  type TemplateFile,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -70,7 +75,10 @@ export const ActivityAnnouncementsPage: React.FC = () => {
   const { data: templates } = useQuery({
     queryKey: ['templateFiles', 'activity_announcement'],
     queryFn: async () => {
-      const result = await commands.listTemplateFiles({ type: 'activity_announcement', enabled: 1 });
+      const result = await commands.listTemplateFiles({
+        type: 'activity_announcement',
+        enabled: 1,
+      });
       if (result.status === 'error') throw new Error(JSON.stringify(result.error));
       return result.data;
     },
@@ -290,7 +298,9 @@ export const ActivityAnnouncementsPage: React.FC = () => {
             <option value="">不使用模板</option>
             {templates?.map((tpl: TemplateFile) => (
               <option key={tpl.id} value={tpl.id}>
-                {tpl.school_scope ? `${tpl.school_scope} - ` : ''}{tpl.file_path}{tpl.version ? ` (${tpl.version})` : ''}
+                {tpl.school_scope ? `${tpl.school_scope} - ` : ''}
+                {tpl.file_path}
+                {tpl.version ? ` (${tpl.version})` : ''}
               </option>
             ))}
           </select>
@@ -300,7 +310,10 @@ export const ActivityAnnouncementsPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-2">通知对象</label>
             <div className="flex gap-4">
               {Object.entries(AUDIENCE_MAP).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <label
+                  key={key}
+                  className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"
+                >
                   <input
                     type="radio"
                     name="audience"
@@ -320,7 +333,11 @@ export const ActivityAnnouncementsPage: React.FC = () => {
             disabled={!selectedClassId || !title.trim() || isGenerating}
             className="flex items-center gap-2 px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {isGenerating ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
             {isGenerating ? '生成中...' : 'AI 生成文案'}
           </button>
         </div>

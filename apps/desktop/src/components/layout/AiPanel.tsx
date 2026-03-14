@@ -69,10 +69,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   }, [messages, isLoading]);
 
   /** 判断是否可以发送消息 */
-  const canSend = useMemo(
-    () => inputText.trim().length > 0 && !isLoading,
-    [inputText, isLoading],
-  );
+  const canSend = useMemo(() => inputText.trim().length > 0 && !isLoading, [inputText, isLoading]);
 
   /** 是否为全屏模式 */
   const isFullscreen = props.mode === 'fullscreen';
@@ -159,9 +156,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
 
       if (result.status === 'error') {
         const errorMsg =
-          typeof result.error === 'string'
-            ? result.error
-            : JSON.stringify(result.error);
+          typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
         setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: `抱歉，AI 响应失败：${errorMsg}` },
@@ -169,10 +164,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
         return;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: result.data.content },
-      ]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.data.content }]);
     } catch (err: unknown) {
       const errorDetail = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
@@ -254,9 +246,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
             <Sparkles className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">AI 助手已就绪</h3>
-          <p className="text-sm max-w-[280px]">
-            我在这里协助您处理教务工作、分析成绩和生成评语。
-          </p>
+          <p className="text-sm max-w-[280px]">我在这里协助您处理教务工作、分析成绩和生成评语。</p>
         </div>
       ) : (
         <div className={isFullscreen ? 'mx-auto max-w-3xl w-full' : ''}>
@@ -378,7 +368,9 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   // 根据模式选择不同的外层容器
   if (isFullscreen) {
     return (
-      <div className={`flex flex-col h-full w-full ${props.mode === 'fullscreen' ? (props.className ?? '') : ''}`}>
+      <div
+        className={`flex flex-col h-full w-full ${props.mode === 'fullscreen' ? (props.className ?? '') : ''}`}
+      >
         {renderHeader()}
         {renderMessages()}
         {renderInput()}

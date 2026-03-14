@@ -20,16 +20,16 @@ export const AppLayout: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans">
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar 
-          isCollapsed={isSidebarCollapsed} 
-          toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
-        
+
         <main className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 overflow-y-auto p-6">
             <Outlet />
           </div>
-          
+
           {!isAiPanelOpen && !isDashboardRoute && (
             <button
               onClick={() => setIsAiPanelOpen(true)}
@@ -40,16 +40,12 @@ export const AppLayout: React.FC = () => {
             </button>
           )}
         </main>
-        
+
         {!isDashboardRoute && (
-          <AiPanel
-            mode="sidebar"
-            isOpen={isAiPanelOpen}
-            onClose={() => setIsAiPanelOpen(false)}
-          />
+          <AiPanel mode="sidebar" isOpen={isAiPanelOpen} onClose={() => setIsAiPanelOpen(false)} />
         )}
       </div>
-      
+
       <StatusBar />
       <ToastContainer />
     </div>

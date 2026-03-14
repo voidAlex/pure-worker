@@ -4,41 +4,42 @@
  */
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { commands,
-type AiConfigSafe,
-type CreateAiConfigInput,
-type UpdateAiConfigInput,
-type AiParamPreset,
-type CreatePresetInput,
-type UpdatePresetInput,
-type GlobalShortcut,
-type CreateGlobalShortcutInput,
-type UpdateGlobalShortcutInput,
-type SkillRecord,
-type CreateSkillInput,
-type UpdateSkillInput,
-type McpServerRecord,
-type CreateMcpServerInput,
-type UpdateMcpServerInput,
-type TemplateFile,
-type CreateTemplateFileInput,
-type StorageStats,
-type UvHealthResult,
-type AppError,
-type DeleteAiConfigInput,
-type DeleteAiParamPresetInput,
-type ActivateAiParamPresetInput,
-type ExportWorkspaceInput,
-type ArchiveWorkspaceInput,
-type EraseWorkspaceInput,
-type ListTemplateFilesInput,
-type DeleteTemplateFileInput,
-type DeleteGlobalShortcutInput,
-type DeleteSkillInput,
-type DeleteMcpServerInput,
-type CreateSkillEnvInput,
-type ProviderPreset,
-type ModelInfo,
+import {
+  commands,
+  type AiConfigSafe,
+  type CreateAiConfigInput,
+  type UpdateAiConfigInput,
+  type AiParamPreset,
+  type CreatePresetInput,
+  type UpdatePresetInput,
+  type GlobalShortcut,
+  type CreateGlobalShortcutInput,
+  type UpdateGlobalShortcutInput,
+  type SkillRecord,
+  type CreateSkillInput,
+  type UpdateSkillInput,
+  type McpServerRecord,
+  type CreateMcpServerInput,
+  type UpdateMcpServerInput,
+  type TemplateFile,
+  type CreateTemplateFileInput,
+  type StorageStats,
+  type UvHealthResult,
+  type AppError,
+  type DeleteAiConfigInput,
+  type DeleteAiParamPresetInput,
+  type ActivateAiParamPresetInput,
+  type ExportWorkspaceInput,
+  type ArchiveWorkspaceInput,
+  type EraseWorkspaceInput,
+  type ListTemplateFilesInput,
+  type DeleteTemplateFileInput,
+  type DeleteGlobalShortcutInput,
+  type DeleteSkillInput,
+  type DeleteMcpServerInput,
+  type CreateSkillEnvInput,
+  type ProviderPreset,
+  type ModelInfo,
 } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -77,7 +78,9 @@ const getErrorMessage = (err: AppError): string => {
 };
 
 /** 将 Tauri Result 统一解包为数据或抛错 */
-const unwrapResult = <T,>(res: { status: 'ok'; data: T } | { status: 'error'; error: AppError }): T => {
+const unwrapResult = <T,>(
+  res: { status: 'ok'; data: T } | { status: 'error'; error: AppError },
+): T => {
   if (res.status === 'ok') {
     return res.data;
   }
@@ -185,7 +188,11 @@ const AiConfigTab: React.FC = () => {
   const [presetForm, setPresetForm] = useState<CreatePresetInput>(INITIAL_PRESET_FORM);
 
   /* ---- 删除确认状态 ---- */
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'config' | 'preset'; id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'config' | 'preset';
+    id: string;
+    name: string;
+  } | null>(null);
 
   /* ---- 高级配置展开状态 ---- */
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -214,7 +221,8 @@ const AiConfigTab: React.FC = () => {
 
   /** 创建 AI 配置 */
   const createConfigMutation = useMutation({
-    mutationFn: async (input: CreateAiConfigInput) => unwrapResult(await commands.createAiConfig(input)),
+    mutationFn: async (input: CreateAiConfigInput) =>
+      unwrapResult(await commands.createAiConfig(input)),
     onSuccess: () => {
       success('AI 配置已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
@@ -225,7 +233,8 @@ const AiConfigTab: React.FC = () => {
 
   /** 更新 AI 配置 */
   const updateConfigMutation = useMutation({
-    mutationFn: async (input: UpdateAiConfigInput) => unwrapResult(await commands.updateAiConfig(input)),
+    mutationFn: async (input: UpdateAiConfigInput) =>
+      unwrapResult(await commands.updateAiConfig(input)),
     onSuccess: () => {
       success('AI 配置已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-configs'] });
@@ -249,7 +258,8 @@ const AiConfigTab: React.FC = () => {
 
   /** 创建参数预设 */
   const createPresetMutation = useMutation({
-    mutationFn: async (input: CreatePresetInput) => unwrapResult(await commands.createAiParamPreset(input)),
+    mutationFn: async (input: CreatePresetInput) =>
+      unwrapResult(await commands.createAiParamPreset(input)),
     onSuccess: () => {
       success('参数预设已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
@@ -262,7 +272,8 @@ const AiConfigTab: React.FC = () => {
 
   /** 更新参数预设 */
   const updatePresetMutation = useMutation({
-    mutationFn: async (input: UpdatePresetInput) => unwrapResult(await commands.updateAiParamPreset(input)),
+    mutationFn: async (input: UpdatePresetInput) =>
+      unwrapResult(await commands.updateAiParamPreset(input)),
     onSuccess: () => {
       success('参数预设已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
@@ -479,7 +490,9 @@ const AiConfigTab: React.FC = () => {
           <Bot size={20} className="text-blue-600" />
           新建 AI 服务配置
         </h3>
-        <p className="mb-4 text-sm text-gray-500">选择一个供应商，填入 API Key 后即可自动获取模型列表</p>
+        <p className="mb-4 text-sm text-gray-500">
+          选择一个供应商，填入 API Key 后即可自动获取模型列表
+        </p>
 
         {/* 供应商卡片网格 */}
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -501,7 +514,9 @@ const AiConfigTab: React.FC = () => {
           <button
             onClick={selectCustomProvider}
             className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-all hover:shadow-md ${
-              isCustom ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+              isCustom
+                ? 'border-blue-500 bg-blue-50 shadow-md'
+                : 'border-gray-300 bg-gray-50 hover:border-gray-400'
             }`}
           >
             <Plus size={24} className="text-gray-500" />
@@ -521,7 +536,9 @@ const AiConfigTab: React.FC = () => {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="例如: openai"
                     value={configForm.provider_name}
-                    onChange={(e) => setConfigForm((prev) => ({ ...prev, provider_name: e.target.value }))}
+                    onChange={(e) =>
+                      setConfigForm((prev) => ({ ...prev, provider_name: e.target.value }))
+                    }
                   />
                 </div>
                 <div>
@@ -530,16 +547,22 @@ const AiConfigTab: React.FC = () => {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="例如: OpenAI"
                     value={configForm.display_name}
-                    onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                    onChange={(e) =>
+                      setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-gray-600">接口地址 (Base URL)</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    接口地址 (Base URL)
+                  </label>
                   <input
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="https://api.example.com"
                     value={configForm.base_url}
-                    onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                    onChange={(e) =>
+                      setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))
+                    }
                   />
                 </div>
               </div>
@@ -548,10 +571,16 @@ const AiConfigTab: React.FC = () => {
             {/* 编辑已有配置时显示供应商信息（只读） */}
             {editingConfig && (
               <div className="flex items-center gap-3 rounded-lg bg-white p-3">
-                {PROVIDER_ICON_MAP[editingConfig.provider_name] ?? <Bot size={20} className="text-gray-500" />}
+                {PROVIDER_ICON_MAP[editingConfig.provider_name] ?? (
+                  <Bot size={20} className="text-gray-500" />
+                )}
                 <div>
-                  <div className="text-sm font-medium text-gray-800">{editingConfig.display_name}</div>
-                  <div className="text-xs text-gray-500">{editingConfig.provider_name} — {editingConfig.base_url}</div>
+                  <div className="text-sm font-medium text-gray-800">
+                    {editingConfig.display_name}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {editingConfig.provider_name} — {editingConfig.base_url}
+                  </div>
                 </div>
               </div>
             )}
@@ -568,7 +597,9 @@ const AiConfigTab: React.FC = () => {
                     type={showApiKey ? 'text' : 'password'}
                     placeholder="sk-..."
                     value={configForm.api_key}
-                    onChange={(e) => setConfigForm((prev) => ({ ...prev, api_key: e.target.value }))}
+                    onChange={(e) =>
+                      setConfigForm((prev) => ({ ...prev, api_key: e.target.value }))
+                    }
                   />
                   <button
                     type="button"
@@ -584,7 +615,11 @@ const AiConfigTab: React.FC = () => {
                   disabled={fetchingModels}
                   className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {fetchingModels ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  {fetchingModels ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={16} />
+                  )}
                   获取模型列表
                 </button>
               </div>
@@ -608,8 +643,14 @@ const AiConfigTab: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        {configForm.default_model === model.id && <Check size={14} className="text-blue-600" />}
-                        <span className={configForm.default_model === model.id ? 'font-medium' : ''}>{model.name}</span>
+                        {configForm.default_model === model.id && (
+                          <Check size={14} className="text-blue-600" />
+                        )}
+                        <span
+                          className={configForm.default_model === model.id ? 'font-medium' : ''}
+                        >
+                          {model.name}
+                        </span>
                       </div>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -641,34 +682,48 @@ const AiConfigTab: React.FC = () => {
                   {isCustom && editingConfig && (
                     <>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">显示名称</label>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">
+                          显示名称
+                        </label>
                         <input
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                           value={configForm.display_name}
-                          onChange={(e) => setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                          onChange={(e) =>
+                            setConfigForm((prev) => ({ ...prev, display_name: e.target.value }))
+                          }
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">接口地址</label>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">
+                          接口地址
+                        </label>
                         <input
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                           value={configForm.base_url}
-                          onChange={(e) => setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                          onChange={(e) =>
+                            setConfigForm((prev) => ({ ...prev, base_url: e.target.value }))
+                          }
                         />
                       </div>
                     </>
                   )}
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">默认模型（手动输入）</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      默认模型（手动输入）
+                    </label>
                     <input
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       placeholder="gpt-4o"
                       value={configForm.default_model}
-                      onChange={(e) => setConfigForm((prev) => ({ ...prev, default_model: e.target.value }))}
+                      onChange={(e) =>
+                        setConfigForm((prev) => ({ ...prev, default_model: e.target.value }))
+                      }
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">配置 JSON（可选）</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      配置 JSON（可选）
+                    </label>
                     <input
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       placeholder='{"key": "value"}'
@@ -692,7 +747,9 @@ const AiConfigTab: React.FC = () => {
                   type="checkbox"
                   className="rounded"
                   checked={configForm.is_active === true}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                  onChange={(e) =>
+                    setConfigForm((prev) => ({ ...prev, is_active: e.target.checked }))
+                  }
                 />
                 设为激活
               </label>
@@ -733,7 +790,9 @@ const AiConfigTab: React.FC = () => {
                 className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:bg-gray-100"
               >
                 <div className="flex items-center gap-3">
-                  {PROVIDER_ICON_MAP[item.provider_name] ?? <Bot size={20} className="text-gray-400" />}
+                  {PROVIDER_ICON_MAP[item.provider_name] ?? (
+                    <Bot size={20} className="text-gray-400" />
+                  )}
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-gray-900">{item.display_name}</span>
@@ -759,7 +818,9 @@ const AiConfigTab: React.FC = () => {
                   </button>
                   <button
                     className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50"
-                    onClick={() => setDeleteTarget({ type: 'config', id: item.id, name: item.display_name })}
+                    onClick={() =>
+                      setDeleteTarget({ type: 'config', id: item.id, name: item.display_name })
+                    }
                     title="删除配置"
                   >
                     <Trash2 size={14} />
@@ -770,7 +831,11 @@ const AiConfigTab: React.FC = () => {
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无 AI 配置" description="请在上方选择供应商并添加配置" icon={<Cpu size={32} className="text-gray-400" />} />
+          <EmptyState
+            title="暂无 AI 配置"
+            description="请在上方选择供应商并添加配置"
+            icon={<Cpu size={32} className="text-gray-400" />}
+          />
         )}
       </section>
 
@@ -807,7 +872,9 @@ const AiConfigTab: React.FC = () => {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="例如: 创意模式"
                   value={presetForm.display_name}
-                  onChange={(e) => setPresetForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({ ...prev, display_name: e.target.value }))
+                  }
                 />
               </div>
               <div>
@@ -822,7 +889,9 @@ const AiConfigTab: React.FC = () => {
                   onChange={(e) =>
                     setPresetForm((prev) => ({
                       ...prev,
-                      temperature: Number.isNaN(Number(e.target.value)) ? 0.7 : Number(e.target.value),
+                      temperature: Number.isNaN(Number(e.target.value))
+                        ? 0.7
+                        : Number(e.target.value),
                     }))
                   }
                 />
@@ -837,7 +906,9 @@ const AiConfigTab: React.FC = () => {
                   max={1}
                   placeholder="可选"
                   value={presetForm.top_p ?? ''}
-                  onChange={(e) => setPresetForm((prev) => ({ ...prev, top_p: toNullableNumber(e.target.value) }))}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({ ...prev, top_p: toNullableNumber(e.target.value) }))
+                  }
                 />
               </div>
               <div>
@@ -848,7 +919,12 @@ const AiConfigTab: React.FC = () => {
                   min={1}
                   placeholder="可选"
                   value={presetForm.max_tokens ?? ''}
-                  onChange={(e) => setPresetForm((prev) => ({ ...prev, max_tokens: toNullableNumber(e.target.value) }))}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({
+                      ...prev,
+                      max_tokens: toNullableNumber(e.target.value),
+                    }))
+                  }
                 />
               </div>
             </div>
@@ -858,7 +934,9 @@ const AiConfigTab: React.FC = () => {
                   type="checkbox"
                   className="rounded"
                   checked={presetForm.is_default === true}
-                  onChange={(e) => setPresetForm((prev) => ({ ...prev, is_default: e.target.checked }))}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({ ...prev, is_default: e.target.checked }))
+                  }
                 />
                 默认
               </label>
@@ -867,7 +945,9 @@ const AiConfigTab: React.FC = () => {
                   type="checkbox"
                   className="rounded"
                   checked={presetForm.is_active === true}
-                  onChange={(e) => setPresetForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                  onChange={(e) =>
+                    setPresetForm((prev) => ({ ...prev, is_active: e.target.checked }))
+                  }
                 />
                 激活
               </label>
@@ -895,19 +975,27 @@ const AiConfigTab: React.FC = () => {
         {presetsQuery.data && presetsQuery.data.length > 0 ? (
           <div className="space-y-2">
             {presetsQuery.data.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-3 transition-colors hover:bg-gray-100">
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-3 transition-colors hover:bg-gray-100"
+              >
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-gray-900">{item.display_name}</span>
                     {item.is_active === 1 && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">激活</span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        激活
+                      </span>
                     )}
                     {item.is_default === 1 && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">默认</span>
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        默认
+                      </span>
                     )}
                   </div>
                   <div className="mt-0.5 text-xs text-gray-500">
-                    {item.name} · T={item.temperature} / P={item.top_p ?? '-'} / MaxTok={item.max_tokens ?? '-'}
+                    {item.name} · T={item.temperature} / P={item.top_p ?? '-'} / MaxTok=
+                    {item.max_tokens ?? '-'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -931,7 +1019,9 @@ const AiConfigTab: React.FC = () => {
                   </button>
                   <button
                     className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50"
-                    onClick={() => setDeleteTarget({ type: 'preset', id: item.id, name: item.display_name })}
+                    onClick={() =>
+                      setDeleteTarget({ type: 'preset', id: item.id, name: item.display_name })
+                    }
                     title="删除预设"
                   >
                     <Trash2 size={14} />
@@ -942,7 +1032,11 @@ const AiConfigTab: React.FC = () => {
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无参数预设" description="请创建参数预设用于快速切换" icon={<Settings size={32} className="text-gray-400" />} />
+          <EmptyState
+            title="暂无参数预设"
+            description="请创建参数预设用于快速切换"
+            icon={<Settings size={32} className="text-gray-400" />}
+          />
         )}
       </section>
 
@@ -984,7 +1078,14 @@ const SecurityTab: React.FC = () => {
 
   const toggleDesensitizeMutation = useMutation({
     mutationFn: async (enabled: boolean) =>
-      unwrapResult(await commands.updateSetting('desensitize_enabled', String(enabled), 'security', '外发前脱敏开关')),
+      unwrapResult(
+        await commands.updateSetting(
+          'desensitize_enabled',
+          String(enabled),
+          'security',
+          '外发前脱敏开关',
+        ),
+      ),
     onSuccess: () => {
       success('脱敏设置已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'desensitize_enabled'] });
@@ -1050,7 +1151,10 @@ const SecurityTab: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-lg border p-4">
               <div className="text-sm text-gray-500">工作区路径</div>
-              <div className="mt-1 truncate font-mono text-sm" title={statsQuery.data.workspace_path}>
+              <div
+                className="mt-1 truncate font-mono text-sm"
+                title={statsQuery.data.workspace_path}
+              >
                 {statsQuery.data.workspace_path}
               </div>
             </div>
@@ -1085,10 +1189,16 @@ const SecurityTab: React.FC = () => {
           </button>
           <div>
             <div className="flex items-center gap-2 text-sm font-medium">
-              {desensitizeQuery.data ? <Eye size={16} className="text-blue-600" /> : <EyeOff size={16} className="text-gray-400" />}
+              {desensitizeQuery.data ? (
+                <Eye size={16} className="text-blue-600" />
+              ) : (
+                <EyeOff size={16} className="text-gray-400" />
+              )}
               {desensitizeQuery.data ? '脱敏已开启' : '脱敏已关闭'}
             </div>
-            <div className="mt-1 text-xs text-gray-500">开启后，外发内容将优先进行敏感信息脱敏。</div>
+            <div className="mt-1 text-xs text-gray-500">
+              开启后，外发内容将优先进行敏感信息脱敏。
+            </div>
           </div>
         </div>
       </section>
@@ -1096,10 +1206,16 @@ const SecurityTab: React.FC = () => {
       <section>
         <h3 className="mb-3 text-lg font-semibold">数据生命周期</h3>
         <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50" onClick={() => setConfirmAction('export')}>
+          <button
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+            onClick={() => setConfirmAction('export')}
+          >
             <Download size={16} /> 导出工作区
           </button>
-          <button className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50" onClick={() => setConfirmAction('archive')}>
+          <button
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+            onClick={() => setConfirmAction('archive')}
+          >
             <Archive size={16} /> 归档工作区
           </button>
           <button
@@ -1161,7 +1277,9 @@ const TemplateTab: React.FC = () => {
 
   const updateExportFormatMutation = useMutation({
     mutationFn: async (format: string) =>
-      unwrapResult(await commands.updateSetting('default_export_format', format, 'export', '默认导出格式')),
+      unwrapResult(
+        await commands.updateSetting('default_export_format', format, 'export', '默认导出格式'),
+      ),
     onSuccess: () => {
       success('默认导出格式已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'default_export_format'] });
@@ -1170,7 +1288,8 @@ const TemplateTab: React.FC = () => {
   });
 
   const createTemplateMutation = useMutation({
-    mutationFn: async (input: CreateTemplateFileInput) => unwrapResult(await commands.createTemplateFile(input)),
+    mutationFn: async (input: CreateTemplateFileInput) =>
+      unwrapResult(await commands.createTemplateFile(input)),
     onSuccess: () => {
       success('模板已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'templates'] });
@@ -1253,7 +1372,9 @@ const TemplateTab: React.FC = () => {
             <button
               key={format}
               className={`rounded border px-3 py-1.5 text-sm ${
-                exportFormatQuery.data === format ? 'border-blue-600 bg-blue-600 text-white' : 'hover:bg-gray-50'
+                exportFormatQuery.data === format
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'hover:bg-gray-50'
               }`}
               onClick={() => updateExportFormatMutation.mutate(format)}
             >
@@ -1293,25 +1414,40 @@ const TemplateTab: React.FC = () => {
                 className="rounded border px-3 py-2 text-sm"
                 placeholder="school_scope（可选）"
                 value={form.school_scope ?? ''}
-                onChange={(e) => setForm((prev) => ({ ...prev, school_scope: e.target.value.trim() === '' ? null : e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    school_scope: e.target.value.trim() === '' ? null : e.target.value,
+                  }))
+                }
               />
               <input
                 className="rounded border px-3 py-2 text-sm"
                 placeholder="version（可选）"
                 value={form.version ?? ''}
-                onChange={(e) => setForm((prev) => ({ ...prev, version: e.target.value.trim() === '' ? null : e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    version: e.target.value.trim() === '' ? null : e.target.value,
+                  }))
+                }
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={(form.enabled ?? 0) === 1}
-                onChange={(e) => setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))
+                }
               />
               启用模板
             </label>
             <div className="flex gap-2">
-              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitTemplateForm}>
+              <button
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                onClick={submitTemplateForm}
+              >
                 {editingTemplate ? '更新' : '创建'}
               </button>
               <button
@@ -1330,11 +1466,18 @@ const TemplateTab: React.FC = () => {
         {templatesQuery.data && templatesQuery.data.length > 0 ? (
           <div className="space-y-2">
             {templatesQuery.data.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+              >
                 <div>
                   <div className="font-medium">
                     {item.type}
-                    {item.enabled === 1 && <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">启用</span>}
+                    {item.enabled === 1 && (
+                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                        启用
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-500">{item.file_path}</div>
                   <div className="text-xs text-gray-500">
@@ -1342,7 +1485,11 @@ const TemplateTab: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditTemplateForm(item)} title="编辑模板">
+                  <button
+                    className="rounded p-1.5 hover:bg-gray-200"
+                    onClick={() => openEditTemplateForm(item)}
+                    title="编辑模板"
+                  >
                     <Edit2 size={14} />
                   </button>
                   <button
@@ -1357,7 +1504,11 @@ const TemplateTab: React.FC = () => {
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无模板文件" description="请添加模板文件" icon={<FileText size={32} className="text-gray-400" />} />
+          <EmptyState
+            title="暂无模板文件"
+            description="请添加模板文件"
+            icon={<FileText size={32} className="text-gray-400" />}
+          />
         )}
       </section>
 
@@ -1395,7 +1546,8 @@ const ShortcutTab: React.FC = () => {
   });
 
   const createShortcutMutation = useMutation({
-    mutationFn: async (input: CreateGlobalShortcutInput) => unwrapResult(await commands.createGlobalShortcut(input)),
+    mutationFn: async (input: CreateGlobalShortcutInput) =>
+      unwrapResult(await commands.createGlobalShortcut(input)),
     onSuccess: () => {
       success('快捷键已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'shortcuts'] });
@@ -1411,7 +1563,8 @@ const ShortcutTab: React.FC = () => {
       const input: UpdateGlobalShortcutInput = {
         id: payload.id,
         action: payload.input.action.trim() === '' ? null : payload.input.action,
-        key_combination: payload.input.key_combination.trim() === '' ? null : payload.input.key_combination,
+        key_combination:
+          payload.input.key_combination.trim() === '' ? null : payload.input.key_combination,
         enabled: payload.input.enabled,
         description: payload.input.description,
       };
@@ -1499,19 +1652,29 @@ const ShortcutTab: React.FC = () => {
                 className="col-span-2 rounded border px-3 py-2 text-sm"
                 placeholder="description（可选）"
                 value={form.description ?? ''}
-                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    description: e.target.value.trim() === '' ? null : e.target.value,
+                  }))
+                }
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={(form.enabled ?? 0) === 1}
-                onChange={(e) => setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, enabled: e.target.checked ? 1 : 0 }))
+                }
               />
               启用
             </label>
             <div className="flex gap-2">
-              <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitShortcutForm}>
+              <button
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                onClick={submitShortcutForm}
+              >
                 {editingShortcut ? '更新' : '创建'}
               </button>
               <button
@@ -1530,19 +1693,32 @@ const ShortcutTab: React.FC = () => {
         {shortcutsQuery.data && shortcutsQuery.data.length > 0 ? (
           <div className="space-y-2">
             {shortcutsQuery.data.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+              >
                 <div>
                   <div className="flex items-center gap-2 font-medium">
-                    {item.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
+                    {item.enabled === 1 ? (
+                      <CheckCircle2 size={16} className="text-green-500" />
+                    ) : (
+                      <XCircle size={16} className="text-gray-400" />
+                    )}
                     {item.action}
                   </div>
                   <div className="mt-1">
-                    <kbd className="rounded border bg-gray-100 px-2 py-0.5 font-mono text-xs">{item.key_combination}</kbd>
+                    <kbd className="rounded border bg-gray-100 px-2 py-0.5 font-mono text-xs">
+                      {item.key_combination}
+                    </kbd>
                   </div>
                   <div className="text-xs text-gray-500">{item.description ?? '无描述'}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditShortcutForm(item)} title="编辑快捷键">
+                  <button
+                    className="rounded p-1.5 hover:bg-gray-200"
+                    onClick={() => openEditShortcutForm(item)}
+                    title="编辑快捷键"
+                  >
                     <Edit2 size={14} />
                   </button>
                   <button
@@ -1557,7 +1733,11 @@ const ShortcutTab: React.FC = () => {
             ))}
           </div>
         ) : (
-          <EmptyState title="暂无快捷键" description="请添加全局快捷键" icon={<Keyboard size={32} className="text-gray-400" />} />
+          <EmptyState
+            title="暂无快捷键"
+            description="请添加全局快捷键"
+            icon={<Keyboard size={32} className="text-gray-400" />}
+          />
         )}
       </section>
 
@@ -1596,7 +1776,11 @@ const SkillsMcpTab: React.FC = () => {
   const [mcpForm, setMcpForm] = useState<CreateMcpServerInput>(INITIAL_MCP_FORM);
   const [mcpEnabled, setMcpEnabled] = useState<number | null>(1);
 
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'skill' | 'mcp'; id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'skill' | 'mcp';
+    id: string;
+    name: string;
+  } | null>(null);
 
   const [skillEnvName, setSkillEnvName] = useState('');
   const [skillEnvPythonVersion, setSkillEnvPythonVersion] = useState<string>('');
@@ -1630,7 +1814,8 @@ const SkillsMcpTab: React.FC = () => {
   });
 
   const updateSkillMutation = useMutation({
-    mutationFn: async (payload: { id: string; input: UpdateSkillInput }) => unwrapResult(await commands.updateSkill(payload.id, payload.input)),
+    mutationFn: async (payload: { id: string; input: UpdateSkillInput }) =>
+      unwrapResult(await commands.updateSkill(payload.id, payload.input)),
     onSuccess: () => {
       success('技能已更新');
       queryClient.invalidateQueries({ queryKey: ['settings', 'skills'] });
@@ -1681,7 +1866,8 @@ const SkillsMcpTab: React.FC = () => {
   });
 
   const createSkillEnvMutation = useMutation({
-    mutationFn: async (input: CreateSkillEnvInput) => unwrapResult(await commands.createSkillEnv(input)),
+    mutationFn: async (input: CreateSkillEnvInput) =>
+      unwrapResult(await commands.createSkillEnv(input)),
     onSuccess: (message) => {
       info(message);
     },
@@ -1689,7 +1875,8 @@ const SkillsMcpTab: React.FC = () => {
   });
 
   const createMcpMutation = useMutation({
-    mutationFn: async (input: CreateMcpServerInput) => unwrapResult(await commands.createMcpServer(input)),
+    mutationFn: async (input: CreateMcpServerInput) =>
+      unwrapResult(await commands.createMcpServer(input)),
     onSuccess: () => {
       success('MCP 服务器已创建');
       queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
@@ -1858,7 +2045,9 @@ const SkillsMcpTab: React.FC = () => {
           <button
             key={tab}
             className={`border-b-2 px-4 py-2 text-sm transition-colors ${
-              subTab === tab ? 'border-blue-600 font-medium text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              subTab === tab
+                ? 'border-blue-600 font-medium text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
             onClick={() => setSubTab(tab)}
           >
@@ -1904,13 +2093,23 @@ const SkillsMcpTab: React.FC = () => {
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="version（可选）"
                   value={skillForm.version ?? ''}
-                  onChange={(e) => setSkillForm((prev) => ({ ...prev, version: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      version: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="source（可选）"
                   value={skillForm.source ?? ''}
-                  onChange={(e) => setSkillForm((prev) => ({ ...prev, source: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      source: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="rounded border px-3 py-2 text-sm"
@@ -1927,33 +2126,50 @@ const SkillsMcpTab: React.FC = () => {
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="skill_type"
                   value={skillForm.skill_type}
-                  onChange={(e) => setSkillForm((prev) => ({ ...prev, skill_type: e.target.value }))}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({ ...prev, skill_type: e.target.value }))
+                  }
                 />
                 <input
                   className="col-span-2 rounded border px-3 py-2 text-sm"
                   placeholder="description（可选）"
                   value={skillForm.description ?? ''}
-                  onChange={(e) => setSkillForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      description: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="col-span-2 rounded border px-3 py-2 text-sm"
                   placeholder="config_json（可选）"
                   value={skillForm.config_json ?? ''}
-                  onChange={(e) => setSkillForm((prev) => ({ ...prev, config_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setSkillForm((prev) => ({
+                      ...prev,
+                      config_json: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
               </div>
               {editingSkill && (
                 <select
                   className="rounded border px-3 py-2 text-sm"
                   value={skillStatus ?? ''}
-                  onChange={(e) => setSkillStatus(e.target.value.trim() === '' ? null : e.target.value)}
+                  onChange={(e) =>
+                    setSkillStatus(e.target.value.trim() === '' ? null : e.target.value)
+                  }
                 >
                   <option value="active">active</option>
                   <option value="inactive">inactive</option>
                 </select>
               )}
               <div className="flex gap-2">
-                <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitSkillForm}>
+                <button
+                  className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                  onClick={submitSkillForm}
+                >
                   {editingSkill ? '更新' : '创建'}
                 </button>
                 <button
@@ -1972,7 +2188,10 @@ const SkillsMcpTab: React.FC = () => {
           {skillsQuery.data && skillsQuery.data.length > 0 ? (
             <div className="space-y-2">
               {skillsQuery.data.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+                >
                   <div>
                     <div className="flex items-center gap-2 font-medium">
                       {item.status === 'active' ? (
@@ -1981,17 +2200,23 @@ const SkillsMcpTab: React.FC = () => {
                         <XCircle size={16} className="text-gray-400" />
                       )}
                       {item.display_name ?? item.name}
-                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{item.skill_type}</span>
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
+                        {item.skill_type}
+                      </span>
                       <span
                         className={`rounded px-2 py-0.5 text-xs ${
-                          item.health_status === 'healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          item.health_status === 'healthy'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
                         }`}
                       >
                         {item.health_status}
                       </span>
                     </div>
                     <div className="text-xs text-gray-500">name: {item.name}</div>
-                    <div className="text-xs text-gray-500">description: {item.description ?? '-'}</div>
+                    <div className="text-xs text-gray-500">
+                      description: {item.description ?? '-'}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -2001,12 +2226,22 @@ const SkillsMcpTab: React.FC = () => {
                     >
                       <Activity size={14} />
                     </button>
-                    <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditSkillForm(item)} title="编辑技能">
+                    <button
+                      className="rounded p-1.5 hover:bg-gray-200"
+                      onClick={() => openEditSkillForm(item)}
+                      title="编辑技能"
+                    >
                       <Edit2 size={14} />
                     </button>
                     <button
                       className="rounded p-1.5 text-red-500 hover:bg-red-100"
-                      onClick={() => setDeleteTarget({ type: 'skill', id: item.id, name: item.display_name ?? item.name })}
+                      onClick={() =>
+                        setDeleteTarget({
+                          type: 'skill',
+                          id: item.id,
+                          name: item.display_name ?? item.name,
+                        })
+                      }
                       title="删除技能"
                     >
                       <Trash2 size={14} />
@@ -2016,7 +2251,11 @@ const SkillsMcpTab: React.FC = () => {
               ))}
             </div>
           ) : (
-            <EmptyState title="暂无技能" description="请添加技能配置" icon={<Puzzle size={32} className="text-gray-400" />} />
+            <EmptyState
+              title="暂无技能"
+              description="请添加技能配置"
+              icon={<Puzzle size={32} className="text-gray-400" />}
+            />
           )}
         </div>
       )}
@@ -2026,7 +2265,11 @@ const SkillsMcpTab: React.FC = () => {
           <h3 className="text-lg font-semibold">Python 环境（uv）</h3>
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center gap-2 text-sm">
-              {uvHealthQuery.data?.available ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-red-500" />}
+              {uvHealthQuery.data?.available ? (
+                <CheckCircle2 size={16} className="text-green-500" />
+              ) : (
+                <XCircle size={16} className="text-red-500" />
+              )}
               {uvHealthQuery.data?.available ? 'uv 已安装' : 'uv 未安装'}
             </div>
             <div className="text-xs text-gray-500">版本：{uvHealthQuery.data?.version ?? '-'}</div>
@@ -2035,7 +2278,9 @@ const SkillsMcpTab: React.FC = () => {
             <div className="flex gap-2">
               <button
                 className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ['settings', 'uv-health'] })}
+                onClick={() =>
+                  queryClient.invalidateQueries({ queryKey: ['settings', 'uv-health'] })
+                }
               >
                 <RefreshCw size={14} /> 重新检测
               </button>
@@ -2118,19 +2363,34 @@ const SkillsMcpTab: React.FC = () => {
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="command（可选）"
                   value={mcpForm.command ?? ''}
-                  onChange={(e) => setMcpForm((prev) => ({ ...prev, command: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      command: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="args_json（可选）"
                   value={mcpForm.args_json ?? ''}
-                  onChange={(e) => setMcpForm((prev) => ({ ...prev, args_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      args_json: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="env_json（可选）"
                   value={mcpForm.env_json ?? ''}
-                  onChange={(e) => setMcpForm((prev) => ({ ...prev, env_json: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      env_json: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
                 <input
                   className="rounded border px-3 py-2 text-sm"
@@ -2147,17 +2407,29 @@ const SkillsMcpTab: React.FC = () => {
                   className="rounded border px-3 py-2 text-sm"
                   placeholder="description（可选）"
                   value={mcpForm.description ?? ''}
-                  onChange={(e) => setMcpForm((prev) => ({ ...prev, description: e.target.value.trim() === '' ? null : e.target.value }))}
+                  onChange={(e) =>
+                    setMcpForm((prev) => ({
+                      ...prev,
+                      description: e.target.value.trim() === '' ? null : e.target.value,
+                    }))
+                  }
                 />
               </div>
               {editingMcp && (
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={(mcpEnabled ?? 0) === 1} onChange={(e) => setMcpEnabled(e.target.checked ? 1 : 0)} />
+                  <input
+                    type="checkbox"
+                    checked={(mcpEnabled ?? 0) === 1}
+                    onChange={(e) => setMcpEnabled(e.target.checked ? 1 : 0)}
+                  />
                   启用
                 </label>
               )}
               <div className="flex gap-2">
-                <button className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700" onClick={submitMcpForm}>
+                <button
+                  className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                  onClick={submitMcpForm}
+                >
                   {editingMcp ? '更新' : '创建'}
                 </button>
                 <button
@@ -2176,15 +2448,26 @@ const SkillsMcpTab: React.FC = () => {
           {mcpQuery.data && mcpQuery.data.length > 0 ? (
             <div className="space-y-2">
               {mcpQuery.data.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50">
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+                >
                   <div>
                     <div className="flex items-center gap-2 font-medium">
-                      {item.enabled === 1 ? <CheckCircle2 size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-400" />}
+                      {item.enabled === 1 ? (
+                        <CheckCircle2 size={16} className="text-green-500" />
+                      ) : (
+                        <XCircle size={16} className="text-gray-400" />
+                      )}
                       {item.display_name ?? item.name}
-                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{item.transport}</span>
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
+                        {item.transport}
+                      </span>
                       <span
                         className={`rounded px-2 py-0.5 text-xs ${
-                          item.health_status === 'healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          item.health_status === 'healthy'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
                         }`}
                       >
                         {item.health_status}
@@ -2201,12 +2484,22 @@ const SkillsMcpTab: React.FC = () => {
                     >
                       <Activity size={14} />
                     </button>
-                    <button className="rounded p-1.5 hover:bg-gray-200" onClick={() => openEditMcpForm(item)} title="编辑 MCP">
+                    <button
+                      className="rounded p-1.5 hover:bg-gray-200"
+                      onClick={() => openEditMcpForm(item)}
+                      title="编辑 MCP"
+                    >
                       <Edit2 size={14} />
                     </button>
                     <button
                       className="rounded p-1.5 text-red-500 hover:bg-red-100"
-                      onClick={() => setDeleteTarget({ type: 'mcp', id: item.id, name: item.display_name ?? item.name })}
+                      onClick={() =>
+                        setDeleteTarget({
+                          type: 'mcp',
+                          id: item.id,
+                          name: item.display_name ?? item.name,
+                        })
+                      }
                       title="删除 MCP"
                     >
                       <Trash2 size={14} />
@@ -2216,7 +2509,11 @@ const SkillsMcpTab: React.FC = () => {
               ))}
             </div>
           ) : (
-            <EmptyState title="暂无 MCP 服务器" description="请添加 MCP 服务配置" icon={<Puzzle size={32} className="text-gray-400" />} />
+            <EmptyState
+              title="暂无 MCP 服务器"
+              description="请添加 MCP 服务配置"
+              icon={<Puzzle size={32} className="text-gray-400" />}
+            />
           )}
         </div>
       )}
@@ -2273,7 +2570,9 @@ export const SettingsPage: React.FC = () => {
           <button
             key={tab.key}
             className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm transition-colors ${
-              activeTab === tab.key ? 'border-blue-600 font-medium text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              activeTab === tab.key
+                ? 'border-blue-600 font-medium text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
             onClick={() => setActiveTab(tab.key)}
           >

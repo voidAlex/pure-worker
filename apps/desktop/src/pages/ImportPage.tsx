@@ -5,7 +5,12 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { commands, ImportStudentsInput, ImportDuplicateStrategy, ImportStudentsResult } from '@/services/commandClient';
+import {
+  commands,
+  ImportStudentsInput,
+  ImportDuplicateStrategy,
+  ImportStudentsResult,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { UploadCloud, FileSpreadsheet, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 
@@ -86,7 +91,9 @@ export const ImportPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
                 >
-                  <option value="" disabled>请选择导入班级</option>
+                  <option value="" disabled>
+                    请选择导入班级
+                  </option>
                   {classes?.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {cls.grade} {cls.class_name}
@@ -100,7 +107,12 @@ export const ImportPage: React.FC = () => {
                 <select
                   required
                   value={formData.duplicate_strategy}
-                  onChange={(e) => setFormData({ ...formData, duplicate_strategy: e.target.value as ImportDuplicateStrategy })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      duplicate_strategy: e.target.value as ImportDuplicateStrategy,
+                    })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
                 >
                   <option value="Skip">跳过 (保留原有数据)</option>
@@ -123,9 +135,7 @@ export const ImportPage: React.FC = () => {
                 />
                 <FileSpreadsheet className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               </div>
-              <p className="mt-2 text-xs text-gray-500">
-                请输入或粘贴本地 Excel 文件的绝对路径
-              </p>
+              <p className="mt-2 text-xs text-gray-500">请输入或粘贴本地 Excel 文件的绝对路径</p>
             </div>
           </div>
 
@@ -157,10 +167,18 @@ export const ImportPage: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900">导入结果</h3>
             <div className="flex items-center gap-2 text-sm font-medium">
               <span className="text-gray-500">总计: {importResult.total_rows}</span>
-              <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded">新增: {importResult.created_count}</span>
-              <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">更新: {importResult.updated_count}</span>
-              <span className="text-gray-600 bg-gray-100 px-2 py-0.5 rounded">跳过: {importResult.skipped_count}</span>
-              <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded">错误: {importResult.error_count}</span>
+              <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                新增: {importResult.created_count}
+              </span>
+              <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                更新: {importResult.updated_count}
+              </span>
+              <span className="text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                跳过: {importResult.skipped_count}
+              </span>
+              <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                错误: {importResult.error_count}
+              </span>
             </div>
           </div>
 

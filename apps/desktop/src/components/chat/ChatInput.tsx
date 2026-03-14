@@ -10,7 +10,11 @@ export interface ChatInputProps {
   placeholder?: string;
 }
 
-export function ChatInput({ onSend, disabled = false, placeholder = '输入消息...' }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled = false,
+  placeholder = '输入消息...',
+}: ChatInputProps) {
   const [message, setMessage] = useState('');
 
   const handleSend = useCallback(() => {
@@ -20,12 +24,15 @@ export function ChatInput({ onSend, disabled = false, placeholder = '输入消�
     }
   }, [message, disabled, onSend]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
 
   return (
     <div className="flex gap-2">

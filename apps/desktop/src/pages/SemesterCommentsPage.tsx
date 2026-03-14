@@ -5,11 +5,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands,
-type Classroom,
-type SemesterComment,
-type AsyncTask,
-type Student, } from '@/services/commandClient';
+import {
+  commands,
+  type Classroom,
+  type SemesterComment,
+  type AsyncTask,
+  type Student,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -307,7 +309,9 @@ export const SemesterCommentsPage: React.FC = () => {
   /** 计算进度百分比 */
   const progressPercent = useMemo(() => {
     if (!batchProgress || batchProgress.total === 0) return 0;
-    return Math.round(((batchProgress.completed + batchProgress.failed) / batchProgress.total) * 100);
+    return Math.round(
+      ((batchProgress.completed + batchProgress.failed) / batchProgress.total) * 100,
+    );
   }, [batchProgress]);
 
   return (
@@ -330,9 +334,7 @@ export const SemesterCommentsPage: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow bg-white"
               disabled={isGenerating}
             >
-              <option value="">
-                {isLoadingClasses ? '加载中...' : '请选择班级'}
-              </option>
+              <option value="">{isLoadingClasses ? '加载中...' : '请选择班级'}</option>
               {classrooms?.map((cls: Classroom) => (
                 <option key={cls.id} value={cls.id}>
                   {cls.grade} {cls.class_name} - {cls.subject}
@@ -392,7 +394,10 @@ export const SemesterCommentsPage: React.FC = () => {
               <div className="flex items-center gap-4 text-sm text-gray-500">
                 {batchProgress.current_student_name && isGenerating && (
                   <span>
-                    正在生成: <span className="font-medium text-gray-700">{batchProgress.current_student_name}</span>
+                    正在生成:{' '}
+                    <span className="font-medium text-gray-700">
+                      {batchProgress.current_student_name}
+                    </span>
                   </span>
                 )}
                 <span>
@@ -414,8 +419,8 @@ export const SemesterCommentsPage: React.FC = () => {
       {semesterComments && semesterComments.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-4 flex items-center justify-between">
           <span className="text-sm text-gray-600">
-            共 <span className="font-semibold text-gray-900">{semesterComments.length}</span> 条评语，
-            已采纳 <span className="font-semibold text-green-600">{adoptedCount}</span> 条
+            共 <span className="font-semibold text-gray-900">{semesterComments.length}</span>{' '}
+            条评语， 已采纳 <span className="font-semibold text-green-600">{adoptedCount}</span> 条
           </span>
           <div className="flex items-center gap-3">
             <button
@@ -427,7 +432,10 @@ export const SemesterCommentsPage: React.FC = () => {
             </button>
             <button
               onClick={handleExport}
-              disabled={!semesterComments || semesterComments.filter(c => c.status === 'adopted').length === 0}
+              disabled={
+                !semesterComments ||
+                semesterComments.filter((c) => c.status === 'adopted').length === 0
+              }
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />

@@ -80,9 +80,7 @@ export const App = (): ReactElement => {
         </div>
       )}
 
-      {initialized === false && (
-        <InitializationWizard onComplete={() => setInitialized(true)} />
-      )}
+      {initialized === false && <InitializationWizard onComplete={() => setInitialized(true)} />}
 
       {initialized === true && <AppContent />}
     </QueryClientProvider>

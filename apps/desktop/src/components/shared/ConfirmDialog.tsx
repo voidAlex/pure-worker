@@ -49,11 +49,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <div className="px-6 py-5">
           <p className="text-gray-600 leading-relaxed">{message}</p>
         </div>
-        
+
         <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
           <button
             onClick={onCancel}

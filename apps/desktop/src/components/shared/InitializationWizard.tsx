@@ -3,8 +3,28 @@
  * 引导用户完成工作目录选择和 AI 供应商配置，完成前阻止使用主应用
  */
 import React, { useState, useEffect } from 'react';
-import { commands, type AppError, type ProviderPreset, type CreateAiConfigInput } from '@/services/commandClient';
-import { Bot, Sparkles, Zap, Cpu, Activity, FolderOpen, Eye, EyeOff, CheckCircle2, XCircle, Loader2, ArrowRight, ArrowLeft, Rocket } from 'lucide-react';
+import {
+  commands,
+  type AppError,
+  type ProviderPreset,
+  type CreateAiConfigInput,
+} from '@/services/commandClient';
+import {
+  Bot,
+  Sparkles,
+  Zap,
+  Cpu,
+  Activity,
+  FolderOpen,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  ArrowRight,
+  ArrowLeft,
+  Rocket,
+} from 'lucide-react';
 
 interface InitializationWizardProps {
   onComplete: () => void;
@@ -23,7 +43,9 @@ const getErrorMessage = (err: AppError): string => {
   return values[0] ?? '未知错误';
 };
 
-const unwrapResult = <T,>(res: { status: 'ok'; data: T } | { status: 'error'; error: AppError }): T => {
+const unwrapResult = <T,>(
+  res: { status: 'ok'; data: T } | { status: 'error'; error: AppError },
+): T => {
   if (res.status === 'ok') return res.data;
   throw new Error(getErrorMessage(res.error));
 };
@@ -31,27 +53,32 @@ const unwrapResult = <T,>(res: { status: 'ok'; data: T } | { status: 'error'; er
 export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onComplete }) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [workspacePath, setWorkspacePath] = useState<string>('');
-  
+
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<ProviderPreset | null>(null);
-  
+
   const [apiKey, setApiKey] = useState<string>('');
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [connectionStatus, setConnectionStatus] = useState<
+    'idle' | 'testing' | 'success' | 'failed'
+  >('idle');
   const [connectionError, setConnectionError] = useState<string>('');
   const [modelCount, setModelCount] = useState<number>(0);
   const [defaultModel, setDefaultModel] = useState<string>('');
-  
+
   const [saving, setSaving] = useState<boolean>(false);
 
   useEffect(() => {
-    commands.getProviderPresets().then((res) => {
-      if (res.status === 'ok') {
-        setPresets(res.data);
-      }
-    }).catch((err) => {
-      console.error('获取预设供应商失败:', err);
-    });
+    commands
+      .getProviderPresets()
+      .then((res) => {
+        if (res.status === 'ok') {
+          setPresets(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error('获取预设供应商失败:', err);
+      });
   }, []);
 
   const handleSelectDirectory = async () => {
@@ -67,14 +94,18 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
 
   const handleTestConnection = async () => {
     if (!selectedPreset || !apiKey) return;
-    
+
     setConnectionStatus('testing');
     setConnectionError('');
-    
+
     try {
-      const res = await commands.fetchProviderModels(selectedPreset.name, selectedPreset.base_url, apiKey);
+      const res = await commands.fetchProviderModels(
+        selectedPreset.name,
+        selectedPreset.base_url,
+        apiKey,
+      );
       const models = unwrapResult(res);
-      
+
       setModelCount(models.length);
       if (models.length === 0) {
         setConnectionStatus('failed');
@@ -91,12 +122,17 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
 
   const handleComplete = async () => {
     if (!selectedPreset || !apiKey || !workspacePath) return;
-    
+
     setSaving(true);
     try {
       // 1. 保存工作区路径
-      await commands.updateSetting('workspace_path', JSON.stringify(workspacePath), 'general', '工作区目录路径');
-      
+      await commands.updateSetting(
+        'workspace_path',
+        JSON.stringify(workspacePath),
+        'general',
+        '工作区目录路径',
+      );
+
       // 2. 创建 AI 配置
       const aiConfig: CreateAiConfigInput = {
         provider_name: selectedPreset.name,
@@ -105,13 +141,13 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
         api_key: apiKey,
         default_model: defaultModel,
         is_active: true,
-        config_json: null
+        config_json: null,
       };
       await commands.createAiConfig(aiConfig);
-      
+
       // 3. 标记初始化完成
       await commands.updateSetting('initialization_completed', 'true', 'general', '初始化完成标记');
-      
+
       onComplete();
     } catch (error) {
       console.error('保存初始化设置失败:', error);
@@ -124,7 +160,6 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-6">
       <div className="max-w-2xl w-full mx-auto bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden flex flex-col min-h-[600px] transition-all duration-300">
-        
         {/* Header */}
         <div className="bg-brand-50 p-6 border-b border-brand-100 flex flex-col items-center justify-center">
           <div className="w-16 h-16 bg-brand-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
@@ -139,30 +174,40 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
           <div className="flex items-center w-full max-w-md relative z-10">
             {/* Step 1 */}
             <div className="flex flex-col items-center flex-1">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
                 ${step === 1 ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-green-500 bg-green-500 text-white'}`}
               >
                 {step > 1 ? <CheckCircle2 size={20} /> : '1'}
               </div>
-              <span className={`mt-2 text-sm font-medium ${step === 1 ? 'text-brand-700' : 'text-gray-500'}`}>选择工作目录</span>
+              <span
+                className={`mt-2 text-sm font-medium ${step === 1 ? 'text-brand-700' : 'text-gray-500'}`}
+              >
+                选择工作目录
+              </span>
             </div>
-            
+
             {/* Line */}
             <div className="absolute top-5 left-1/4 right-1/4 h-0.5 bg-gray-200 -z-10">
-              <div 
-                className="h-full bg-green-500 transition-all duration-500 ease-in-out" 
+              <div
+                className="h-full bg-green-500 transition-all duration-500 ease-in-out"
                 style={{ width: step > 1 ? '100%' : '0%' }}
               />
             </div>
 
             {/* Step 2 */}
             <div className="flex flex-col items-center flex-1">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
                 ${step === 2 ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-gray-200 bg-white text-gray-400'}`}
               >
                 2
               </div>
-              <span className={`mt-2 text-sm font-medium ${step === 2 ? 'text-brand-700' : 'text-gray-400'}`}>配置 AI 供应商</span>
+              <span
+                className={`mt-2 text-sm font-medium ${step === 2 ? 'text-brand-700' : 'text-gray-400'}`}
+              >
+                配置 AI 供应商
+              </span>
             </div>
           </div>
         </div>
@@ -175,22 +220,28 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
               <p className="text-center text-gray-600 mb-8 max-w-md leading-relaxed">
                 请选择一个文件夹作为 PureWorker 的工作区，所有教学资料和数据将保存在此目录中。
               </p>
-              
+
               <div className="w-full max-w-md">
                 <button
                   onClick={handleSelectDirectory}
                   className="w-full flex items-center justify-center py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-brand-500 hover:bg-brand-50 transition-colors duration-200 group"
                 >
                   <FolderOpen className="mr-2 text-gray-400 group-hover:text-brand-500" size={20} />
-                  <span className="font-medium text-gray-600 group-hover:text-brand-700">选择目录</span>
+                  <span className="font-medium text-gray-600 group-hover:text-brand-700">
+                    选择目录
+                  </span>
                 </button>
-                
+
                 {workspacePath && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-start">
                     <FolderOpen className="text-brand-500 mt-0.5 mr-3 flex-shrink-0" size={18} />
                     <div className="overflow-hidden">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">当前选择的路径</p>
-                      <p className="text-sm text-gray-800 break-all font-mono bg-white p-2 rounded border border-gray-100">{workspacePath}</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        当前选择的路径
+                      </p>
+                      <p className="text-sm text-gray-800 break-all font-mono bg-white p-2 rounded border border-gray-100">
+                        {workspacePath}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -204,7 +255,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                 <Bot className="mr-2 text-brand-500" size={20} />
                 选择您偏好的 AI 供应商
               </h3>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
                 {presets.map((preset) => {
                   const isSelected = selectedPreset?.name === preset.name;
@@ -220,7 +271,9 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                       className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all duration-200
                         ${isSelected ? 'border-brand-500 bg-brand-50 shadow-md ring-2 ring-brand-100' : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'}`}
                     >
-                      {PROVIDER_ICON_MAP[preset.name] || <Bot size={28} className="text-gray-400" />}
+                      {PROVIDER_ICON_MAP[preset.name] || (
+                        <Bot size={28} className="text-gray-400" />
+                      )}
                       <span className="mt-2 font-medium text-gray-800">{preset.display_name}</span>
                     </button>
                   );
@@ -235,7 +288,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                     </label>
                     <div className="relative">
                       <input
-                        type={showApiKey ? "text" : "password"}
+                        type={showApiKey ? 'text' : 'password'}
                         value={apiKey}
                         onChange={(e) => {
                           setApiKey(e.target.value);
@@ -244,7 +297,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                         className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono"
                         placeholder="sk-..."
                       />
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setShowApiKey(!showApiKey)}
                         className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition-colors"
@@ -252,9 +305,11 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">API 地址: {selectedPreset.base_url}</p>
+                    <p className="mt-2 text-xs text-gray-500">
+                      API 地址: {selectedPreset.base_url}
+                    </p>
                   </div>
-                  
+
                   <div className="flex items-center space-x-3">
                     <button
                       onClick={handleTestConnection}
@@ -262,22 +317,29 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                       className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
                     >
                       {connectionStatus === 'testing' ? (
-                        <><Loader2 className="animate-spin mr-2" size={16} /> 测试中</>
+                        <>
+                          <Loader2 className="animate-spin mr-2" size={16} /> 测试中
+                        </>
                       ) : (
-                        <><Activity className="mr-2" size={16} /> 测试连接</>
+                        <>
+                          <Activity className="mr-2" size={16} /> 测试连接
+                        </>
                       )}
                     </button>
-                    
+
                     {connectionStatus === 'success' && (
                       <span className="flex items-center text-sm font-medium text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-100">
-                        <CheckCircle2 className="mr-1" size={16} /> 连接成功 (发现 {modelCount} 个模型)
+                        <CheckCircle2 className="mr-1" size={16} /> 连接成功 (发现 {modelCount}{' '}
+                        个模型)
                       </span>
                     )}
-                    
+
                     {connectionStatus === 'failed' && (
                       <span className="flex items-center text-sm font-medium text-red-600 bg-red-50 px-3 py-1.5 rounded border border-red-100">
-                        <XCircle className="mr-1 flex-shrink-0" size={16} /> 
-                        <span className="truncate max-w-xs" title={connectionError}>连接失败: {connectionError}</span>
+                        <XCircle className="mr-1 flex-shrink-0" size={16} />
+                        <span className="truncate max-w-xs" title={connectionError}>
+                          连接失败: {connectionError}
+                        </span>
                       </span>
                     )}
                   </div>
@@ -317,9 +379,13 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
               className="px-6 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
             >
               {saving ? (
-                <><Loader2 className="animate-spin mr-2" size={16} /> 保存中...</>
+                <>
+                  <Loader2 className="animate-spin mr-2" size={16} /> 保存中...
+                </>
               ) : (
-                <><CheckCircle2 className="mr-2" size={16} /> 保存并完成</>
+                <>
+                  <CheckCircle2 className="mr-2" size={16} /> 保存并完成
+                </>
               )}
             </button>
           )}

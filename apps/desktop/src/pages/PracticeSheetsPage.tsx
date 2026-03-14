@@ -5,16 +5,18 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { commands,
-type WrongAnswerRecord,
-type PracticeSheet,
-type Student,
-type Classroom,
-type ListWrongAnswersInput,
-type ResolveWrongAnswerCommandInput,
-type GeneratePracticeSheetInput,
-type ListStudentPracticeSheetsInput,
-type DeletePracticeSheetInput, } from '@/services/commandClient';
+import {
+  commands,
+  type WrongAnswerRecord,
+  type PracticeSheet,
+  type Student,
+  type Classroom,
+  type ListWrongAnswersInput,
+  type ResolveWrongAnswerCommandInput,
+  type GeneratePracticeSheetInput,
+  type ListStudentPracticeSheetsInput,
+  type DeletePracticeSheetInput,
+} from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -35,7 +37,6 @@ const SHEET_STATUS_STYLES: Record<string, { bg: string; text: string; label: str
   completed: { bg: 'bg-green-100', text: 'text-green-700', label: '已完成' },
   failed: { bg: 'bg-red-100', text: 'text-red-600', label: '失败' },
 };
-
 
 export const PracticeSheetsPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -91,7 +92,9 @@ export const PracticeSheetsPage: React.FC = () => {
   }, [students]);
 
   /** 获取错题列表 */
-  const { data: wrongAnswers = [], isLoading: isLoadingWrongAnswers } = useQuery<WrongAnswerRecord[]>({
+  const { data: wrongAnswers = [], isLoading: isLoadingWrongAnswers } = useQuery<
+    WrongAnswerRecord[]
+  >({
     queryKey: ['wrong-answers', selectedStudentId, knowledgePointFilter, unresolvedOnly],
     queryFn: async () => {
       const input: ListWrongAnswersInput = {
@@ -172,35 +175,49 @@ export const PracticeSheetsPage: React.FC = () => {
   });
 
   /** 处理解决错题 */
-  const handleResolve = useCallback((id: string) => {
-    resolveMutation.mutate({ id });
-  }, [resolveMutation]);
+  const handleResolve = useCallback(
+    (id: string) => {
+      resolveMutation.mutate({ id });
+    },
+    [resolveMutation],
+  );
 
   /** 处理生成练习卷 */
-  const handleGenerateSheet = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedStudentId) {
-      error('请先选择学生');
-      return;
-    }
-    if (!sheetTitle.trim()) {
-      error('请输入练习卷标题');
-      return;
-    }
+  const handleGenerateSheet = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedStudentId) {
+        error('请先选择学生');
+        return;
+      }
+      if (!sheetTitle.trim()) {
+        error('请输入练习卷标题');
+        return;
+      }
 
-    const points = sheetKnowledgePoints
-      .split(/[,，]/)
-      .map((p) => p.trim())
-      .filter(Boolean);
+      const points = sheetKnowledgePoints
+        .split(/[,，]/)
+        .map((p) => p.trim())
+        .filter(Boolean);
 
-    generateSheetMutation.mutate({
-      student_id: selectedStudentId,
-      title: sheetTitle.trim(),
-      knowledge_points: points.length > 0 ? points : null,
-      difficulty: sheetDifficulty,
-      question_count: sheetQuestionCount,
-    });
-  }, [selectedStudentId, sheetTitle, sheetKnowledgePoints, sheetDifficulty, sheetQuestionCount, generateSheetMutation, error]);
+      generateSheetMutation.mutate({
+        student_id: selectedStudentId,
+        title: sheetTitle.trim(),
+        knowledge_points: points.length > 0 ? points : null,
+        difficulty: sheetDifficulty,
+        question_count: sheetQuestionCount,
+      });
+    },
+    [
+      selectedStudentId,
+      sheetTitle,
+      sheetKnowledgePoints,
+      sheetDifficulty,
+      sheetQuestionCount,
+      generateSheetMutation,
+      error,
+    ],
+  );
 
   /** 处理删除练习卷确认 */
   const handleConfirmDelete = useCallback(() => {
@@ -264,16 +281,36 @@ export const PracticeSheetsPage: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">题号</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">知识点</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">学生答案</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">正确答案</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">得分</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">难度</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">错误类型</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      学生
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      题号
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      知识点
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      学生答案
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      正确答案
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      得分
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      难度
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      错误类型
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      状态
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -282,19 +319,36 @@ export const PracticeSheetsPage: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {studentNameMap.get(record.student_id) || '未知'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.question_no}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.knowledge_point || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{record.student_answer || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{record.correct_answer || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.score !== null ? record.score : '-'}/{record.full_score !== null ? record.full_score : '-'}
+                        {record.question_no}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.difficulty || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.error_type || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {record.knowledge_point || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                        {record.student_answer || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                        {record.correct_answer || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {record.score !== null ? record.score : '-'}/
+                        {record.full_score !== null ? record.full_score : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {record.difficulty || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {record.error_type || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          record.is_resolved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            record.is_resolved
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
                           {record.is_resolved ? '已解决' : '未解决'}
                         </span>
                       </td>
@@ -319,7 +373,15 @@ export const PracticeSheetsPage: React.FC = () => {
         </div>
       </div>
     );
-  }, [knowledgePointFilter, unresolvedOnly, isLoadingWrongAnswers, wrongAnswers, studentNameMap, resolveMutation.isPending, handleResolve]);
+  }, [
+    knowledgePointFilter,
+    unresolvedOnly,
+    isLoadingWrongAnswers,
+    wrongAnswers,
+    studentNameMap,
+    resolveMutation.isPending,
+    handleResolve,
+  ]);
 
   /** 渲染练习卷列表 */
   const renderPracticeSheets = useCallback(() => {
@@ -351,7 +413,9 @@ export const PracticeSheetsPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">知识点（逗号分隔）</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  知识点（逗号分隔）
+                </label>
                 <input
                   type="text"
                   value={sheetKnowledgePoints}
@@ -417,20 +481,36 @@ export const PracticeSheetsPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {practiceSheets.map((sheet) => {
-                const statusStyle = SHEET_STATUS_STYLES[sheet.status] || SHEET_STATUS_STYLES.pending;
+                const statusStyle =
+                  SHEET_STATUS_STYLES[sheet.status] || SHEET_STATUS_STYLES.pending;
                 return (
-                  <div key={sheet.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col">
+                  <div
+                    key={sheet.id}
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col"
+                  >
                     <div className="flex justify-between items-start mb-3">
-                      <h4 className="text-base font-medium text-gray-900 line-clamp-2" title={sheet.title}>
+                      <h4
+                        className="text-base font-medium text-gray-900 line-clamp-2"
+                        title={sheet.title}
+                      >
                         {sheet.title}
                       </h4>
-                      <span className={`shrink-0 ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                      <span
+                        className={`shrink-0 ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                      >
                         {statusStyle.label}
                       </span>
                     </div>
                     <div className="text-sm text-gray-500 space-y-1 mb-4 flex-1">
                       <p>题目数量：{sheet.question_count}题</p>
-                      <p>难度：{sheet.difficulty === 'easy' ? '简单' : sheet.difficulty === 'hard' ? '困难' : '中等'}</p>
+                      <p>
+                        难度：
+                        {sheet.difficulty === 'easy'
+                          ? '简单'
+                          : sheet.difficulty === 'hard'
+                            ? '困难'
+                            : '中等'}
+                      </p>
                       <p>创建时间：{new Date(sheet.created_at).toLocaleDateString()}</p>
                     </div>
                     <div className="flex items-center justify-between pt-3 border-t border-gray-100">

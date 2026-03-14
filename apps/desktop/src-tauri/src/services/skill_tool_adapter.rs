@@ -226,6 +226,51 @@ pub async fn build_all_enabled_skill_toolset(pool: &SqlitePool) -> Result<ToolSe
     Ok(toolset)
 }
 
+/// 构建所有已启用技能的工具列表，供 Agent 使用。
+///
+/// 返回 `Vec<Box<dyn ToolDyn>>`，可直接传递给 `create_agent_with_tools`。
+pub async fn build_all_enabled_skill_tools(
+    pool: &SqlitePool,
+) -> Result<Vec<Box<dyn ToolDyn>>, AppError> {
+    let skills = SkillService::list_skills(pool).await?;
+    let mut tools: Vec<Box<dyn ToolDyn>> = Vec::new();
+
+    for skill in skills {
+        if skill.status.as_deref() != Some("enabled") {
+            continue;
+        }
+
+        if let Some(builtin_tool) = builtin_skills::get_builtin_tool(&skill.name) {
+            tools.push(Box::new(BuiltinToolAdapter::new(
+                builtin_tool.as_ref(),
+                pool.clone(),
+            )));
+            continue;
+        }
+
+        let description = skill
+            .description
+            .unwrap_or_else(|| format!("技能：{}", skill.name));
+
+        let input_schema = skill
+            .config_json
+            .as_deref()
+            .and_then(|json_str| serde_json::from_str::<Value>(json_str).ok())
+            .and_then(|config| config.get("inputSchema").cloned())
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                })
+            });
+
+        let adapter = SkillToolAdapter::new(skill.name, description, input_schema, pool.clone());
+        tools.push(Box::new(adapter));
+    }
+
+    Ok(tools)
+}
+
 /// 适配器内部错误类型。
 #[derive(Debug)]
 struct ToolAdapterError(String);

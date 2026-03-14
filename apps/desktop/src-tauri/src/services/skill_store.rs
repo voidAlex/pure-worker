@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
-use crate::models::skill::CreateSkillInput;
+use crate::models::skill::{CreateSkillInput, SkillFrontmatter};
 use crate::services::audit::AuditService;
 use crate::services::path_whitelist::PathWhitelistService;
 use crate::services::skill::SkillService;
@@ -131,6 +131,8 @@ impl SkillStoreService {
             None
         };
 
+        let skill_content = SkillDiscoveryService::load_skill_content(&skill.source_path)?;
+
         let input = CreateSkillInput {
             name: skill.name.clone(),
             version: skill.version.clone(),
@@ -141,6 +143,12 @@ impl SkillStoreService {
             skill_type: skill.skill_type.clone(),
             env_path,
             config_json: None,
+            license: skill_content.metadata.license.clone(),
+            compatibility: skill_content.metadata.compatibility.clone(),
+            metadata_json: skill_content.metadata.metadata_json.clone(),
+            allowed_tools: skill_content.metadata.allowed_tools.clone(),
+            body_content: Some(skill_content.body_content),
+            entry_script: skill_content.entry_script,
         };
 
         let record = SkillService::create_skill(pool, input).await?;
@@ -407,24 +415,24 @@ impl SkillStoreService {
             .await
             .map_err(|e| AppError::FileOperation(format!("读取 SKILL.md 失败：{e}")))?;
 
-        let (skill_name, description, version) = Self::parse_skill_md_content(&skill_md_content)?;
+        let (frontmatter, body_content) = Self::parse_skill_md_content(&skill_md_content)?;
 
         // 强制 skill_name 必须与 repo_name 一致，防止目录名/注册名不一致导致的安全歧义
-        if skill_name != repo_name {
+        if frontmatter.name != repo_name {
             return Err(AppError::InvalidInput(format!(
                 "SKILL.md 中的技能名称 '{}' 必须与仓库名称 '{}' 一致",
-                skill_name, repo_name
+                frontmatter.name, repo_name
             )));
         }
 
         // 再次检查 skill_name 是否已存在（防止 SKILL.md name 与现有技能冲突）
-        if SkillService::get_skill_by_name(pool, &skill_name)
+        if SkillService::get_skill_by_name(pool, &frontmatter.name)
             .await
             .is_ok()
         {
             return Err(AppError::InvalidInput(format!(
                 "技能 '{}' 已存在，如需重新安装请先卸载",
-                skill_name
+                frontmatter.name
             )));
         }
 
@@ -439,22 +447,35 @@ impl SkillStoreService {
 
         // Python 技能始终创建 venv，仅在有合法 requirements.txt 时安装依赖
         let env_path = if has_valid_requirements {
-            Self::setup_python_env_always(&skill_name, target_dir).await?
+            Self::setup_python_env_always(&frontmatter.name, target_dir).await?
         } else {
             // 无 requirements.txt 时只创建空 venv
-            UvManager::create_skill_env(&skill_name, None).await?
+            UvManager::create_skill_env(&frontmatter.name, None).await?
         };
 
+        let skill_content =
+            SkillDiscoveryService::load_skill_content(&target_dir.to_string_lossy())?;
+        let metadata_json = frontmatter
+            .metadata
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_default());
+
         let input = CreateSkillInput {
-            name: skill_name.clone(),
-            version: version.clone(),
+            name: frontmatter.name.clone(),
+            version: skill_content.metadata.version.clone(),
             source: Some(target_dir.to_string_lossy().to_string()),
             permission_scope: Some(String::from("read_only")),
-            display_name: Some(skill_name.clone()),
-            description: Some(description.clone()),
+            display_name: Some(frontmatter.name.clone()),
+            description: Some(frontmatter.description.clone()),
             skill_type: String::from("python"),
             env_path: Some(env_path),
             config_json: None,
+            license: frontmatter.license.clone(),
+            compatibility: frontmatter.compatibility.clone(),
+            metadata_json,
+            allowed_tools: frontmatter.allowed_tools.clone(),
+            body_content: Some(body_content),
+            entry_script: skill_content.entry_script,
         };
 
         let record = SkillService::create_skill(pool, input).await?;
@@ -464,10 +485,10 @@ impl SkillStoreService {
             .as_deref()
             .map(|p| format!("{:x}", md5_simple(p.as_bytes())));
         let detail = serde_json::json!({
-            "skill_name": skill_name,
+            "skill_name": frontmatter.name,
             "git_url": git_url,
             "target_dir": target_dir.to_string_lossy(),
-            "version": version,
+            "version": skill_content.metadata.version,
             "env_hash": env_hash,
         });
         if let Err(e) = AuditService::log_with_detail(
@@ -597,11 +618,7 @@ impl SkillStoreService {
         }
     }
 
-    /// 解析 SKILL.md 的 YAML frontmatter。
-    ///
-    /// 复用 `SkillDiscoveryService` 中相同的逐行解析逻辑，
-    /// 提取 name（必填）、description（必填）和 version（可选）。
-    fn parse_skill_md_content(content: &str) -> Result<(String, String, Option<String>), AppError> {
+    fn parse_skill_md_content(content: &str) -> Result<(SkillFrontmatter, String), AppError> {
         let lines: Vec<&str> = content.lines().collect();
 
         if lines.is_empty() || lines[0].trim() != "---" {
@@ -619,34 +636,19 @@ impl SkillStoreService {
                 AppError::InvalidInput(String::from("SKILL.md frontmatter 缺少结束标记 ---"))
             })?;
 
-        let mut name: Option<String> = None;
-        let mut description: Option<String> = None;
-        let mut version: Option<String> = None;
+        let frontmatter_content = lines[1..end_idx].join("\n");
+        let frontmatter: SkillFrontmatter =
+            serde_yaml::from_str(&frontmatter_content).map_err(|e| {
+                AppError::InvalidInput(format!("SKILL.md frontmatter YAML 解析失败：{e}"))
+            })?;
 
-        for line in &lines[1..end_idx] {
-            let trimmed = line.trim();
-            if let Some((key, value)) = trimmed.split_once(':') {
-                let key = key.trim();
-                let value = value.trim().trim_matches('"').trim_matches('\'');
-                match key {
-                    "name" => name = Some(value.to_string()),
-                    "description" => description = Some(value.to_string()),
-                    "version" => version = Some(value.to_string()),
-                    _ => {}
-                }
-            }
-        }
+        let body = if end_idx < lines.len() {
+            lines[end_idx..].join("\n")
+        } else {
+            String::new()
+        };
 
-        let name = name.ok_or_else(|| {
-            AppError::InvalidInput(String::from("SKILL.md frontmatter 缺少必填字段 'name'"))
-        })?;
-        let description = description.ok_or_else(|| {
-            AppError::InvalidInput(String::from(
-                "SKILL.md frontmatter 缺少必填字段 'description'",
-            ))
-        })?;
-
-        Ok((name, description, version))
+        Ok((frontmatter, body))
     }
 
     /// 为 Python 技能始终创建虚拟环境，有 requirements.txt 时额外安装依赖。

@@ -16,7 +16,7 @@ export const StatusBar: React.FC = () => {
           系统正常
         </span>
       </div>
-      
+
       <div className="flex items-center gap-4">
         <span className="flex items-center gap-1.5">
           <Activity className="w-3.5 h-3.5 text-brand-500" />
