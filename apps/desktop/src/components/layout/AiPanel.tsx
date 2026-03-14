@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, ChevronDown, Command, Loader2, Send, Sparkles, User, X } from 'lucide-react';
+import { Bot, ChevronDown, Command, Loader2, Send, Sparkles, X } from 'lucide-react';
 
 import { ChatMessage } from '@/components/chat/ChatMessage';
 import { commands } from '@/services/commandClient';
