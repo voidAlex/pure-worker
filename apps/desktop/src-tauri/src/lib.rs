@@ -238,9 +238,10 @@ pub fn run() {
             }
 
             let app_handle = app.handle().clone();
-            let pool = tauri::async_runtime::block_on(database::init_pool(&app_handle))
-                .unwrap_or_else(|error| {
-                    // 数据库初始化失败时，也写入日志
+            let pool = match tauri::async_runtime::block_on(database::init_pool(&app_handle)) {
+                Ok(pool) => pool,
+                Err(error) => {
+                    // 数据库初始化失败时，写入日志并返回错误（避免 panic 导致秒退）
                     #[cfg(not(debug_assertions))]
                     {
                         if let Ok(log_dir) = app.path().app_log_dir() {
@@ -256,8 +257,9 @@ pub fn run() {
                         }
                     }
                     eprintln!("[Startup] 数据库初始化失败：{}", error);
-                    panic!("数据库初始化失败，应用无法启动");
-                });
+                    return Err(format!("数据库初始化失败：{}", error).into());
+                }
+            };
 
             // 数据库初始化成功，记录日志
             #[cfg(not(debug_assertions))]
@@ -326,5 +328,23 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .map_err(|e| {
+            eprintln!("[Fatal] Tauri 应用运行失败：{}", e);
+            #[cfg(not(debug_assertions))]
+            {
+                // 生产环境写入错误日志到用户可访问位置
+                if let Ok(home) = std::env::var("HOME") {
+                    let log_path = std::path::PathBuf::from(home).join("pureworker-fatal.log");
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                    let msg = format!("[{}] Tauri 应用运行失败：{}\n", timestamp, e);
+                    let _ = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&log_path)
+                        .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+                }
+            }
+            e
+        })
+        .ok();
 }
