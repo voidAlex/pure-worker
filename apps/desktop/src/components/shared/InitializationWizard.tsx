@@ -140,6 +140,10 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
         base_url: selectedPreset.base_url,
         api_key: apiKey,
         default_model: defaultModel,
+        default_text_model: null,
+        default_vision_model: null,
+        default_tool_model: null,
+        default_reasoning_model: null,
         is_active: true,
         config_json: null,
       };

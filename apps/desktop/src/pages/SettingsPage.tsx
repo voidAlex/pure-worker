@@ -104,6 +104,10 @@ const INITIAL_AI_FORM: CreateAiConfigInput = {
   base_url: '',
   api_key: '',
   default_model: '',
+  default_text_model: null,
+  default_vision_model: null,
+  default_tool_model: null,
+  default_reasoning_model: null,
   is_active: null,
   config_json: null,
 };
@@ -366,6 +370,10 @@ const AiConfigTab: React.FC = () => {
       base_url: item.base_url,
       api_key: '',
       default_model: item.default_model,
+      default_text_model: item.default_text_model,
+      default_vision_model: item.default_vision_model,
+      default_tool_model: item.default_tool_model,
+      default_reasoning_model: item.default_reasoning_model,
       is_active: item.is_active === 1,
       config_json: item.config_json,
     });
@@ -425,6 +433,10 @@ const AiConfigTab: React.FC = () => {
         base_url: configForm.base_url.trim() === '' ? null : configForm.base_url,
         api_key: configForm.api_key.trim() === '' ? null : configForm.api_key,
         default_model: configForm.default_model.trim() === '' ? null : configForm.default_model,
+        default_text_model: configForm.default_text_model?.trim() === '' ? null : configForm.default_text_model,
+        default_vision_model: configForm.default_vision_model?.trim() === '' ? null : configForm.default_vision_model,
+        default_tool_model: configForm.default_tool_model?.trim() === '' ? null : configForm.default_tool_model,
+        default_reasoning_model: configForm.default_reasoning_model?.trim() === '' ? null : configForm.default_reasoning_model,
         is_active: configForm.is_active,
         config_json: configForm.config_json,
       };

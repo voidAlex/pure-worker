@@ -360,6 +360,7 @@ export const AssignmentGradingPage: React.FC = () => {
       scoring_rules_json: null,
       task_id: null,
       output_path: null,
+      lesson_record_id: null,
     });
   }, [selectedClassId, newJobTitle, newJobMode, createJobMutation]);
 

@@ -313,6 +313,7 @@ export const StudentDetailPage: React.FC = () => {
       full_score: Number(scoreForm.full_score),
       rank_in_class: scoreForm.rank_in_class ? Number(scoreForm.rank_in_class) : null,
       exam_date: scoreForm.exam_date,
+      lesson_record_id: null,
     });
   };
 
@@ -324,6 +325,7 @@ export const StudentDetailPage: React.FC = () => {
     createObservationMutation.mutate({
       content: observationForm.content,
       source: observationForm.source || null,
+      lesson_record_id: null,
     });
   };
 
@@ -337,6 +339,7 @@ export const StudentDetailPage: React.FC = () => {
       status: communicationForm.status,
       adopted_text: null,
       evidence_json: null,
+      lesson_record_id: null,
     });
   };
 
@@ -356,6 +359,7 @@ export const StudentDetailPage: React.FC = () => {
       adopted_text: comm.draft,
       status: 'adopted',
       evidence_json: null,
+      lesson_record_id: null,
     });
   };
 
@@ -366,6 +370,7 @@ export const StudentDetailPage: React.FC = () => {
       adopted_text: null,
       status: 'rejected',
       evidence_json: null,
+      lesson_record_id: null,
     });
   };
 
@@ -376,6 +381,7 @@ export const StudentDetailPage: React.FC = () => {
       adopted_text: null,
       status: null,
       evidence_json: null,
+      lesson_record_id: null,
     });
   };
 

@@ -170,6 +170,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       const result = await commands.chatWithAi({
         message: trimmedText,
         agent_role: selectedAgent,
+        use_agentic_search: false,
       });
 
       if (result.status === 'error') {

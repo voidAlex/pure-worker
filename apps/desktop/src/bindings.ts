@@ -656,6 +656,54 @@ async deleteScheduleEvent(input: DeleteScheduleEventInput) : Promise<Result<Dele
     else return { status: "error", error: e  as any };
 }
 },
+async listLessonRecords(input: ListLessonRecordsInput) : Promise<Result<LessonRecord[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_lesson_records", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLessonRecord(id: string) : Promise<Result<LessonRecord, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_lesson_record", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createLessonRecord(input: CreateLessonRecordInput) : Promise<Result<LessonRecord, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_lesson_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateLessonRecord(input: UpdateLessonRecordInput) : Promise<Result<LessonRecord, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_lesson_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteLessonRecord(input: DeleteLessonRecordInput) : Promise<Result<DeleteLessonRecordResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_lesson_record", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLessonSummary(input: GetLessonSummaryInput) : Promise<Result<LessonSummary, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_lesson_summary", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * 获取班级的所有文件列表
  */
@@ -871,6 +919,39 @@ async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
 async chatStream(input: ChatStreamInput) : Promise<Result<string, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("chat_stream", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取对话列表
+ */
+async listChatConversations(page: number, pageSize: number) : Promise<Result<ConversationListItem[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_chat_conversations", { page, pageSize }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取对话详情（包含消息列表）
+ */
+async getChatConversation(conversationId: string) : Promise<Result<MessageListItem[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_chat_conversation", { conversationId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 删除对话
+ */
+async deleteChatConversation(conversationId: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_chat_conversation", { conversationId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1667,6 +1748,127 @@ async checkMcpHealth(id: string) : Promise<Result<McpHealthResult, AppError>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * 获取所有教师偏好
+ */
+async getTeacherPreferences() : Promise<Result<TeacherPreference[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_teacher_preferences") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 设置教师偏好
+ */
+async setTeacherPreference(input: SetPreferenceInput) : Promise<Result<TeacherPreference, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_teacher_preference", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 删除教师偏好
+ */
+async deleteTeacherPreference(key: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_teacher_preference", { key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 列出候选记忆
+ */
+async listMemoryCandidates(input: ListCandidatesInput) : Promise<Result<MemoryCandidate[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_memory_candidates", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 确认候选记忆
+ */
+async confirmMemoryCandidate(input: ConfirmCandidateInput) : Promise<Result<TeacherPreference, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("confirm_memory_candidate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 拒绝候选记忆
+ */
+async rejectMemoryCandidate(input: RejectCandidateInput) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reject_memory_candidate", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 加载 soul.md 文件
+ */
+async loadSoulMd() : Promise<Result<SoulMdContent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_soul_md") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 加载 user.md 文件
+ */
+async loadUserMd() : Promise<Result<SoulMdContent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_user_md") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 重新加载 soul.md（可选强制重新创建）
+ */
+async reloadSoulMd(input: ReloadSoulMdInput) : Promise<Result<SoulMdContent, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reload_soul_md", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取系统提示词上下文（包含偏好注入）
+ */
+async buildSystemPromptContext() : Promise<Result<SystemPromptContext, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("build_system_prompt_context") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 记录模式检测
+ */
+async recordPreferencePattern(patternType: string, patternKey: string, patternValue: string | null, context: string | null) : Promise<Result<boolean, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("record_preference_pattern", { patternType, patternKey, patternValue, context }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -1700,7 +1902,7 @@ export type AddStudentTagInput = { student_id: string; tag_name: string }
 /**
  * 前端展示用 AI 配置（隐藏密钥）。
  */
-export type AiConfigSafe = { id: string; provider_name: string; display_name: string; base_url: string; has_api_key: boolean; default_model: string; is_active: number; config_json: string | null; created_at: string; updated_at: string }
+export type AiConfigSafe = { id: string; provider_name: string; display_name: string; base_url: string; has_api_key: boolean; default_model: string; default_text_model: string | null; default_vision_model: string | null; default_tool_model: string | null; default_reasoning_model: string | null; is_active: number; config_json: string | null; created_at: string; updated_at: string }
 /**
  * AI 参数预设记录。
  */
@@ -1829,7 +2031,11 @@ preprocess_status: string;
 /**
  * 预处理后的文件路径
  */
-preprocessed_path: string | null; updated_at: string }
+preprocessed_path: string | null; updated_at: string; 
+/**
+ * 关联的课程记录 ID
+ */
+lesson_record_id: string | null }
 /**
  * OCR 识别结果记录（含 M4 扩展字段）。
  */
@@ -1883,6 +2089,10 @@ export type BatchReviewOcrResultsInput = { ids: string[]; review_status: string;
  */
 final_score: number | null }
 /**
+ * 候选记忆状态枚举
+ */
+export type CandidateStatus = "pending" | "confirmed" | "rejected"
+/**
  * 聊天请求输入。
  */
 export type ChatInput = { 
@@ -1893,7 +2103,11 @@ message: string;
 /**
  * AI 角色标识（homeroom/grading/communication/ops）。
  */
-agent_role: string }
+agent_role: string; 
+/**
+ * 是否启用 Agentic Search 自动检索上下文。
+ */
+use_agentic_search: boolean | null }
 /**
  * 聊天响应输出。
  */
@@ -1909,7 +2123,11 @@ model: string }
 /**
  * 流式聊天请求输入
  */
-export type ChatStreamInput = { conversation_id: string | null; message: string; agent_role: string }
+export type ChatStreamInput = { conversation_id: string | null; message: string; agent_role: string; 
+/**
+ * 是否启用 Agentic Search 自动检索上下文
+ */
+use_agentic_search: boolean | null }
 /**
  * 文本敏感信息检测输入。
  */
@@ -1919,6 +2137,10 @@ export type CheckSensitiveInput = {
  */
 content: string }
 export type Classroom = { id: string; grade: string; class_name: string; subject: string; teacher_id: string; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 候选记忆确认输入
+ */
+export type ConfirmCandidateInput = { candidate_id: string }
 /**
  * 会话实体
  */
@@ -1934,7 +2156,7 @@ export type CreateActivityAnnouncementInput = { class_id: string; title: string;
 /**
  * 创建 AI 配置输入。
  */
-export type CreateAiConfigInput = { provider_name: string; display_name: string; base_url: string; api_key: string; default_model: string; is_active: boolean | null; config_json: string | null }
+export type CreateAiConfigInput = { provider_name: string; display_name: string; base_url: string; api_key: string; default_model: string; default_text_model: string | null; default_vision_model: string | null; default_tool_model: string | null; default_reasoning_model: string | null; is_active: boolean | null; config_json: string | null }
 /**
  * 创建班级输入参数。
  */
@@ -1974,13 +2196,21 @@ task_id: string | null;
 /**
  * 导出文件路径
  */
-output_path: string | null }
+output_path: string | null; 
+/**
+ * 关联的课程记录 ID
+ */
+lesson_record_id: string | null }
+/**
+ * 创建课程记录输入
+ */
+export type CreateLessonRecordInput = { class_id: string; schedule_event_id: string | null; subject: string; lesson_date: string; lesson_index: number | null; topic: string | null; teaching_goal: string | null; homework_summary: string | null; teacher_note: string | null; status: string | null }
 /**
  * 创建 MCP 服务输入。
  */
 export type CreateMcpServerInput = { name: string; transport: string; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; display_name: string | null; description: string | null }
-export type CreateObservationNoteInput = { student_id: string; content: string; source: string | null }
-export type CreateParentCommunicationInput = { student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null }
+export type CreateObservationNoteInput = { student_id: string; content: string; source: string | null; lesson_record_id: string | null }
+export type CreateParentCommunicationInput = { student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; lesson_record_id: string | null }
 /**
  * 创建参数预设输入。
  */
@@ -1994,7 +2224,7 @@ export type CreateScheduleEventInput = { class_id: string; title: string; start_
  * 创建课表文件输入参数
  */
 export type CreateScheduleFileInput = { class_id: string; file_name: string; file_path: string; file_type: string | null; file_size: number | null }
-export type CreateScoreRecordInput = { student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string }
+export type CreateScoreRecordInput = { student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string; lesson_record_id: string | null }
 /**
  * 创建学期评语输入
  */
@@ -2070,6 +2300,8 @@ export type DeleteGradingJobInput = {
  * 批改任务 ID。
  */
 id: string }
+export type DeleteLessonRecordInput = { id: string }
+export type DeleteLessonRecordResponse = { success: boolean }
 /**
  * 删除 MCP 服务器输入。
  */
@@ -2376,6 +2608,7 @@ export type GetGradingJobInput = {
  * 批改任务 ID。
  */
 id: string }
+export type GetLessonSummaryInput = { lesson_record_id: string }
 /**
  * 获取消息请求
  */
@@ -2419,7 +2652,11 @@ task_id: string | null;
 /**
  * 导出文件路径
  */
-output_path: string | null; is_deleted: number; created_at: string; updated_at: string }
+output_path: string | null; is_deleted: number; created_at: string; updated_at: string; 
+/**
+ * 关联的课程记录 ID
+ */
+lesson_record_id: string | null }
 export type HealthCheckResponse = { status: string; version: string; db_connected: boolean }
 export type ImportDuplicateStrategy = "Skip" | "Update" | "Add"
 export type ImportRowError = { row_number: number; field: string; reason: string; suggestion: string }
@@ -2487,9 +2724,37 @@ skill_name: string;
 workspace_path: string }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 /**
+ * 课程记录状态
+ */
+export type LessonRecord = { id: string; class_id: string; schedule_event_id: string | null; subject: string; lesson_date: string; lesson_index: number | null; topic: string | null; teaching_goal: string | null; homework_summary: string | null; teacher_note: string | null; status: string; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 课程总结信息（聚合学生表现）
+ */
+export type LessonSummary = { lesson_record_id: string; class_id: string; subject: string; lesson_date: string; topic: string | null; status: string; 
+/**
+ * 关联的观察记录数量
+ */
+observation_count: number; 
+/**
+ * 关联的成绩记录数量
+ */
+score_count: number; 
+/**
+ * 关联的作业资产数量
+ */
+assignment_count: number; 
+/**
+ * 关联的家校沟通数量
+ */
+communication_count: number }
+/**
  * 列表查询输入
  */
 export type ListActivityAnnouncementsInput = { class_id: string; audience: string | null }
+/**
+ * 候选记忆筛选输入
+ */
+export type ListCandidatesInput = { status: CandidateStatus | null; limit: number | null }
 /**
  * 列出冲突 OCR 结果的请求参数。
  */
@@ -2530,6 +2795,10 @@ export type ListJobOcrResultsInput = {
  * 批改任务 ID。
  */
 job_id: string }
+/**
+ * 查询课程记录列表输入
+ */
+export type ListLessonRecordsInput = { class_id: string | null; from_date: string | null; to_date: string | null; status: string | null }
 export type ListParentCommunicationsInput = { student_id: string }
 /**
  * 查询题库输入。
@@ -2596,6 +2865,10 @@ export type McpHealthResult = { name: string; health_status: string; message: st
  * MCP 服务注册记录。
  */
 export type McpServerRecord = { id: string; name: string; transport: string; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; enabled: number; is_deleted: number; created_at: string; display_name: string | null; description: string | null; health_status: string; last_health_check: string | null; updated_at: string | null }
+/**
+ * 候选记忆记录
+ */
+export type MemoryCandidate = { id: string; candidate_key: string; candidate_value: string; detected_count: number; confidence_score: number | null; pattern_evidence: string | null; status: string; confirmed_at: string | null; rejected_at: string | null; rejection_reason: string | null; is_deleted: number; created_at: string; updated_at: string }
 /**
  * 从 Markdown 解析出的单条记忆条目。
  */
@@ -2692,8 +2965,8 @@ is_vision: boolean;
  * 详细能力元数据。
  */
 capabilities: ModelCapability }
-export type ObservationNote = { id: string; student_id: string; content: string; source: string | null; created_at: string; is_deleted: number; updated_at: string }
-export type ParentCommunication = { id: string; student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; created_at: string; is_deleted: number; updated_at: string }
+export type ObservationNote = { id: string; student_id: string; content: string; source: string | null; created_at: string; is_deleted: number; updated_at: string; lesson_record_id: string | null }
+export type ParentCommunication = { id: string; student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; created_at: string; is_deleted: number; updated_at: string; lesson_record_id: string | null }
 /**
  * 练习卷记录。
  */
@@ -2726,6 +2999,14 @@ status: string;
  * 关联异步任务 ID
  */
 task_id: string | null; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 偏好来源枚举
+ */
+export type PreferenceSource = "explicit" | "inferred" | "imported" | "default"
+/**
+ * 偏好类型枚举
+ */
+export type PreferenceType = "output_style" | "tone" | "format" | "workflow" | "other"
 /**
  * 供应商预设配置。
  */
@@ -2854,6 +3135,14 @@ id: string;
  * 新的语气要求（可选）。
  */
 tone: string | null }
+/**
+ * 候选记忆拒绝输入
+ */
+export type RejectCandidateInput = { candidate_id: string; reason: string | null }
+/**
+ * 重新加载 soul.md 输入
+ */
+export type ReloadSoulMdInput = { force_create: boolean | null }
 export type RemoveStudentTagInput = { id: string }
 export type RemoveStudentTagResponse = { success: boolean }
 /**
@@ -2901,7 +3190,7 @@ export type ScheduleEvent = { id: string; class_id: string; title: string; start
  * 课表事件关联的文件（教案/课件等）
  */
 export type ScheduleFile = { id: string; class_id: string; file_name: string; file_path: string; file_type: string | null; file_size: number | null; is_deleted: number; created_at: string }
-export type ScoreRecord = { id: string; student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string; is_deleted: number; updated_at: string }
+export type ScoreRecord = { id: string; student_id: string; exam_name: string; subject: string; score: number; full_score: number; rank_in_class: number | null; exam_date: string; is_deleted: number; updated_at: string; lesson_record_id: string | null }
 /**
  * 统一证据检索结果。
  */
@@ -2934,6 +3223,10 @@ has_sensitive: boolean;
  * 命中的违规类型列表。
  */
 violations: string[] }
+/**
+ * 创建或更新偏好输入
+ */
+export type SetPreferenceInput = { key: string; value: string; preference_type: PreferenceType; source: PreferenceSource | null }
 /**
  * 技能健康检查结果。
  */
@@ -3004,6 +3297,14 @@ installed: boolean;
  */
 skill_type: string }
 /**
+ * Soul.md / User.md 文件解析结果
+ */
+export type SoulMdContent = { version: string | null; description: string | null; sections: SoulMdSection[]; raw_content: string }
+/**
+ * Soul.md 章节
+ */
+export type SoulMdSection = { title: string; content: string; level: number }
+/**
  * 启动批量批改任务输入。
  */
 export type StartGradingInput = { job_id: string }
@@ -3057,6 +3358,14 @@ recent_observations: ObservationNote[];
  */
 recent_communications: ParentCommunication[] }
 export type StudentTag = { id: string; student_id: string; tag_name: string; is_deleted: number; created_at: string }
+/**
+ * 系统提示词上下文注入结果
+ */
+export type SystemPromptContext = { soul_md_content: string | null; user_md_content: string | null; active_preferences: TeacherPreference[]; formatted_context: string }
+/**
+ * 教师偏好记录
+ */
+export type TeacherPreference = { id: string; preference_key: string; preference_value: string; preference_type: string; source: string; confirmed_at: string | null; is_active: number; is_deleted: number; created_at: string; updated_at: string }
 export type TeacherProfile = { id: string; name: string; stage: string; subject: string; textbook_version: string | null; tone_preset: string | null; is_deleted: number; created_at: string; updated_at: string }
 /**
  * 校本模板文件记录
@@ -3137,7 +3446,7 @@ export type UpdateActivityAnnouncementInput = { id: string; title: string | null
 /**
  * 更新 AI 配置输入。
  */
-export type UpdateAiConfigInput = { id: string; display_name: string | null; base_url: string | null; api_key: string | null; default_model: string | null; is_active: boolean | null; config_json: string | null }
+export type UpdateAiConfigInput = { id: string; display_name: string | null; base_url: string | null; api_key: string | null; default_model: string | null; default_text_model: string | null; default_vision_model: string | null; default_tool_model: string | null; default_reasoning_model: string | null; is_active: boolean | null; config_json: string | null }
 export type UpdateClassroomInput = { id: string; grade: string | null; class_name: string | null; subject: string | null; teacher_id: string | null }
 /**
  * 更新会话输入
@@ -3150,19 +3459,23 @@ export type UpdateGlobalShortcutInput = { id: string; action: string | null; key
 /**
  * 更新批改任务输入。
  */
-export type UpdateGradingJobInput = { id: string; title: string | null; grading_mode: string | null; status: string | null; answer_key_json: string | null; scoring_rules_json: string | null; task_id: string | null; output_path: string | null }
+export type UpdateGradingJobInput = { id: string; title: string | null; grading_mode: string | null; status: string | null; answer_key_json: string | null; scoring_rules_json: string | null; task_id: string | null; output_path: string | null; lesson_record_id: string | null }
+/**
+ * 更新课程记录输入
+ */
+export type UpdateLessonRecordInput = { id: string; subject: string | null; lesson_date: string | null; lesson_index: number | null; topic: string | null; teaching_goal: string | null; homework_summary: string | null; teacher_note: string | null; status: string | null }
 /**
  * 更新 MCP 服务输入。
  */
 export type UpdateMcpServerInput = { display_name: string | null; description: string | null; command: string | null; args_json: string | null; env_json: string | null; permission_scope: string | null; enabled: number | null }
-export type UpdateObservationNoteInput = { id: string; content: string | null; source: string | null }
-export type UpdateParentCommunicationInput = { id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null }
+export type UpdateObservationNoteInput = { id: string; content: string | null; source: string | null; lesson_record_id: string | null }
+export type UpdateParentCommunicationInput = { id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; lesson_record_id: string | null }
 /**
  * 更新参数预设输入。
  */
 export type UpdatePresetInput = { id: string; name: string | null; display_name: string | null; temperature: number | null; top_p: number | null; max_tokens: number | null; is_default: boolean | null; is_active: boolean | null }
 export type UpdateScheduleEventInput = { id: string; title: string | null; start_at: string | null; end_at: string | null; linked_file_id: string | null }
-export type UpdateScoreRecordInput = { id: string; exam_name: string | null; subject: string | null; score: number | null; full_score: number | null; rank_in_class: number | null; exam_date: string | null }
+export type UpdateScoreRecordInput = { id: string; exam_name: string | null; subject: string | null; score: number | null; full_score: number | null; rank_in_class: number | null; exam_date: string | null; lesson_record_id: string | null }
 /**
  * 更新学期评语输入
  */
