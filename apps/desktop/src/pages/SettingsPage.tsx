@@ -143,6 +143,12 @@ const INITIAL_SKILL_FORM: CreateSkillInput = {
   skill_type: 'builtin',
   env_path: null,
   config_json: null,
+  license: null,
+  compatibility: null,
+  metadata_json: null,
+  allowed_tools: null,
+  body_content: null,
+  entry_script: null,
 };
 
 const INITIAL_MCP_FORM: CreateMcpServerInput = {
@@ -1948,6 +1954,12 @@ const SkillsMcpTab: React.FC = () => {
       skill_type: item.skill_type,
       env_path: item.env_path,
       config_json: item.config_json,
+      license: item.license,
+      compatibility: item.compatibility,
+      metadata_json: item.metadata_json,
+      allowed_tools: item.allowed_tools,
+      body_content: item.body_content,
+      entry_script: item.entry_script,
     });
     setSkillStatus(item.status);
     setShowSkillForm(true);
@@ -1962,6 +1974,12 @@ const SkillsMcpTab: React.FC = () => {
         permission_scope: skillForm.permission_scope,
         config_json: skillForm.config_json,
         status: skillStatus,
+        license: skillForm.license,
+        compatibility: skillForm.compatibility,
+        metadata_json: skillForm.metadata_json,
+        allowed_tools: skillForm.allowed_tools,
+        body_content: skillForm.body_content,
+        entry_script: skillForm.entry_script,
       };
       updateSkillMutation.mutate({ id: editingSkill.id, input });
       return;

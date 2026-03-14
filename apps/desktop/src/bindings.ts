@@ -866,6 +866,83 @@ async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
 }
 },
 /**
+ * 流式 AI 对话命令
+ */
+async chatStream(input: ChatStreamInput) : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chat_stream", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 创建会话 IPC 命令
+ */
+async createConversation(input: CreateConversationInput) : Promise<Result<Conversation, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_conversation", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 列出会话 IPC 命令
+ */
+async listConversations(input: ListConversationsInput) : Promise<Result<ListConversationsResponse, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_conversations", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取会话详情 IPC 命令
+ */
+async getConversation(id: string) : Promise<Result<Conversation, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_conversation", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 更新会话 IPC 命令
+ */
+async updateConversation(input: UpdateConversationInput) : Promise<Result<Conversation, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_conversation", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 删除会话 IPC 命令（软删除）
+ */
+async deleteConversation(id: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_conversation", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取会话消息列表 IPC 命令
+ */
+async listConversationMessages(input: GetMessagesInput) : Promise<Result<MessageListItem[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_conversation_messages", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 获取学生 360 度全景视图
  */
 async getStudentProfile360(id: string) : Promise<Result<StudentProfile360, AppError>> {
@@ -1429,7 +1506,7 @@ async executeSkill(input: ExecuteSkillInput) : Promise<Result<ToolResult, AppErr
 /**
  * 扫描并发现可用技能。
  */
-async discoverSkills(input: DiscoverSkillsInput) : Promise<Result<DiscoveredSkill[], AppError>> {
+async discoverSkills(input: DiscoverSkillsInput) : Promise<Result<SkillMetadata[], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("discover_skills", { input }) };
 } catch (e) {
@@ -1830,6 +1907,10 @@ content: string;
  */
 model: string }
 /**
+ * 流式聊天请求输入
+ */
+export type ChatStreamInput = { conversation_id: string | null; message: string; agent_role: string }
+/**
  * 文本敏感信息检测输入。
  */
 export type CheckSensitiveInput = { 
@@ -1838,6 +1919,14 @@ export type CheckSensitiveInput = {
  */
 content: string }
 export type Classroom = { id: string; grade: string; class_name: string; subject: string; teacher_id: string; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 会话实体
+ */
+export type Conversation = { id: string; teacher_id: string; title: string | null; scenario: string | null; is_deleted: number; created_at: string; updated_at: string }
+/**
+ * 会话列表项（简化输出）
+ */
+export type ConversationListItem = { id: string; title: string | null; scenario: string | null; created_at: string; updated_at: string; message_count: number }
 /**
  * 创建活动公告输入
  */
@@ -1854,6 +1943,10 @@ export type CreateClassroomInput = { grade: string; class_name: string; subject:
  * 教师ID（可选，为空时自动分配默认教师）。
  */
 teacher_id: string | null }
+/**
+ * 创建会话输入
+ */
+export type CreateConversationInput = { teacher_id: string; title: string | null; scenario: string | null }
 /**
  * 创建全局快捷键输入。
  */
@@ -1917,7 +2010,7 @@ export type CreateSkillInput = { name: string; version: string | null; source: s
 /**
  * Python 技能虚拟环境路径（Python 技能必填，内置技能为空）。
  */
-env_path: string | null; config_json: string | null }
+env_path: string | null; config_json: string | null; license: string | null; compatibility: string | null; metadata_json: string | null; allowed_tools: string | null; body_content: string | null; entry_script: string | null }
 export type CreateStudentInput = { student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null }
 /**
  * 创建模板文件输入
@@ -2059,34 +2152,6 @@ export type DiscoverSkillsInput = {
  * 工作区根目录路径。
  */
 workspace_path: string }
-/**
- * 发现的技能描述结构。
- */
-export type DiscoveredSkill = { 
-/**
- * 技能名称（来自 SKILL.md frontmatter）。
- */
-name: string; 
-/**
- * 技能描述（来自 SKILL.md frontmatter）。
- */
-description: string; 
-/**
- * 技能版本（可选，来自 SKILL.md frontmatter）。
- */
-version: string | null; 
-/**
- * 技能类型（固定为 "python"）。
- */
-skill_type: string; 
-/**
- * 技能目录的绝对路径。
- */
-source_path: string; 
-/**
- * 是否已安装到数据库。
- */
-already_installed: boolean }
 /**
  * 擦除工作区输入。
  */
@@ -2312,6 +2377,10 @@ export type GetGradingJobInput = {
  */
 id: string }
 /**
+ * 获取消息请求
+ */
+export type GetMessagesInput = { conversation_id: string; limit: number | null; offset: number | null }
+/**
  * 获取练习卷详情的请求参数。
  */
 export type GetPracticeSheetInput = { 
@@ -2429,6 +2498,14 @@ export type ListConflictResultsInput = {
  * 批改任务 ID。
  */
 job_id: string }
+/**
+ * 列出会话请求
+ */
+export type ListConversationsInput = { teacher_id: string; limit: number | null; offset: number | null }
+/**
+ * 列出会话响应
+ */
+export type ListConversationsResponse = { conversations: ConversationListItem[]; total: number }
 /**
  * 列出某个班级批改任务的请求参数。
  */
@@ -2588,7 +2665,15 @@ top_k: number | null;
  */
 workspace_path: string | null }
 /**
- * 模型信息。
+ * 消息列表项
+ */
+export type MessageListItem = { id: string; role: string; content: string; tool_name: string | null; created_at: string }
+/**
+ * 模型能力元数据（WP-AI-005）。
+ */
+export type ModelCapability = { supports_text_input: boolean; supports_image_input: boolean; supports_audio_input: boolean; supports_tool_calling: boolean; supports_reasoning: boolean; supports_json_mode: boolean; context_window: number; max_output_tokens: number }
+/**
+ * 模型信息（WP-AI-005 扩展）。
  */
 export type ModelInfo = { 
 /**
@@ -2600,9 +2685,13 @@ id: string;
  */
 name: string; 
 /**
- * 是否支持视觉/多模态。
+ * 是否支持视觉/多模态（向后兼容）。
  */
-is_vision: boolean }
+is_vision: boolean; 
+/**
+ * 详细能力元数据。
+ */
+capabilities: ModelCapability }
 export type ObservationNote = { id: string; student_id: string; content: string; source: string | null; created_at: string; is_deleted: number; updated_at: string }
 export type ParentCommunication = { id: string; student_id: string; draft: string | null; adopted_text: string | null; status: string | null; evidence_json: string | null; created_at: string; is_deleted: number; updated_at: string }
 /**
@@ -2850,9 +2939,38 @@ violations: string[] }
  */
 export type SkillHealthResult = { name: string; health_status: string; message: string; checked_at: string }
 /**
- * 技能注册表记录。
+ * 技能元数据（仅 frontmatter，用于列表展示）。
  */
-export type SkillRecord = { id: string; name: string; version: string | null; source: string | null; permission_scope: string | null; status: string | null; is_deleted: number; created_at: string; display_name: string | null; description: string | null; skill_type: string; env_path: string | null; config_json: string | null; updated_at: string | null; health_status: string; last_health_check: string | null }
+export type SkillMetadata = { name: string; description: string; version: string | null; license: string | null; compatibility: string | null; metadata_json: string | null; allowed_tools: string | null; source_path: string; skill_type: string; already_installed: boolean }
+/**
+ * 技能注册表记录。
+ * 扩展以支持 Agent Skills 官方规范的所有字段。
+ */
+export type SkillRecord = { id: string; name: string; version: string | null; source: string | null; permission_scope: string | null; status: string | null; is_deleted: number; created_at: string; display_name: string | null; description: string | null; skill_type: string; env_path: string | null; config_json: string | null; updated_at: string | null; health_status: string; last_health_check: string | null; 
+/**
+ * 许可证名称或引用
+ */
+license: string | null; 
+/**
+ * 环境兼容性要求
+ */
+compatibility: string | null; 
+/**
+ * 元数据（JSON 格式存储）
+ */
+metadata_json: string | null; 
+/**
+ * 允许使用的工具列表（空格分隔）
+ */
+allowed_tools: string | null; 
+/**
+ * SKILL.md 正文内容（渐进式加载）
+ */
+body_content: string | null; 
+/**
+ * 入口脚本路径（相对于技能目录）
+ */
+entry_script: string | null }
 /**
  * 技能商店条目。
  */
@@ -3022,6 +3140,10 @@ export type UpdateActivityAnnouncementInput = { id: string; title: string | null
 export type UpdateAiConfigInput = { id: string; display_name: string | null; base_url: string | null; api_key: string | null; default_model: string | null; is_active: boolean | null; config_json: string | null }
 export type UpdateClassroomInput = { id: string; grade: string | null; class_name: string | null; subject: string | null; teacher_id: string | null }
 /**
+ * 更新会话输入
+ */
+export type UpdateConversationInput = { id: string; title: string | null; scenario: string | null }
+/**
  * 更新全局快捷键输入。
  */
 export type UpdateGlobalShortcutInput = { id: string; action: string | null; key_combination: string | null; enabled: number | null; description: string | null }
@@ -3048,7 +3170,7 @@ export type UpdateSemesterCommentInput = { id: string; draft: string | null; ado
 /**
  * 更新技能输入。
  */
-export type UpdateSkillInput = { display_name: string | null; description: string | null; permission_scope: string | null; config_json: string | null; status: string | null }
+export type UpdateSkillInput = { display_name: string | null; description: string | null; permission_scope: string | null; config_json: string | null; status: string | null; license: string | null; compatibility: string | null; metadata_json: string | null; allowed_tools: string | null; body_content: string | null; entry_script: string | null }
 export type UpdateStudentInput = { id: string; student_no: string | null; name: string | null; gender: string | null; class_id: string | null; meta_json: string | null }
 /**
  * 更新学生标签输入参数
