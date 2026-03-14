@@ -7,6 +7,7 @@ pub mod assignment_grading;
 pub mod async_task;
 pub mod audit_log;
 pub mod classroom;
+pub mod conversation;
 pub mod global_shortcut;
 pub mod mcp_server;
 pub mod memory_search;
