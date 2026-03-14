@@ -5,7 +5,7 @@
 
 import React from 'react';
 
-import { AiWorkbench } from '@/components/dashboard/AiWorkbench';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 
 /**
  * 仪表盘页面 —— 渲染顶部标题 + AI 工作台。
@@ -21,9 +21,9 @@ export const DashboardPage: React.FC = () => {
         </div>
       </header>
 
-      {/* AI 工作台，填满剩余空间 */}
+      {/* AI 聊天面板，填满剩余空间 */}
       <div className="flex-1 min-h-0 mt-6">
-        <AiWorkbench />
+        <ChatPanel agentRole="homeroom" />
       </div>
     </div>
   );
