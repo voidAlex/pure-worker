@@ -39,6 +39,7 @@ pub mod student_import;
 pub mod student_memory;
 pub mod student_tag;
 pub mod template_file;
+pub mod tool_registry;
 pub mod unified_tool;
 pub mod uv_manager;
 pub mod watch_folder;
