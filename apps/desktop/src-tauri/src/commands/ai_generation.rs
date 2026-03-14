@@ -141,9 +141,19 @@ pub async fn get_batch_task_progress(
 #[tauri::command]
 #[specta::specta]
 pub async fn generate_activity_announcement(
+    app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
     input: GenerateActivityAnnouncementInput,
 ) -> Result<ActivityAnnouncement, AppError> {
+    let workspace_path = get_workspace_path(&app_handle)?;
     let templates_dir = get_templates_dir();
-    AiGenerationService::generate_activity_announcement(&pool, &templates_dir, input).await
+    let template_file_dir = workspace_path.join("templates");
+    AiGenerationService::generate_activity_announcement(
+        &pool,
+        &workspace_path,
+        &templates_dir,
+        &template_file_dir,
+        input,
+    )
+    .await
 }

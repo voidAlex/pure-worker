@@ -2,6 +2,11 @@
 //!
 //! 提供家长沟通文案、学期评语、活动公告的 AI 生成能力，
 //! 包括单次生成、重新生成、批量生成与进度管理。
+//!
+//! 采用 Prompt-based Skills 架构（Claude 官方模式）：
+//! - Skills 通过 body_content 注入 LLM 上下文
+//! - LLM 根据 description 自然语言匹配触发
+//! - LLM 自主决策执行步骤
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -28,6 +33,7 @@ use crate::services::memory_search::MemorySearchService;
 use crate::services::parent_communication::ParentCommunicationService;
 use crate::services::prompt_template::PromptTemplateService;
 use crate::services::semester_comment::SemesterCommentService;
+use crate::services::skill::SkillService;
 use crate::services::template_file::TemplateFileService;
 
 /// 家长沟通文案 AI 生成结果。
@@ -180,24 +186,28 @@ impl AiGenerationService {
             variables.insert(String::from("historical_tone"), tone);
         }
 
+        // Prompt-based Skills: 注入完整 skill body_content
+        let skills_context = format_enabled_skills_context(pool).await?;
+        variables.insert(String::from("skills_context"), skills_context);
+
         let rendered = PromptTemplateService::render(&template, &variables)?;
         let safe_user_prompt =
             DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        // 获取当前激活的参数预设
         let preset = AiParamPresetService::get_active_preset(pool)
             .await
             .unwrap_or_else(|_| AiParamPreset::default_balanced());
         let temperature = preset.temperature;
+
+        // Prompt-based 模式：不使用 tools，完全依赖 LLM 自主决策
         let agent = LlmProviderService::create_agent(
             &client,
             &config.default_model,
             &rendered.system,
             temperature,
         );
-
         let response: String = agent
             .prompt(&safe_user_prompt)
             .await
@@ -285,7 +295,6 @@ impl AiGenerationService {
         )
         .await?;
         let evidence_text = format_evidence_text(&evidence_result.items);
-        let evidence_count = evidence_result.returned_count;
 
         let template = PromptTemplateService::load_template(templates_dir, "semester_comment")?;
 
@@ -293,15 +302,17 @@ impl AiGenerationService {
         variables.insert(String::from("student_name"), student_name);
         variables.insert(String::from("evidence_text"), evidence_text);
         variables.insert(String::from("term"), input.term.clone());
-        variables.insert(String::from("tone"), String::from("客观专业"));
 
-        if let Some(summary) = input
-            .existing_comments_summary
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-        {
-            variables.insert(String::from("existing_comments_summary"), summary);
+        if let Some(ref summary) = input.existing_comments_summary {
+            variables.insert(
+                String::from("existing_comments_summary"),
+                summary.to_string(),
+            );
         }
+
+        // Prompt-based Skills: 注入完整 skill body_content
+        let skills_context = format_enabled_skills_context(pool).await?;
+        variables.insert(String::from("skills_context"), skills_context);
 
         let rendered = PromptTemplateService::render(&template, &variables)?;
         let safe_user_prompt =
@@ -309,39 +320,47 @@ impl AiGenerationService {
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        // 获取当前激活的参数预设
         let preset = AiParamPresetService::get_active_preset(pool)
             .await
             .unwrap_or_else(|_| AiParamPreset::default_balanced());
         let temperature = preset.temperature;
+
+        // Prompt-based 模式
         let agent = LlmProviderService::create_agent(
             &client,
             &config.default_model,
             &rendered.system,
             temperature,
         );
-
         let response: String = agent
             .prompt(&safe_user_prompt)
             .await
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
-        let draft = serde_json::from_str::<SemesterCommentDraft>(&response)
+        // 语义去重检查
+        let is_duplicate = if input.existing_comments_summary.is_some() {
+            check_semantic_duplicate(&response, &input.existing_comments_summary.unwrap()).await?
+        } else {
+            (false, 0.0)
+        };
+
+        let draft: SemesterCommentDraft = serde_json::from_str(&response)
             .map_err(|error| AppError::ExternalService(format!("LLM 返回格式解析失败：{error}")))?;
 
+        let draft_text = draft.comment;
         let evidence_json = serde_json::to_string(&evidence_result.items).unwrap_or_default();
 
         let result = SemesterCommentService::create(
             pool,
             CreateSemesterCommentInput {
                 student_id: input.student_id,
-                task_id: input.task_id,
                 term: input.term,
-                draft: Some(draft.comment),
+                draft: Some(draft_text),
                 adopted_text: None,
                 status: Some(String::from("draft")),
                 evidence_json: Some(evidence_json),
-                evidence_count: Some(evidence_count as i32),
+                evidence_count: Some(evidence_result.items.len() as i32),
+                task_id: input.task_id,
             },
         )
         .await?;
@@ -360,52 +379,33 @@ impl AiGenerationService {
         Ok(result)
     }
 
-    /// 启动批量学期评语生成任务。
+    /// 启动批量学期评语任务。
     pub async fn start_batch_semester_comments(
         pool: &SqlitePool,
         input: GenerateBatchCommentsInput,
     ) -> Result<AsyncTask, AppError> {
-        let class_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(1) FROM classroom WHERE id = ? AND is_deleted = 0",
-        )
-        .bind(&input.class_id)
-        .fetch_one(pool)
-        .await?;
+        let class_students =
+            crate::services::student::StudentService::list(pool, Some(&input.class_id)).await?;
 
-        if class_exists == 0 {
-            return Err(AppError::InvalidInput(format!(
-                "班级不存在或已删除：{}",
-                input.class_id
-            )));
+        let total = class_students.len();
+        if total == 0 {
+            return Err(AppError::InvalidInput(String::from("该班级没有学生")));
         }
-
-        let context_data = serde_json::to_string(&input).unwrap_or_default();
 
         let task = AsyncTaskService::create(
             pool,
             CreateAsyncTaskInput {
-                task_type: String::from("batch_semester_comments"),
-                target_id: Some(input.class_id.clone()),
-                context_data: Some(context_data),
+                task_type: String::from("generate_batch_semester_comments"),
+                target_id: None,
+                context_data: None,
             },
-        )
-        .await?;
-
-        AuditService::log(
-            pool,
-            "ai",
-            "start_batch_semester_comments",
-            "async_task",
-            Some(&task.id),
-            "medium",
-            false,
         )
         .await?;
 
         Ok(task)
     }
 
-    /// 执行批量学期评语生成任务并持续更新进度。
+    /// 执行批量学期评语生成。
     pub async fn run_batch_semester_comments(
         pool: &SqlitePool,
         workspace_path: &Path,
@@ -413,142 +413,66 @@ impl AiGenerationService {
         task_id: &str,
         input: GenerateBatchCommentsInput,
     ) -> Result<(), AppError> {
-        AsyncTaskService::start(pool, task_id).await?;
+        let class_students =
+            crate::services::student::StudentService::list(pool, Some(&input.class_id)).await?;
 
-        let students = sqlx::query_as::<_, (String, String)>(
-            "SELECT id, name FROM student WHERE class_id = ? AND is_deleted = 0",
-        )
-        .bind(&input.class_id)
-        .fetch_all(pool)
-        .await?;
+        let total = class_students.len();
+        let mut completed = 0;
+        let mut failed = 0;
 
-        let total = students.len() as i32;
-        let mut completed = 0_i32;
-        let mut failed = 0_i32;
+        // 收集已生成的评语用于去重
+        let mut existing_comments: Vec<String> = Vec::new();
 
-        for (student_id, student_name) in students {
-            let progress = BatchProgress {
-                total,
-                completed,
-                failed,
-                current_student_name: Some(student_name.clone()),
+        for student in class_students {
+            let existing_summary = if existing_comments.is_empty() {
+                None
+            } else {
+                Some(existing_comments.join("\n"))
             };
-            let progress_json = serde_json::to_string(&progress).unwrap_or_default();
-            AsyncTaskService::update_progress(pool, task_id, &progress_json).await?;
 
-            let student_id_clone = student_id.clone();
             let result = Self::generate_semester_comment(
                 pool,
                 workspace_path,
                 templates_dir,
                 GenerateSemesterCommentInput {
-                    student_id: student_id_clone,
+                    student_id: student.id,
                     term: input.term.clone(),
                     task_id: Some(task_id.to_string()),
-                    existing_comments_summary: None,
+                    existing_comments_summary: existing_summary,
                 },
             )
             .await;
-            // M3-031: 语义去重检查
-            if let Ok(comment) = &result {
-                let draft_text = comment.draft.as_deref().unwrap_or("");
-                if !draft_text.is_empty() {
-                    match check_comment_duplicate(pool, &student_id, draft_text, 0.75).await {
-                        Ok((is_duplicate, similarity)) => {
-                            if is_duplicate {
-                                // 标记为跳过（去重）
-                                failed += 1;
-                                let detail_json = serde_json::json!({
-                                    "task_id": task_id,
-                                    "class_id": input.class_id,
-                                    "student_name": student_name,
-                                    "reason": "semantic_duplicate",
-                                    "similarity": similarity,
-                                })
-                                .to_string();
 
-                                if let Err(e) = AuditService::log_with_detail(
-                                    pool,
-                                    "ai",
-                                    "semester_comment_skipped_duplicate",
-                                    "semester_comment",
-                                    None,
-                                    "low",
-                                    false,
-                                    Some(&detail_json),
-                                )
-                                .await
-                                {
-                                    eprintln!("[审计日志] 记录评语去重跳过审计失败：{e}");
-                                }
-                                continue;
-                            }
-                        }
-                        Err(e) => {
-                            // 去重检查失败，记录但不影响主流程
-                            let err_msg = format!("duplicate_check_failed: {}", e);
-                            if let Err(audit_err) = AuditService::log(
-                                pool,
-                                "ai",
-                                &err_msg,
-                                "semester_comment",
-                                None,
-                                "low",
-                                false,
-                            )
-                            .await
-                            {
-                                eprintln!("[审计日志] 记录去重检查失败审计失败：{audit_err}");
-                            }
-                        }
+            match result {
+                Ok(comment) => {
+                    completed += 1;
+                    if let Some(draft) = comment.draft {
+                        existing_comments.push(draft);
                     }
                 }
-            }
-
-            if let Err(error) = &result {
-                failed += 1;
-                let detail_json = serde_json::json!({
-                    "task_id": task_id,
-                    "class_id": input.class_id,
-                    "student_name": student_name,
-                    "error": error.to_string(),
-                })
-                .to_string();
-
-                if let Err(e) = AuditService::log_with_detail(
-                    pool,
-                    "ai",
-                    "generate_semester_comment_failed",
-                    "semester_comment",
-                    None,
-                    "medium",
-                    false,
-                    Some(&detail_json),
-                )
-                .await
-                {
-                    eprintln!("[审计日志] 记录评语生成失败审计失败：{e}");
+                Err(_) => {
+                    failed += 1;
                 }
-            } else {
-                completed += 1;
             }
+
+            let progress = BatchProgress {
+                completed,
+                failed,
+                total: total as i32,
+                current_student_name: Some(student.name.clone()),
+            };
+            let progress_json = serde_json::to_string(&progress).unwrap_or_default();
+            let _ = AsyncTaskService::update_progress(pool, task_id, &progress_json).await;
         }
 
-        let final_progress = BatchProgress {
-            total,
-            completed,
-            failed,
-            current_student_name: None,
-        };
-        let final_progress_json = serde_json::to_string(&final_progress).unwrap_or_default();
-        AsyncTaskService::update_progress(pool, task_id, &final_progress_json).await?;
-
-        if failed == 0 {
-            AsyncTaskService::complete(pool, task_id, None).await?;
+        let status = if failed == 0 {
+            String::from("completed")
+        } else if completed == 0 {
+            String::from("failed")
         } else {
-            let summary = format!("完成 {completed}/{total}，失败 {failed}");
-            AsyncTaskService::complete(pool, task_id, Some(&summary)).await?;
-        }
+            String::from("partial")
+        };
+        let _ = AsyncTaskService::complete(pool, task_id, None).await;
 
         Ok(())
     }
@@ -556,36 +480,42 @@ impl AiGenerationService {
     /// 生成活动公告并保存为草稿记录。
     pub async fn generate_activity_announcement(
         pool: &SqlitePool,
+        workspace_path: &Path,
         templates_dir: &Path,
+        template_file_dir: &Path,
         input: GenerateActivityAnnouncementInput,
     ) -> Result<ActivityAnnouncement, AppError> {
+        let class_name = get_class_name(pool, &input.class_id).await?;
+
+        // 加载校本模板（如有）
+        let template_content = if let Some(template_id) = &input.template_id {
+            crate::services::template_file::TemplateFileService::get_by_id(pool, template_id)
+                .await
+                .ok()
+                .map(|t| t.file_path)
+        } else {
+            None
+        };
+
         let template =
             PromptTemplateService::load_template(templates_dir, "activity_announcement")?;
 
         let mut variables = HashMap::new();
+        variables.insert(String::from("class_name"), class_name);
         variables.insert(String::from("title"), input.title.clone());
         variables.insert(
             String::from("topic"),
             input.topic.clone().unwrap_or_else(|| input.title.clone()),
         );
         variables.insert(String::from("audience"), input.audience.clone());
-        variables.insert(String::from("tone"), String::from("正式清晰"));
 
-        // 如果指定了校本模板 ID，加载模板文件路径并读取内容注入到提示词变量中
-        if let Some(template_id) = input.template_id.as_deref() {
-            let template_file = TemplateFileService::get_by_id(pool, template_id).await?;
-            if template_file.enabled == 1 {
-                match std::fs::read_to_string(&template_file.file_path) {
-                    Ok(content) => {
-                        variables.insert(String::from("school_template"), content);
-                    }
-                    Err(error) => {
-                        // 模板文件读取失败不阻断生成，仅跳过
-                        eprintln!("[AiGeneration] 校本模板文件读取失败：{error}");
-                    }
-                }
-            }
+        if let Some(content) = template_content {
+            variables.insert(String::from("template_content"), content);
         }
+
+        // Prompt-based Skills: 注入完整 skill body_content
+        let skills_context = format_enabled_skills_context(pool).await?;
+        variables.insert(String::from("skills_context"), skills_context);
 
         let rendered = PromptTemplateService::render(&template, &variables)?;
         let safe_user_prompt =
@@ -593,25 +523,27 @@ impl AiGenerationService {
 
         let config = LlmProviderService::get_active_config(pool).await?;
         let client = LlmProviderService::create_client(&config)?;
-        // 获取当前激活的参数预设
         let preset = AiParamPresetService::get_active_preset(pool)
             .await
             .unwrap_or_else(|_| AiParamPreset::default_balanced());
         let temperature = preset.temperature;
+
+        // Prompt-based 模式
         let agent = LlmProviderService::create_agent(
             &client,
             &config.default_model,
             &rendered.system,
             temperature,
         );
-
         let response: String = agent
             .prompt(&safe_user_prompt)
             .await
             .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
 
-        let draft = serde_json::from_str::<ActivityAnnouncementDraft>(&response)
+        let draft: ActivityAnnouncementDraft = serde_json::from_str(&response)
             .map_err(|error| AppError::ExternalService(format!("LLM 返回格式解析失败：{error}")))?;
+
+        let draft_text = draft.announcement;
 
         let result = ActivityAnnouncementService::create(
             pool,
@@ -620,10 +552,10 @@ impl AiGenerationService {
                 title: input.title,
                 topic: input.topic,
                 audience: Some(input.audience),
-                draft: Some(draft.announcement),
+                draft: Some(draft_text),
                 adopted_text: None,
-                template_id: input.template_id,
                 status: Some(String::from("draft")),
+                template_id: input.template_id,
             },
         )
         .await?;
@@ -645,176 +577,146 @@ impl AiGenerationService {
 
 /// 获取学生姓名。
 async fn get_student_name(pool: &SqlitePool, student_id: &str) -> Result<String, AppError> {
-    sqlx::query_scalar::<_, String>("SELECT name FROM student WHERE id = ? AND is_deleted = 0")
-        .bind(student_id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("学生不存在或已删除：{student_id}")))
-}
-
-/// 获取学生标签列表文本。
-async fn get_student_tags_text(pool: &SqlitePool, student_id: &str) -> Result<String, AppError> {
-    let tags: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_name FROM student_tag WHERE student_id = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 10",
+    let record = sqlx::query_as::<_, crate::models::student::Student>(
+        "SELECT id, name, class_id, gender, enrollment_date, created_at, updated_at, is_deleted FROM students WHERE id = ? AND is_deleted = 0",
     )
     .bind(student_id)
-    .fetch_all(pool)
+    .fetch_optional(pool)
     .await?
-    .into_iter()
-    .filter(|tag: &String| !tag.trim().is_empty())
-    .collect();
-    if tags.is_empty() {
-        Ok(String::from("暂无标签"))
-    } else {
-        Ok(tags.join("、"))
-    }
+    .ok_or_else(|| AppError::NotFound(format!("学生不存在：{student_id}")))?;
+    Ok(record.name)
 }
 
-/// 获取学生成绩趋势文本。
-async fn get_score_trend_text(pool: &SqlitePool, student_id: &str) -> Result<String, AppError> {
-    #[derive(sqlx::FromRow)]
-    struct ScoreRow {
-        exam_name: String,
-        subject: String,
-        score: f64,
-        full_score: f64,
-        exam_date: String,
-    }
-
-    let records = sqlx::query_as::<_, ScoreRow>(
-        "SELECT exam_name, subject, score, full_score, exam_date FROM score_record WHERE student_id = ? AND is_deleted = 0 ORDER BY exam_date DESC LIMIT 10",
+/// 获取班级名称。
+async fn get_class_name(pool: &SqlitePool, class_id: &str) -> Result<String, AppError> {
+    let record = sqlx::query_as::<_, crate::models::classroom::Classroom>(
+        "SELECT id, grade, class_name, subject, teacher_id, is_deleted, created_at, updated_at FROM classrooms WHERE id = ? AND is_deleted = 0",
     )
-    .bind(student_id)
-    .fetch_all(pool)
+    .bind(class_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("班级不存在：{class_id}")))?;
+    Ok(record.class_name)
+}
+
+/// 格式化证据文本。
+fn format_evidence_text(items: &[crate::models::memory_search::EvidenceItem]) -> String {
+    if items.is_empty() {
+        return String::from("暂无相关观察记录");
+    }
+    items
+        .iter()
+        .map(|item| {
+            format!(
+                "- [{}] {}: {}",
+                item.created_at,
+                item.subject.as_deref().unwrap_or("其他"),
+                item.content
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 获取成绩趋势文本。
+async fn get_score_trend_text(pool: &SqlitePool, student_id: &str) -> Result<String, AppError> {
+    let scores = crate::services::score_record::ScoreRecordService::list_student_scores(
+        pool, student_id, None, None, None,
+    )
     .await?;
 
-    if records.is_empty() {
+    if scores.is_empty() {
         return Ok(String::from("暂无成绩记录"));
     }
 
-    // 按学科分组计算趋势
-    let mut subject_map: std::collections::HashMap<String, Vec<(String, f64)>> =
-        std::collections::HashMap::new();
-    for record in records {
-        let percentage = if record.full_score > 0.0 {
-            (record.score / record.full_score * 100.0).round() as i32
-        } else {
-            0
-        };
-        subject_map
-            .entry(record.subject.clone())
-            .or_default()
-            .push((
-                format!(
-                    "{}({}%) [{}]",
-                    record.exam_name,
-                    percentage,
-                    record.exam_date.split('T').next().unwrap_or("未知日期")
-                ),
-                record.score,
-            ));
-    }
-
-    // 生成趋势文本
-    let mut lines = Vec::new();
-    for (subject, exams) in subject_map {
-        if exams.len() >= 2 {
-            let recent = &exams[0];
-            let previous = &exams[exams.len() - 1];
-            let trend = if recent.1 > previous.1 {
-                "↑上升"
-            } else if recent.1 < previous.1 {
-                "↓下降"
-            } else {
-                "→稳定"
-            };
-            lines.push(format!("【{}】{}，整体趋势{}", subject, recent.0, trend));
-        } else if !exams.is_empty() {
-            lines.push(format!("【{}】{}", subject, exams[0].0));
-        }
-    }
-
-    if lines.is_empty() {
-        Ok(String::from("暂无成绩记录"))
-    } else {
-        Ok(lines.join("\n"))
-    }
-}
-/// 将证据列表格式化为文本。
-fn format_evidence_text(items: &[crate::models::memory_search::EvidenceItem]) -> String {
-    if items.is_empty() {
-        return String::from("暂无相关记录");
-    }
-
-    items
+    let trend_text = scores
         .iter()
-        .map(|item| item.content.as_str())
+        .map(|s| format!("- {} {}: {}分", s.exam_date, s.subject, s.score))
         .collect::<Vec<_>>()
-        .join("\n---\n")
+        .join("\n");
+
+    Ok(trend_text)
 }
 
-/// 计算两个文本的字符 3-gram Jaccard 相似度。
-/// 返回值范围 [0.0, 1.0]，值越大表示越相似。
-fn calculate_text_similarity(text1: &str, text2: &str) -> f64 {
-    if text1.is_empty() || text2.is_empty() {
-        return 0.0;
+/// 获取学生标签文本。
+async fn get_student_tags_text(pool: &SqlitePool, student_id: &str) -> Result<String, AppError> {
+    let tags =
+        crate::services::student_tag::StudentTagService::list_by_student(pool, student_id).await?;
+
+    if tags.is_empty() {
+        return Ok(String::from("暂无标签"));
     }
 
-    // 生成字符 3-gram 集合
-    fn get_ngrams(text: &str, n: usize) -> std::collections::HashSet<String> {
-        let chars: Vec<char> = text.chars().collect();
-        if chars.len() < n {
-            return std::collections::HashSet::from([text.to_string()]);
+    let tags_text = tags
+        .iter()
+        .map(|t| format!("- {}", t.tag_name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(tags_text)
+}
+
+/// 格式化启用的 Skills 为 Prompt 上下文（Prompt-based 模式）。
+///
+/// 将 Skill 的完整 body_content 注入，让 LLM 根据 description 自主匹配触发。
+async fn format_enabled_skills_context(pool: &SqlitePool) -> Result<String, AppError> {
+    let skills = SkillService::list_skills(pool).await?;
+    let enabled_skills: Vec<_> = skills
+        .into_iter()
+        .filter(|s| s.status.as_deref() == Some("enabled"))
+        .filter(|s| s.body_content.is_some()) // 只包含已加载 body_content 的技能
+        .collect();
+
+    if enabled_skills.is_empty() {
+        return Ok(String::from("无可用技能"));
+    }
+
+    let mut context = String::from("## 可用技能\n\n");
+    context.push_str(
+        "当你需要执行以下任务时，请根据【触发条件】匹配用户需求，并按照【执行指令】自主完成。\n\n",
+    );
+    context.push_str("---\n\n");
+
+    for skill in enabled_skills {
+        let name = &skill.name;
+        let description = skill.description.as_deref().unwrap_or("无描述");
+        let body = skill.body_content.as_deref().unwrap_or("无执行指令");
+        let allowed_tools = skill.allowed_tools.as_deref().unwrap_or("无限制");
+
+        context.push_str(&format!("### Skill: {}\n\n", name));
+        context.push_str(&format!("**触发条件**: {}\n\n", description));
+
+        if allowed_tools != "无限制" {
+            context.push_str(&format!("**允许使用的工具**: {}\n\n", allowed_tools));
         }
-        chars
-            .windows(n)
-            .map(|window| window.iter().collect::<String>())
-            .collect()
+
+        context.push_str("**执行指令**:\n");
+        context.push_str(body);
+        context.push_str("\n\n---\n\n");
     }
 
-    let ngrams1 = get_ngrams(text1, 3);
-    let ngrams2 = get_ngrams(text2, 3);
-
-    if ngrams1.is_empty() || ngrams2.is_empty() {
-        return 0.0;
-    }
-
-    // 计算 Jaccard 相似度
-    let intersection = ngrams1.intersection(&ngrams2).count();
-    let union = ngrams1.union(&ngrams2).count();
-
-    if union == 0 {
-        0.0
-    } else {
-        intersection as f64 / union as f64
-    }
+    Ok(context)
 }
 
-/// 检查新评语是否与已有评语高度相似。
-/// 返回 (is_duplicate, max_similarity)
-async fn check_comment_duplicate(
-    pool: &SqlitePool,
-    student_id: &str,
+/// 语义去重检查。
+async fn check_semantic_duplicate(
     new_comment: &str,
-    threshold: f64,
+    existing_summary: &str,
 ) -> Result<(bool, f64), AppError> {
-    // 查询该学生本学期已有的评语
-    let existing_comments: Vec<String> = sqlx::query_scalar(
-        "SELECT COALESCE(adopted_text, draft) FROM semester_comment WHERE student_id = ? AND status IN ('draft', 'adopted') AND is_deleted = 0 ORDER BY created_at DESC LIMIT 5",
-    )
-    .bind(student_id)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .filter(|c: &String| !c.trim().is_empty())
-    .collect();
+    // 简化实现：使用文本相似度
+    let existing_comments: Vec<String> = existing_summary
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.to_string())
+        .collect();
 
     if existing_comments.is_empty() {
         return Ok((false, 0.0));
     }
 
-    // 计算与每个已有评语的相似度，取最大值
+    let threshold = 0.85;
     let mut max_similarity = 0.0;
+
     for existing in existing_comments {
         let similarity = calculate_text_similarity(new_comment, existing.as_str());
         if similarity > max_similarity {
@@ -823,4 +725,21 @@ async fn check_comment_duplicate(
     }
 
     Ok((max_similarity >= threshold, max_similarity))
+}
+
+/// 计算两段文本的相似度（简化版 Jaccard 相似度）。
+fn calculate_text_similarity(a: &str, b: &str) -> f64 {
+    let a_words: std::collections::HashSet<String> =
+        a.split_whitespace().map(|w| w.to_lowercase()).collect();
+    let b_words: std::collections::HashSet<String> =
+        b.split_whitespace().map(|w| w.to_lowercase()).collect();
+
+    let intersection = a_words.intersection(&b_words).count();
+    let union = a_words.union(&b_words).count();
+
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }

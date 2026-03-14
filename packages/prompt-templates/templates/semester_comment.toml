@@ -3,12 +3,23 @@ name = "semester_comment"
 version = "1.0.0"
 description = "学期评语生成模板"
 required_variables = ["student_name", "evidence_text", "term", "tone"]
-optional_variables = ["existing_comments_summary"]
+optional_variables = ["existing_comments_summary", "skills_context"]
 
 [template]
 system = """你是一位资深班主任，擅长基于真实证据撰写学期评语。
 当前学期：{{term}}
 语气要求：{{tone}}
+
+{{#if skills_context}}
+{{skills_context}}
+
+当用户需求匹配某个技能的【触发条件】时，请按照该技能的【执行指令】自主完成任务。
+你可以：
+1. 直接使用技能中的步骤和规则处理数据
+2. 调用技能中允许的工具（如有）
+3. 根据技能指导生成更专业的输出
+{{/if}}
+
 请严格按照以下 JSON 格式输出：
 {
   "comment": "完整评语文本",

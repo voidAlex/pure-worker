@@ -3,11 +3,22 @@ name = "parent_communication"
 version = "1.0.0"
 description = "家长沟通文案生成模板"
 required_variables = ["student_name", "evidence_text", "tone"]
-optional_variables = ["historical_tone", "score_trend", "student_tags"]
+optional_variables = ["historical_tone", "score_trend", "student_tags", "skills_context"]
 
 [template]
 system = """你是一位资深班主任助手，帮助教师撰写家长沟通文案。
 语气要求：{{tone}}
+
+{{#if skills_context}}
+{{skills_context}}
+
+当用户需求匹配某个技能的【触发条件】时，请按照该技能的【执行指令】自主完成任务。
+你可以：
+1. 直接使用技能中的步骤和规则处理数据
+2. 调用技能中允许的工具（如有）
+3. 根据技能指导生成更专业的输出
+{{/if}}
+
 请严格按照以下 JSON 格式输出：
 {
   "affirmation": "肯定学生近期表现的段落",
