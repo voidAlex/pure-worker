@@ -1,6 +1,7 @@
 //! 技能注册服务模块
 //!
 //! 提供技能注册信息的增删改查与健康检查能力。
+//! 遵循 Agent Skills 官方规范 (https://agentskills.io/specification)
 
 use chrono::Utc;
 use sqlx::SqlitePool;
@@ -11,31 +12,53 @@ use crate::error::AppError;
 use crate::models::skill::{CreateSkillInput, SkillHealthResult, SkillRecord, UpdateSkillInput};
 use crate::services::audit::AuditService;
 
-/// 校验技能名称，仅允许 `[A-Za-z0-9._-]`，防止目录穿越和路径注入。
+/// 校验技能名称是否符合 Agent Skills 官方规范。
+///
+/// 规范要求：
+/// - 1-64 个字符
+/// - 只能包含小写字母 a-z、数字 0-9 和连字符 -
+/// - 不能以连字符开头或结尾
+/// - 不能包含连续的连字符 (--)
 fn validate_skill_name(name: &str) -> Result<(), AppError> {
     if name.is_empty() {
         return Err(AppError::InvalidInput(String::from("技能名称不能为空")));
     }
-    if name == "." || name == ".." {
-        return Err(AppError::InvalidInput(format!("技能名称不合法：'{name}'")));
-    }
-    let valid = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
-    if !valid {
+
+    if name.len() > 64 {
         return Err(AppError::InvalidInput(format!(
-            "技能名称仅允许字母、数字、点、下划线和连字符：'{name}'"
+            "技能名称 '{}' 长度不合法：必须为 1-64 个字符，当前为 {} 个字符",
+            name,
+            name.len()
         )));
     }
+
+    if name.starts_with('-') || name.ends_with('-') {
+        return Err(AppError::InvalidInput(format!(
+            "技能名称 '{}' 不能以连字符开头或结尾",
+            name
+        )));
+    }
+
+    if name.contains("--") {
+        return Err(AppError::InvalidInput(format!(
+            "技能名称 '{}' 不能包含连续的连字符（--）",
+            name
+        )));
+    }
+
+    for ch in name.chars() {
+        if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '-' {
+            return Err(AppError::InvalidInput(format!(
+                "技能名称 '{}' 包含非法字符 '{}'：只能使用小写字母 a-z、数字 0-9 和连字符 -",
+                name, ch
+            )));
+        }
+    }
+
     Ok(())
 }
 
-/// 校验 Python 技能 source 路径落在合法的技能目录下（canonicalize 解析符号链接和 `..`）。
-///
-/// 合法路径必须满足：
-/// 1. 路径存在且 canonicalize 成功
-/// 2. 必须位于某个 `.agents/skills/` 目录下（组件级判断，非字符串 contains）
-/// 3. 必须位于允许的根目录内（用户 home 或系统临时目录）
+/// 校验 Python 技能 source 路径落在合法的技能目录下。
 fn validate_python_source_path(source: &str) -> Result<(), AppError> {
     let source_path = Path::new(source);
     let canonical = source_path.canonicalize().map_err(|e| {
@@ -44,7 +67,6 @@ fn validate_python_source_path(source: &str) -> Result<(), AppError> {
         ))
     })?;
 
-    // 组件级校验：检查路径中是否存在 .agents/skills 目录结构
     if !is_under_agents_skills_dir(&canonical) {
         return Err(AppError::InvalidInput(format!(
             "Python 技能 source 必须位于 .agents/skills/ 目录下，当前规范路径：'{}'",
@@ -52,7 +74,6 @@ fn validate_python_source_path(source: &str) -> Result<(), AppError> {
         )));
     }
 
-    // 校验必须位于允许的根目录内（home 或 temp_dir）
     if !is_under_allowed_roots(&canonical) {
         return Err(AppError::InvalidInput(format!(
             "Python 技能 source 必须位于用户目录或临时目录内，当前规范路径：'{}'",
@@ -63,7 +84,7 @@ fn validate_python_source_path(source: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 组件级判断路径是否位于 .agents/skills/ 目录结构下。
+/// 判断路径是否位于 .agents/skills/ 目录结构下。
 fn is_under_agents_skills_dir(path: &Path) -> bool {
     let mut components = path.components().peekable();
     while let Some(component) = components.next() {
@@ -80,9 +101,8 @@ fn is_under_agents_skills_dir(path: &Path) -> bool {
     false
 }
 
-/// 校验路径是否位于允许的根目录内（用户 home 或系统临时目录）。
+/// 校验路径是否位于允许的根目录内。
 fn is_under_allowed_roots(path: &Path) -> bool {
-    // 获取 home 目录
     let home = if cfg!(windows) {
         std::env::var("USERPROFILE").ok()
     } else {
@@ -97,7 +117,6 @@ fn is_under_allowed_roots(path: &Path) -> bool {
         }
     }
 
-    // 检查 temp_dir
     if let Ok(canonical_temp) = std::env::temp_dir().canonicalize() {
         if path.starts_with(&canonical_temp) {
             return true;
@@ -107,7 +126,7 @@ fn is_under_allowed_roots(path: &Path) -> bool {
     false
 }
 
-/// 校验 Python 技能 env_path 落在 ~/.pureworker/skill-envs/ 下（canonicalize 解析符号链接）。
+/// 校验 Python 技能 env_path 落在 ~/.pureworker/skill-envs/ 下。
 fn validate_python_env_path(env_path: &str) -> Result<(), AppError> {
     let env_path_obj = Path::new(env_path);
     let canonical_env = env_path_obj.canonicalize().map_err(|e| {
@@ -125,7 +144,6 @@ fn validate_python_env_path(env_path: &str) -> Result<(), AppError> {
 
     let expected_base = Path::new(&home).join(".pureworker").join("skill-envs");
 
-    // 校验 ~/.pureworker 和 ~/.pureworker/skill-envs 非 symlink（防止 symlink 逃逸）
     let pureworker_dir = Path::new(&home).join(".pureworker");
     if pureworker_dir.exists() {
         let meta = pureworker_dir.symlink_metadata().map_err(|e| {
@@ -165,39 +183,48 @@ fn validate_python_env_path(env_path: &str) -> Result<(), AppError> {
 pub struct SkillService;
 
 impl SkillService {
+    /// SQL 查询字段列表（与 SkillRecord 结构对应）。
+    const SELECT_FIELDS: &'static str = "id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check, license, compatibility, metadata_json, allowed_tools, body_content, entry_script";
+
     /// 列出所有未删除技能。
     pub async fn list_skills(pool: &SqlitePool) -> Result<Vec<SkillRecord>, AppError> {
-        let items = sqlx::query_as::<_, SkillRecord>(
-            "SELECT id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check FROM skill_registry WHERE is_deleted = 0 ORDER BY created_at DESC",
-        )
-        .fetch_all(pool)
-        .await?;
+        let sql = format!(
+            "SELECT {} FROM skill_registry WHERE is_deleted = 0 ORDER BY created_at DESC",
+            Self::SELECT_FIELDS
+        );
+        let items = sqlx::query_as::<_, SkillRecord>(&sql)
+            .fetch_all(pool)
+            .await?;
 
         Ok(items)
     }
 
     /// 根据 ID 获取技能。
     pub async fn get_skill(pool: &SqlitePool, id: &str) -> Result<SkillRecord, AppError> {
-        let item = sqlx::query_as::<_, SkillRecord>(
-            "SELECT id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check FROM skill_registry WHERE id = ? AND is_deleted = 0",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("技能不存在：{id}")))?;
+        let sql = format!(
+            "SELECT {} FROM skill_registry WHERE id = ? AND is_deleted = 0",
+            Self::SELECT_FIELDS
+        );
+        let item = sqlx::query_as::<_, SkillRecord>(&sql)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("技能不存在：{id}")))?;
 
         Ok(item)
     }
 
     /// 根据名称获取技能（取最新版本）。
     pub async fn get_skill_by_name(pool: &SqlitePool, name: &str) -> Result<SkillRecord, AppError> {
-        let item = sqlx::query_as::<_, SkillRecord>(
-            "SELECT id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check FROM skill_registry WHERE name = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 1",
-        )
-        .bind(name)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("技能不存在：{name}")))?;
+        let sql = format!(
+            "SELECT {} FROM skill_registry WHERE name = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 1",
+            Self::SELECT_FIELDS
+        );
+        let item = sqlx::query_as::<_, SkillRecord>(&sql)
+            .bind(name)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("技能不存在：{name}")))?;
 
         Ok(item)
     }
@@ -233,8 +260,6 @@ impl SkillService {
                 }
                 validate_python_source_path(source)?;
 
-                // env_path 允许为空（自动发现时尚未创建虚拟环境，后续安装时补全）
-                // 有值时必须通过路径边界校验
                 if let Some(ref ep) = input.env_path {
                     let ep_trimmed = ep.trim();
                     if !ep_trimmed.is_empty() {
@@ -253,7 +278,7 @@ impl SkillService {
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
-            "INSERT INTO skill_registry (id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'unknown', NULL)",
+            "INSERT INTO skill_registry (id, name, version, source, permission_scope, status, is_deleted, created_at, display_name, description, skill_type, env_path, config_json, updated_at, health_status, last_health_check, license, compatibility, metadata_json, allowed_tools, body_content, entry_script) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'unknown', NULL, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(&input.name)
@@ -268,6 +293,12 @@ impl SkillService {
         .bind(&input.env_path)
         .bind(&input.config_json)
         .bind(&now)
+        .bind(&input.license)
+        .bind(&input.compatibility)
+        .bind(&input.metadata_json)
+        .bind(&input.allowed_tools)
+        .bind(&input.body_content)
+        .bind(&input.entry_script)
         .execute(pool)
         .await?;
 
@@ -295,13 +326,19 @@ impl SkillService {
 
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query(
-            "UPDATE skill_registry SET display_name = COALESCE(?, display_name), description = COALESCE(?, description), permission_scope = COALESCE(?, permission_scope), config_json = COALESCE(?, config_json), status = COALESCE(?, status), updated_at = ? WHERE id = ? AND is_deleted = 0",
+            "UPDATE skill_registry SET display_name = COALESCE(?, display_name), description = COALESCE(?, description), permission_scope = COALESCE(?, permission_scope), config_json = COALESCE(?, config_json), status = COALESCE(?, status), license = COALESCE(?, license), compatibility = COALESCE(?, compatibility), metadata_json = COALESCE(?, metadata_json), allowed_tools = COALESCE(?, allowed_tools), body_content = COALESCE(?, body_content), entry_script = COALESCE(?, entry_script), updated_at = ? WHERE id = ? AND is_deleted = 0",
         )
         .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.permission_scope)
         .bind(&input.config_json)
         .bind(&input.status)
+        .bind(&input.license)
+        .bind(&input.compatibility)
+        .bind(&input.metadata_json)
+        .bind(&input.allowed_tools)
+        .bind(&input.body_content)
+        .bind(&input.entry_script)
         .bind(&now)
         .bind(id)
         .execute(pool)

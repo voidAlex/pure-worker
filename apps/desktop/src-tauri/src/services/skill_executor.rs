@@ -198,11 +198,12 @@ impl SkillExecutorService {
     /// 执行 Python 技能。
     ///
     /// 通过子进程调用技能 Python 入口脚本，传入 JSON 参数，解析 JSON 输出。
+    /// 支持 Agent Skills 规范的 scripts/ 目录结构，入口脚本可从 entry_script 字段配置。
     /// 子进程有超时限制，防止长时间阻塞。
     ///
     /// # 约定
     /// - Python 可执行文件路径：`{env_path}/bin/python`（Unix）或 `{env_path}/Scripts/python.exe`（Windows）
-    /// - 入口脚本路径：`{source}/run.py`（source 为技能仓库目录）
+    /// - 入口脚本路径：优先使用 skill.entry_script，回退到 `{source}/run.py`
     /// - 输入：通过 stdin 传入 JSON 字符串
     /// - 输出：stdout 为 JSON 格式的 ToolResult
     async fn execute_python_skill(
@@ -218,7 +219,7 @@ impl SkillExecutorService {
             AppError::Config(format!("Python 技能 '{skill_name}' 缺少 env_path 配置"))
         })?;
 
-        // 获取技能仓库源目录（用于定位入口脚本 run.py）
+        // 获取技能仓库源目录
         let source_dir = skill.source.as_deref().ok_or_else(|| {
             AppError::Config(format!(
                 "Python 技能 '{skill_name}' 缺少 source（仓库目录）配置"
@@ -234,11 +235,20 @@ impl SkillExecutorService {
             std::path::Path::new(env_path).join("bin").join("python")
         };
 
-        // 构建入口脚本路径（位于技能仓库目录，而非 venv 目录）
-        let entry_script = std::path::Path::new(source_dir).join("run.py");
+        // 构建入口脚本路径：优先使用配置的 entry_script，回退到 run.py
+        let entry_script_path = skill
+            .entry_script
+            .as_deref()
+            .map(|es| std::path::Path::new(source_dir).join(es))
+            .unwrap_or_else(|| std::path::Path::new(source_dir).join("run.py"));
 
         // 防御式二次校验：canonicalize 解析符号链接后验证路径边界
-        Self::validate_python_execution_paths(env_path, source_dir, &entry_script, &python_path)?;
+        Self::validate_python_execution_paths(
+            env_path,
+            source_dir,
+            &entry_script_path,
+            &python_path,
+        )?;
 
         // 校验文件是否存在
         if !python_path.exists() {
@@ -252,14 +262,14 @@ impl SkillExecutorService {
             ));
         }
 
-        if !entry_script.exists() {
+        if !entry_script_path.exists() {
             let duration_ms = start.elapsed().as_millis() as u64;
             return Ok(create_error_result(
                 skill_name,
                 invoke_id,
                 ToolRiskLevel::Medium,
                 duration_ms,
-                format!("技能入口脚本不存在：{}", entry_script.display()),
+                format!("技能入口脚本不存在：{}", entry_script_path.display()),
             ));
         }
 
@@ -269,7 +279,7 @@ impl SkillExecutorService {
 
         // 创建子进程（kill_on_drop 确保超时/异常时子进程被显式终止）
         let mut child = Command::new(&python_path)
-            .arg(&entry_script)
+            .arg(&entry_script_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
