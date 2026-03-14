@@ -1759,6 +1759,7 @@ const SkillsMcpTab: React.FC = () => {
       display_name: item.display_name,
       description: item.description,
       skill_type: item.skill_type,
+      env_path: item.env_path,
       config_json: item.config_json,
     });
     setSkillStatus(item.status);
