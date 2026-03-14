@@ -1,8 +1,10 @@
 /**
  * 聊天服务层
- * 
+ *
  * 封装对话相关的 IPC 调用
  */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { invoke } from '@tauri-apps/api/core';
 
@@ -31,7 +33,9 @@ export async function createConversation(input: CreateConversationInput): Promis
   return invoke<Conversation>('create_conversation', { input });
 }
 
-export async function listConversations(filters: ConversationFilters): Promise<ListConversationsResponse> {
+export async function listConversations(
+  filters: ConversationFilters,
+): Promise<ListConversationsResponse> {
   const input: ListConversationsInput = {
     teacher_id: filters.teacherId,
     limit: filters.limit,
@@ -52,7 +56,9 @@ export async function deleteConversation(id: string): Promise<void> {
   return invoke<void>('delete_conversation', { id });
 }
 
-export async function listConversationMessages(filters: MessageFilters): Promise<MessageListItem[]> {
+export async function listConversationMessages(
+  filters: MessageFilters,
+): Promise<MessageListItem[]> {
   const input: GetMessagesInput = {
     conversation_id: filters.conversationId,
     limit: filters.limit,
