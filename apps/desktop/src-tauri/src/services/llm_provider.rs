@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::ai_config::{
-    AiConfig, AiConfigSafe, CreateAiConfigInput, ModelInfo, ProviderPreset, UpdateAiConfigInput,
+    AiConfig, AiConfigSafe, CreateAiConfigInput, ModelInfo, ProviderPreset, TaskType,
+    UpdateAiConfigInput,
 };
 use crate::services::audit::AuditService;
 use crate::services::keychain::KeychainService;
@@ -74,10 +75,62 @@ pub struct MigrationReport {
 pub struct LlmProviderService;
 
 impl LlmProviderService {
+    /// 获取文本模型（优先 default_text_model，fallback 到 default_model）
+    pub fn get_text_model(config: &AiConfig) -> String {
+        config
+            .default_text_model
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| config.default_model.clone())
+    }
+
+    /// 获取视觉模型（优先 default_vision_model，fallback 到文本模型）
+    pub fn get_vision_model(config: &AiConfig) -> String {
+        config
+            .default_vision_model
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| Self::get_text_model(config))
+    }
+
+    /// 获取工具调用模型（优先 default_tool_model，fallback 到文本模型）
+    pub fn get_tool_model(config: &AiConfig) -> String {
+        config
+            .default_tool_model
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| Self::get_text_model(config))
+    }
+
+    /// 获取推理模型（优先 default_reasoning_model，fallback 到文本模型）
+    pub fn get_reasoning_model(config: &AiConfig) -> String {
+        config
+            .default_reasoning_model
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| Self::get_text_model(config))
+    }
+
+    /// 根据任务类型获取对应的模型。
+    ///
+    /// 根据任务类型自动选择合适的模型配置：
+    /// - Text: 使用 default_text_model
+    /// - Vision: 使用 default_vision_model（fallback 到 text_model）
+    /// - Tool: 使用 default_tool_model（fallback 到 text_model）
+    /// - Reasoning: 使用 default_reasoning_model（fallback 到 text_model）
+    pub fn get_model_for_task(config: &AiConfig, task_type: TaskType) -> String {
+        match task_type {
+            TaskType::Text => Self::get_text_model(config),
+            TaskType::Vision => Self::get_vision_model(config),
+            TaskType::Tool => Self::get_tool_model(config),
+            TaskType::Reasoning => Self::get_reasoning_model(config),
+        }
+    }
+
     /// 获取当前激活的 AI 配置。
     pub async fn get_active_config(pool: &SqlitePool) -> Result<AiConfig, AppError> {
         let config = sqlx::query_as::<_, AiConfig>(
-            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_active = 1 AND is_deleted = 0 ORDER BY updated_at DESC LIMIT 1",
+            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, default_text_model, default_vision_model, default_tool_model, default_reasoning_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_active = 1 AND is_deleted = 0 ORDER BY updated_at DESC LIMIT 1",
         )
         .fetch_optional(pool)
         .await?
@@ -127,7 +180,7 @@ impl LlmProviderService {
     /// 获取全部 AI 配置（安全版本）。
     pub async fn list_configs(pool: &SqlitePool) -> Result<Vec<AiConfigSafe>, AppError> {
         let configs = sqlx::query_as::<_, AiConfig>(
-            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_deleted = 0 ORDER BY created_at DESC",
+            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, default_text_model, default_vision_model, default_tool_model, default_reasoning_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_deleted = 0 ORDER BY created_at DESC",
         )
         .fetch_all(pool)
         .await?;
@@ -167,7 +220,7 @@ impl LlmProviderService {
         }
 
         sqlx::query(
-            "INSERT INTO ai_config (id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            "INSERT INTO ai_config (id, provider_name, display_name, base_url, api_key_encrypted, default_model, default_text_model, default_vision_model, default_tool_model, default_reasoning_model, is_active, config_json, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
         .bind(&id)
         .bind(&input.provider_name)
@@ -175,6 +228,10 @@ impl LlmProviderService {
         .bind(&input.base_url)
         .bind(&encoded_key)
         .bind(&input.default_model)
+        .bind(&input.default_text_model)
+        .bind(&input.default_vision_model)
+        .bind(&input.default_tool_model)
+        .bind(&input.default_reasoning_model)
         .bind(is_active)
         .bind(&input.config_json)
         .bind(&now)
@@ -207,6 +264,10 @@ impl LlmProviderService {
             || input.base_url.is_some()
             || input.api_key.is_some()
             || input.default_model.is_some()
+            || input.default_text_model.is_some()
+            || input.default_vision_model.is_some()
+            || input.default_tool_model.is_some()
+            || input.default_reasoning_model.is_some()
             || input.is_active.is_some()
             || input.config_json.is_some();
 
@@ -250,12 +311,16 @@ impl LlmProviderService {
         }
 
         let result = sqlx::query(
-            "UPDATE ai_config SET display_name = COALESCE(?, display_name), base_url = COALESCE(?, base_url), api_key_encrypted = COALESCE(?, api_key_encrypted), default_model = COALESCE(?, default_model), is_active = COALESCE(?, is_active), config_json = COALESCE(?, config_json), updated_at = ? WHERE id = ? AND is_deleted = 0",
+            "UPDATE ai_config SET display_name = COALESCE(?, display_name), base_url = COALESCE(?, base_url), api_key_encrypted = COALESCE(?, api_key_encrypted), default_model = COALESCE(?, default_model), default_text_model = COALESCE(?, default_text_model), default_vision_model = COALESCE(?, default_vision_model), default_tool_model = COALESCE(?, default_tool_model), default_reasoning_model = COALESCE(?, default_reasoning_model), is_active = COALESCE(?, is_active), config_json = COALESCE(?, config_json), updated_at = ? WHERE id = ? AND is_deleted = 0",
         )
         .bind(&input.display_name)
         .bind(&input.base_url)
         .bind(&encoded_key)
         .bind(&input.default_model)
+        .bind(&input.default_text_model)
+        .bind(&input.default_vision_model)
+        .bind(&input.default_tool_model)
+        .bind(&input.default_reasoning_model)
         .bind(is_active)
         .bind(&input.config_json)
         .bind(&now)
@@ -393,7 +458,7 @@ impl LlmProviderService {
     /// 按 ID 获取配置记录。
     pub async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<AiConfig, AppError> {
         let item = sqlx::query_as::<_, AiConfig>(
-            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE id = ? AND is_deleted = 0",
+            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, default_text_model, default_vision_model, default_tool_model, default_reasoning_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE id = ? AND is_deleted = 0",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -406,7 +471,7 @@ impl LlmProviderService {
     /// 迁移历史 Base64 API Key 到系统密钥链。
     pub async fn migrate_keys_to_keychain(pool: &SqlitePool) -> Result<MigrationReport, AppError> {
         let configs = sqlx::query_as::<_, AiConfig>(
-            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_deleted = 0",
+            "SELECT id, provider_name, display_name, base_url, api_key_encrypted, default_model, default_text_model, default_vision_model, default_tool_model, default_reasoning_model, is_active, config_json, is_deleted, created_at, updated_at FROM ai_config WHERE is_deleted = 0",
         )
         .fetch_all(pool)
         .await?;
@@ -521,6 +586,10 @@ impl LlmProviderService {
             base_url: config.base_url.clone(),
             has_api_key: !config.api_key_encrypted.trim().is_empty(),
             default_model: config.default_model.clone(),
+            default_text_model: config.default_text_model.clone(),
+            default_vision_model: config.default_vision_model.clone(),
+            default_tool_model: config.default_tool_model.clone(),
+            default_reasoning_model: config.default_reasoning_model.clone(),
             is_active: config.is_active,
             config_json: config.config_json.clone(),
             created_at: config.created_at.clone(),

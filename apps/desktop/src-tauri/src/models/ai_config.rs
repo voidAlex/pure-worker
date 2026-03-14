@@ -14,6 +14,10 @@ pub struct AiConfig {
     pub base_url: String,
     pub api_key_encrypted: String,
     pub default_model: String,
+    pub default_text_model: Option<String>,
+    pub default_vision_model: Option<String>,
+    pub default_tool_model: Option<String>,
+    pub default_reasoning_model: Option<String>,
     pub is_active: i32,
     pub config_json: Option<String>,
     pub is_deleted: i32,
@@ -30,6 +34,10 @@ pub struct AiConfigSafe {
     pub base_url: String,
     pub has_api_key: bool,
     pub default_model: String,
+    pub default_text_model: Option<String>,
+    pub default_vision_model: Option<String>,
+    pub default_tool_model: Option<String>,
+    pub default_reasoning_model: Option<String>,
     pub is_active: i32,
     pub config_json: Option<String>,
     pub created_at: String,
@@ -44,6 +52,10 @@ pub struct CreateAiConfigInput {
     pub base_url: String,
     pub api_key: String,
     pub default_model: String,
+    pub default_text_model: Option<String>,
+    pub default_vision_model: Option<String>,
+    pub default_tool_model: Option<String>,
+    pub default_reasoning_model: Option<String>,
     pub is_active: Option<bool>,
     pub config_json: Option<String>,
 }
@@ -56,6 +68,10 @@ pub struct UpdateAiConfigInput {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub default_model: Option<String>,
+    pub default_text_model: Option<String>,
+    pub default_vision_model: Option<String>,
+    pub default_tool_model: Option<String>,
+    pub default_reasoning_model: Option<String>,
     pub is_active: Option<bool>,
     pub config_json: Option<String>,
 }
@@ -123,4 +139,17 @@ pub struct ProviderPreset {
     pub display_name: String,
     /// 供应商默认 Base URL。
     pub base_url: String,
+}
+
+/// 任务类型枚举（用于多模型选择）。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum TaskType {
+    /// 通用文本对话任务。
+    Text,
+    /// 视觉/多模态任务（需要图像理解）。
+    Vision,
+    /// 工具调用任务（需要函数调用能力）。
+    Tool,
+    /// 推理增强任务（需要深度推理能力）。
+    Reasoning,
 }

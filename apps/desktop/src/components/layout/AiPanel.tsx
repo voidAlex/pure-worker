@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronDown, Command, Loader2, Send, Sparkles, User, X } from 'lucide-react';
 
+import { ChatMessage } from '@/components/chat/ChatMessage';
 import { commands } from '@/services/commandClient';
 import { isTauriRuntime } from '@/utils/runtime';
 
@@ -25,10 +26,13 @@ type SlashCommand = {
 };
 
 /** 聊天消息结构 */
-type ChatMessage = {
-  role: 'user' | 'assistant';
+interface AiPanelMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
   content: string;
-};
+  created_at: string;
+  isStreaming?: boolean;
+}
 
 /**
  * 面板属性 —— 使用判别联合类型区分两种模式。
@@ -57,7 +61,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<AiPanelMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   /** 消息列表容器引用，用于自动滚动到底部 */
@@ -132,7 +136,16 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
     if (!trimmedText || isLoading) return;
 
     // 立即添加用户消息并清空输入
-    setMessages((prev) => [...prev, { role: 'user', content: trimmedText }]);
+    const userMessageId = `user-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userMessageId,
+        role: 'user',
+        content: trimmedText,
+        created_at: new Date().toISOString(),
+      },
+    ]);
     setInputText('');
     setShowSlashMenu(false);
     setSlashQuery('');
@@ -143,7 +156,12 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       if (!isTauriRuntime()) {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: '当前为 Web 预览环境，AI 对话需要桌面端支持。' },
+          {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: '当前为 Web 预览环境，AI 对话需要桌面端支持。',
+            created_at: new Date().toISOString(),
+          },
         ]);
         return;
       }
@@ -159,17 +177,35 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
           typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `抱歉，AI 响应失败：${errorMsg}` },
+          {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content: `抱歉，AI 响应失败：${errorMsg}`,
+            created_at: new Date().toISOString(),
+          },
         ]);
         return;
       }
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.data.content }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: result.data.content,
+          created_at: new Date().toISOString(),
+        },
+      ]);
     } catch (err: unknown) {
       const errorDetail = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `抱歉，AI 响应失败：${errorDetail}` },
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `抱歉，AI 响应失败：${errorDetail}`,
+          created_at: new Date().toISOString(),
+        },
       ]);
     } finally {
       setIsLoading(false);
@@ -178,9 +214,6 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
 
   // sidebar 模式下，未打开时不渲染
   if (props.mode === 'sidebar' && !props.isOpen) return null;
-
-  /** 消息气泡最大宽度：全屏模式更宽 */
-  const bubbleMaxWidth = isFullscreen ? 'max-w-[80%]' : 'max-w-[260px]';
 
   /** 渲染顶部工具栏（角色切换 + 关闭按钮） */
   const renderHeader = () => (
@@ -209,7 +242,12 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
                   setShowAgentMenu(false);
                   setMessages((prev) => [
                     ...prev,
-                    { role: 'assistant', content: `已切换角色：${AGENT_LABEL_MAP[role]}` },
+                    {
+                      id: `system-${Date.now()}`,
+                      role: 'assistant',
+                      content: `已切换角色：${AGENT_LABEL_MAP[role]}`,
+                      created_at: new Date().toISOString(),
+                    },
                   ]);
                 }}
                 className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors ${
@@ -251,31 +289,8 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       ) : (
         <div className={isFullscreen ? 'mx-auto max-w-3xl w-full' : ''}>
           <div className="space-y-3">
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className={`flex gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {message.role === 'assistant' && (
-                  <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                )}
-                <div
-                  className={`${bubbleMaxWidth} text-sm px-3 py-2 rounded-lg leading-6 whitespace-pre-wrap ${
-                    message.role === 'user'
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-gray-100 text-gray-700 border border-gray-200'
-                  }`}
-                >
-                  {message.content}
-                </div>
-                {message.role === 'user' && (
-                  <div className="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
+            {messages.map((message) => (
+              <ChatMessage key={message.id} message={message} />
             ))}
             {/* AI 思考中指示器 */}
             {isLoading && (

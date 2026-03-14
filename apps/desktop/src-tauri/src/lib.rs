@@ -273,7 +273,55 @@ pub fn run() {
                 }
             }
 
-            app.manage(pool);
+            app.manage(pool.clone());
+
+            // 初始化 Tool Registry
+            let registry = crate::services::tool_registry::init_registry();
+
+            // 从数据库加载启用的 MCP 服务器并注册其工具
+            let mcp_count = tauri::async_runtime::block_on(async {
+                crate::services::mcp_tool_adapter::register_mcp_tools(&pool, registry).await
+            });
+
+            match mcp_count {
+                Ok(count) => {
+                    #[cfg(not(debug_assertions))]
+                    {
+                        if let Ok(log_dir) = app.path().app_log_dir() {
+                            let log_path = log_dir.join("startup.log");
+                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                            let msg =
+                                format!("[{}] MCP 工具注册成功：{} 个工具\n", timestamp, count);
+                            let _ = std::fs::OpenOptions::new()
+                                .append(true)
+                                .open(&log_path)
+                                .and_then(|mut f| {
+                                    std::io::Write::write_all(&mut f, msg.as_bytes())
+                                });
+                        }
+                    }
+                    println!("[Startup] MCP 工具注册成功：{} 个工具", count);
+                }
+                Err(e) => {
+                    #[cfg(not(debug_assertions))]
+                    {
+                        if let Ok(log_dir) = app.path().app_log_dir() {
+                            let log_path = log_dir.join("startup.log");
+                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                            let msg = format!("[{}] MCP 工具注册失败：{}\n", timestamp, e);
+                            let _ = std::fs::OpenOptions::new()
+                                .append(true)
+                                .open(&log_path)
+                                .and_then(|mut f| {
+                                    std::io::Write::write_all(&mut f, msg.as_bytes())
+                                });
+                        }
+                    }
+                    eprintln!("[Startup] MCP 工具注册失败：{}", e);
+                    // 不阻断启动，继续运行
+                }
+            }
+
             builder.mount_events(app);
             Ok(())
         })

@@ -152,6 +152,13 @@ impl ToolRegistry {
                     .map(|md| md.name)
                     .collect()
             }
+            "agentic_search" => {
+                // Agentic Search Agent 专用白名单
+                vec![
+                    String::from("search.student"),
+                    String::from("search.memory"),
+                ]
+            }
             _ => {
                 // 其他角色只允许低风险工具
                 all_tools

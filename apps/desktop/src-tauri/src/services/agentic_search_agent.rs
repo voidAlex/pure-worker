@@ -1,6 +1,7 @@
 //! Agentic Search Rig Agent
 //!
 //! 使用 Rig 框架构建的 Agent，通过工具调用执行多源检索。
+//! 工具从 Tool Registry 获取，支持通过角色白名单控制可用工具。
 
 use rig::completion::ToolDefinition;
 use rig::tool::ToolDyn;
@@ -14,6 +15,7 @@ use crate::models::agentic_search::{AgenticSearchInput, AgenticSearchResult};
 use crate::services::agentic_search::AgenticSearchOrchestrator;
 use crate::services::memory_search::MemorySearchService;
 use crate::services::student::StudentService;
+use crate::services::tool_registry::get_registry;
 
 /// Agentic Search Agent 构建器
 pub struct AgenticSearchAgentBuilder {
@@ -28,19 +30,43 @@ impl AgenticSearchAgentBuilder {
         }
     }
 
-    /// 构建工具集
+    /// 从 Tool Registry 构建工具集
+    ///
+    /// 根据 agentic_search 角色白名单从 Tool Registry 获取可用工具，
+    /// 并创建对应的 ToolDyn 实现供 Rig Agent 使用。
     pub fn build_tools(
         &self,
         pool: SqlitePool,
         workspace_path: std::path::PathBuf,
     ) -> Vec<Box<dyn ToolDyn>> {
-        vec![
-            Box::new(SearchStudentTool { pool: pool.clone() }),
-            Box::new(SearchMemoryTool {
+        let registry = get_registry();
+        let allowed_tools = registry.get_role_tool_allowlist("agentic_search");
+
+        let mut tools: Vec<Box<dyn ToolDyn>> = Vec::new();
+
+        // 检查白名单中是否包含 search.student 工具
+        if allowed_tools.iter().any(|name| name == "search.student") {
+            tools.push(Box::new(SearchStudentTool { pool: pool.clone() }));
+        }
+
+        // 检查白名单中是否包含 search.memory 工具
+        if allowed_tools.iter().any(|name| name == "search.memory") {
+            tools.push(Box::new(SearchMemoryTool {
+                pool: pool.clone(),
+                workspace_path: workspace_path.clone(),
+            }));
+        }
+
+        // 如果白名单为空或不包含任何工具，使用默认工具集
+        if tools.is_empty() {
+            tools.push(Box::new(SearchStudentTool { pool: pool.clone() }));
+            tools.push(Box::new(SearchMemoryTool {
                 pool,
                 workspace_path,
-            }),
-        ]
+            }));
+        }
+
+        tools
     }
 
     /// 执行搜索（非 Agent 模式）
@@ -71,14 +97,16 @@ impl Default for AgenticSearchAgentBuilder {
 }
 
 /// 搜索学生工具
+///
+/// 根据学生姓名或ID搜索学生基本信息和档案。
 #[derive(Debug)]
-struct SearchStudentTool {
+pub struct SearchStudentTool {
     pool: SqlitePool,
 }
 
 impl ToolDyn for SearchStudentTool {
     fn name(&self) -> String {
-        String::from("search_student")
+        String::from("search.student")
     }
 
     fn definition<'a>(
@@ -86,7 +114,7 @@ impl ToolDyn for SearchStudentTool {
         _prompt: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
         let def = ToolDefinition {
-            name: String::from("search_student"),
+            name: String::from("search.student"),
             description: String::from("根据学生姓名或ID搜索学生基本信息和档案"),
             parameters: json!({
                 "type": "object",
@@ -183,15 +211,17 @@ impl ToolDyn for SearchStudentTool {
 }
 
 /// 搜索记忆工具
+///
+/// 搜索学生记忆证据，包括观察记录、沟通记录、评语等。
 #[derive(Debug)]
-struct SearchMemoryTool {
+pub struct SearchMemoryTool {
     pool: SqlitePool,
     workspace_path: std::path::PathBuf,
 }
 
 impl ToolDyn for SearchMemoryTool {
     fn name(&self) -> String {
-        String::from("search_memory")
+        String::from("search.memory")
     }
 
     fn definition<'a>(
@@ -199,7 +229,7 @@ impl ToolDyn for SearchMemoryTool {
         _prompt: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
         let def = ToolDefinition {
-            name: String::from("search_memory"),
+            name: String::from("search.memory"),
             description: String::from("搜索学生记忆证据，包括观察记录、沟通记录、评语等"),
             parameters: json!({
                 "type": "object",
