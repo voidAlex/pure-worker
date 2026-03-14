@@ -17,27 +17,7 @@ use crate::models::ai_config::{
 };
 use crate::services::audit::AuditService;
 use crate::services::keychain::KeychainService;
-
-/// 视觉/多模态模型前缀列表。
-const VISION_MODEL_PREFIXES: &[&str] = &[
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-5",
-    "gpt-4-vision",
-    "gpt-4-turbo",
-    "claude-3-opus",
-    "claude-3-5-sonnet",
-    "claude-3-5-haiku",
-    "claude-3-haiku",
-    "claude-sonnet-4",
-    "claude-opus-4",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
-    "gemini-2.0",
-    "gemini-pro-vision",
-    "qwen-vl",
-    "qwen2-vl",
-];
+use crate::services::provider_adapter::{get_model_capabilities, is_vision_model};
 
 /// OpenAI 兼容的模型列表响应。
 #[derive(Debug, Deserialize)]
@@ -564,13 +544,6 @@ pub fn get_provider_presets() -> Vec<ProviderPreset> {
     ]
 }
 
-/// 检查模型是否支持视觉/多模态。
-fn is_vision_model(model_id: &str) -> bool {
-    VISION_MODEL_PREFIXES
-        .iter()
-        .any(|prefix| model_id.starts_with(prefix))
-}
-
 /// 从供应商 API 获取可用模型列表。
 ///
 /// 支持 OpenAI 兼容接口和 Anthropic 专有接口，自动识别视觉/多模态模型。
@@ -650,6 +623,7 @@ pub async fn fetch_provider_models(
                     id: model_id.to_string(),
                     name,
                     is_vision: is_vision_model(model_id),
+                    capabilities: get_model_capabilities(model_id, provider_name),
                 })
             })
             .collect::<Vec<ModelInfo>>()
@@ -673,6 +647,7 @@ pub async fn fetch_provider_models(
                     id: item.id.clone(),
                     name,
                     is_vision: is_vision_model(&item.id),
+                    capabilities: get_model_capabilities(&item.id, provider_name),
                 }
             })
             .collect::<Vec<ModelInfo>>()
@@ -690,6 +665,7 @@ pub async fn fetch_provider_models(
                     id: model_id.clone(),
                     name: model_id.clone(),
                     is_vision: is_vision_model(&model_id),
+                    capabilities: get_model_capabilities(&model_id, provider_name),
                 }
             })
             .collect::<Vec<ModelInfo>>()

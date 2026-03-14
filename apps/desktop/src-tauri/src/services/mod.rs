@@ -23,6 +23,7 @@ pub mod parent_communication;
 pub mod path_whitelist;
 pub mod practice_sheet;
 pub mod prompt_template;
+pub mod provider_adapter;
 pub mod schedule_event;
 pub mod schedule_file;
 pub mod score_record;

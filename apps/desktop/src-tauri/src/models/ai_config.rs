@@ -60,15 +60,58 @@ pub struct UpdateAiConfigInput {
     pub config_json: Option<String>,
 }
 
-/// 模型信息。
+/// 模型能力元数据（WP-AI-005）。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ModelCapability {
+    pub supports_text_input: bool,
+    pub supports_image_input: bool,
+    pub supports_audio_input: bool,
+    pub supports_tool_calling: bool,
+    pub supports_reasoning: bool,
+    pub supports_json_mode: bool,
+    pub context_window: u32,
+    pub max_output_tokens: u32,
+}
+
+impl Default for ModelCapability {
+    fn default() -> Self {
+        Self {
+            supports_text_input: true,
+            supports_image_input: false,
+            supports_audio_input: false,
+            supports_tool_calling: false,
+            supports_reasoning: false,
+            supports_json_mode: false,
+            context_window: 8192,
+            max_output_tokens: 4096,
+        }
+    }
+}
+
+/// 模型信息（WP-AI-005 扩展）。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ModelInfo {
     /// 模型ID（如 gpt-4o, claude-3-5-sonnet-20241022）。
     pub id: String,
     /// 模型显示名称。
     pub name: String,
-    /// 是否支持视觉/多模态。
+    /// 是否支持视觉/多模态（向后兼容）。
     pub is_vision: bool,
+    /// 详细能力元数据。
+    pub capabilities: ModelCapability,
+}
+
+/// 多模型配置（WP-AI-005）。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct MultiModelConfig {
+    /// 文本对话模型。
+    pub text_model: String,
+    /// 多模态/视觉模型。
+    pub vision_model: Option<String>,
+    /// 工具调用模型。
+    pub tool_model: Option<String>,
+    /// 推理增强模型。
+    pub reasoning_model: Option<String>,
 }
 
 /// 供应商预设配置。
