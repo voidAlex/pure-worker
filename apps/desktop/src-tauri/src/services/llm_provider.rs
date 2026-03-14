@@ -17,7 +17,10 @@ use crate::models::ai_config::{
 };
 use crate::services::audit::AuditService;
 use crate::services::keychain::KeychainService;
-use crate::services::provider_adapter::{get_model_capabilities, is_vision_model};
+use crate::services::provider_adapter::{
+    get_model_capabilities, is_vision_model, AdapterFactory, ProviderAdapter, ProviderConfig,
+    ProviderType,
+};
 
 /// OpenAI 兼容的模型列表响应。
 #[derive(Debug, Deserialize)]
@@ -81,6 +84,44 @@ impl LlmProviderService {
         .ok_or_else(|| AppError::NotFound(String::from("未找到已激活的 AI Provider 配置")))?;
 
         Ok(config)
+    }
+
+    /// 创建 Provider Adapter 实例。
+    ///
+    /// 根据配置自动选择 OpenAI 兼容或 Anthropic 原生适配器。
+    pub fn create_adapter(config: &AiConfig) -> Result<Box<dyn ProviderAdapter>, AppError> {
+        let api_key = Self::load_api_key(config)?;
+        let provider_type =
+            ProviderType::from_provider_name(&config.provider_name).ok_or_else(|| {
+                AppError::InvalidInput(format!("不支持的 Provider: {}", config.provider_name))
+            })?;
+
+        let provider_config = ProviderConfig {
+            provider_type,
+            api_key,
+            base_url: config.base_url.clone(),
+            headers: None,
+            default_model: config.default_model.clone(),
+        };
+
+        Ok(AdapterFactory::create(&provider_config))
+    }
+
+    /// 创建 Provider Adapter 配置（用于流式调用）。
+    pub fn create_provider_config(config: &AiConfig) -> Result<ProviderConfig, AppError> {
+        let api_key = Self::load_api_key(config)?;
+        let provider_type =
+            ProviderType::from_provider_name(&config.provider_name).ok_or_else(|| {
+                AppError::InvalidInput(format!("不支持的 Provider: {}", config.provider_name))
+            })?;
+
+        Ok(ProviderConfig {
+            provider_type,
+            api_key,
+            base_url: config.base_url.clone(),
+            headers: None,
+            default_model: config.default_model.clone(),
+        })
     }
 
     /// 获取全部 AI 配置（安全版本）。
@@ -434,7 +475,8 @@ impl LlmProviderService {
         encoded
     }
 
-    fn load_api_key(config: &AiConfig) -> Result<String, AppError> {
+    /// 从配置加载 API Key。
+    pub fn load_api_key(config: &AiConfig) -> Result<String, AppError> {
         let mut api_key = match KeychainService::get_api_key(&config.id) {
             Ok(value) => value,
             Err(error) => {

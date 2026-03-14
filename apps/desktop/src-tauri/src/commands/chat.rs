@@ -13,7 +13,8 @@ use tauri::State;
 use crate::error::AppError;
 use crate::models::agentic_search::AgenticSearchInput;
 use crate::models::conversation::{
-    ChatStreamEvent, ChatStreamInput, CreateConversationInput, CreateMessageInput,
+    ChatStreamEvent, ChatStreamInput, ConversationListItem, CreateConversationInput,
+    CreateMessageInput,
 };
 use crate::services::agentic_search::AgenticSearchOrchestrator;
 use crate::services::agentic_search_agent::format_search_result_for_prompt;
@@ -464,6 +465,39 @@ async fn generate_with_agent(
     }
 
     Ok(accumulated)
+}
+
+/// 获取对话列表
+#[tauri::command]
+#[specta::specta]
+pub async fn list_chat_conversations(
+    pool: State<'_, SqlitePool>,
+    page: i64,
+    page_size: i64,
+) -> Result<Vec<ConversationListItem>, AppError> {
+    let teacher_id = get_current_teacher_id(&pool).await?;
+    let offset = page * page_size;
+    ConversationService::list_conversations(&pool, &teacher_id, page_size, offset).await
+}
+
+/// 获取对话详情（包含消息列表）
+#[tauri::command]
+#[specta::specta]
+pub async fn get_chat_conversation(
+    pool: State<'_, SqlitePool>,
+    conversation_id: String,
+) -> Result<Vec<crate::models::conversation::MessageListItem>, AppError> {
+    ConversationService::list_messages(&pool, &conversation_id, 100, 0).await
+}
+
+/// 删除对话
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_chat_conversation(
+    pool: State<'_, SqlitePool>,
+    conversation_id: String,
+) -> Result<(), AppError> {
+    ConversationService::delete_conversation(&pool, &conversation_id).await
 }
 
 /// 获取当前教师ID
