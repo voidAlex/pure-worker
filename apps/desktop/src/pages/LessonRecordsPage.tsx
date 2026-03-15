@@ -36,6 +36,33 @@ export const LessonRecordsPage: React.FC = () => {
     status: 'planned',
   });
 
+  // 获取班级列表用于下拉选择
+  const { data: classrooms } = useQuery({
+    queryKey: ['classrooms'],
+    queryFn: async () => {
+      const result = await commands.listClassrooms();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('获取班级列表失败');
+    },
+  });
+
+  // 获取应用设置（用于读取默认科目）
+  const { data: appSettings } = useQuery({
+    queryKey: ['app-settings'],
+    queryFn: async () => {
+      const result = await commands.getAppSettings();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      return [];
+    },
+  });
+
+  // 获取默认科目
+  const defaultSubject = appSettings?.find((s) => s.key === 'default_subject')?.value || '';
+
   const { data: records, isLoading } = useQuery({
     queryKey: ['lesson-records'],
     queryFn: async () => {
@@ -118,7 +145,7 @@ export const LessonRecordsPage: React.FC = () => {
   const resetForm = () => {
     setFormData({
       class_id: '',
-      subject: '',
+      subject: defaultSubject,
       lesson_date: new Date().toISOString().split('T')[0],
       topic: '',
       teaching_goal: '',
@@ -201,6 +228,12 @@ export const LessonRecordsPage: React.FC = () => {
     }
   };
 
+  /** 根据 class_id 获取班级显示名称 */
+  const getClassName = (classId: string) => {
+    const cls = classrooms?.find((c) => c.id === classId);
+    return cls ? `${cls.grade} ${cls.class_name}` : classId;
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
@@ -221,64 +254,92 @@ export const LessonRecordsPage: React.FC = () => {
         <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
           <h3 className="font-medium mb-4">{editingRecord ? '编辑行课记录' : '新增行课记录'}</h3>
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <input
-              type="text"
-              placeholder="班级ID"
-              className="px-3 py-2 border rounded-lg"
-              value={formData.class_id || ''}
-              onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="科目"
-              className="px-3 py-2 border rounded-lg"
-              value={formData.subject || ''}
-              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-            />
-            <input
-              type="date"
-              placeholder="日期"
-              className="px-3 py-2 border rounded-lg"
-              value={formData.lesson_date || ''}
-              onChange={(e) => setFormData({ ...formData, lesson_date: e.target.value })}
-            />
-            <select
-              className="px-3 py-2 border rounded-lg"
-              value={formData.status || ''}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-            >
-              <option value="planned">计划中</option>
-              <option value="in_progress">进行中</option>
-              <option value="completed">已完成</option>
-            </select>
-            <input
-              type="text"
-              placeholder="教学主题"
-              className="col-span-2 px-3 py-2 border rounded-lg"
-              value={formData.topic || ''}
-              onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-            />
-            <textarea
-              placeholder="教学目标"
-              className="col-span-2 px-3 py-2 border rounded-lg"
-              rows={2}
-              value={formData.teaching_goal || ''}
-              onChange={(e) => setFormData({ ...formData, teaching_goal: e.target.value })}
-            />
-            <textarea
-              placeholder="作业摘要"
-              className="col-span-2 px-3 py-2 border rounded-lg"
-              rows={2}
-              value={formData.homework_summary || ''}
-              onChange={(e) => setFormData({ ...formData, homework_summary: e.target.value })}
-            />
-            <textarea
-              placeholder="教师备注"
-              className="col-span-2 px-3 py-2 border rounded-lg"
-              rows={2}
-              value={formData.teacher_note || ''}
-              onChange={(e) => setFormData({ ...formData, teacher_note: e.target.value })}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">班级</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg"
+                value={formData.class_id || ''}
+                onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
+              >
+                <option value="">请选择班级</option>
+                {classrooms?.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.grade} {cls.class_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">科目</label>
+              <input
+                type="text"
+                placeholder="科目"
+                className="w-full px-3 py-2 border rounded-lg"
+                value={formData.subject || ''}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">日期</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border rounded-lg"
+                value={formData.lesson_date || ''}
+                onChange={(e) => setFormData({ ...formData, lesson_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">状态</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg"
+                value={formData.status || ''}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              >
+                <option value="planned">计划中</option>
+                <option value="in_progress">进行中</option>
+                <option value="completed">已完成</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">教学主题</label>
+              <input
+                type="text"
+                placeholder="请输入教学主题"
+                className="w-full px-3 py-2 border rounded-lg"
+                value={formData.topic || ''}
+                onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">教学目标</label>
+              <textarea
+                placeholder="请输入教学目标"
+                className="w-full px-3 py-2 border rounded-lg"
+                rows={2}
+                value={formData.teaching_goal || ''}
+                onChange={(e) => setFormData({ ...formData, teaching_goal: e.target.value })}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">作业摘要</label>
+              <textarea
+                placeholder="请输入作业摘要"
+                className="w-full px-3 py-2 border rounded-lg"
+                rows={2}
+                value={formData.homework_summary || ''}
+                onChange={(e) => setFormData({ ...formData, homework_summary: e.target.value })}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">教师备注</label>
+              <textarea
+                placeholder="请输入教师备注"
+                className="w-full px-3 py-2 border rounded-lg"
+                rows={2}
+                value={formData.teacher_note || ''}
+                onChange={(e) => setFormData({ ...formData, teacher_note: e.target.value })}
+              />
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -317,7 +378,8 @@ export const LessonRecordsPage: React.FC = () => {
                   <div className="flex items-center gap-3 mb-2">
                     <Calendar size={18} className="text-gray-400" />
                     <span className="font-medium">{record.lesson_date}</span>
-                    <span className="text-gray-500">{record.subject}</span>
+                    <span className="text-gray-500">{getClassName(record.class_id)}</span>
+                    <span className="text-gray-400">{record.subject}</span>
                     <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(record.status)}`}>
                       {getStatusLabel(record.status)}
                     </span>

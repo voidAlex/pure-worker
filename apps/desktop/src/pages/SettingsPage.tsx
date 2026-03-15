@@ -63,7 +63,7 @@ const unwrapResult = <T,>(
   throw new Error(getErrorMessage(res.error));
 };
 
-type TabKey = 'ai' | 'security' | 'template' | 'shortcut' | 'skills' | 'mcp';
+type TabKey = 'general' | 'ai' | 'security' | 'template' | 'shortcut' | 'skills' | 'mcp';
 
 const INITIAL_AI_FORM: CreateAiConfigInput = {
   provider_name: '',
@@ -710,6 +710,85 @@ const AiConfigTab: React.FC = () => {
 };
 
 /** SecurityTab 组件 */
+/** 通用设置标签页组件 - 全局科目等基础配置 */
+const GeneralSettingsTab: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { success, error } = useToast();
+  const [defaultSubject, setDefaultSubject] = useState('');
+
+  // 查询应用设置
+  const settingsQuery = useQuery({
+    queryKey: ['settings', 'app-settings'],
+    queryFn: async () => {
+      const result = await commands.getAppSettings();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('获取设置失败');
+    },
+  });
+
+  // 初始化表单数据
+  React.useEffect(() => {
+    if (settingsQuery.data) {
+      const subjectSetting = settingsQuery.data.find((s) => s.key === 'default_subject');
+      setDefaultSubject(subjectSetting?.value || '');
+    }
+  }, [settingsQuery.data]);
+
+  // 更新设置
+  const updateSettingMutation = useMutation({
+    mutationFn: async (value: string) => {
+      const result = await commands.updateSetting('default_subject', value, 'general', '默认授课科目');
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('保存设置失败');
+    },
+    onSuccess: () => {
+      success('设置已保存');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'app-settings'] });
+    },
+    onError: (err: Error) => error(err.message),
+  });
+
+  const handleSave = () => {
+    updateSettingMutation.mutate(defaultSubject);
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-lg font-semibold text-gray-900">教学设置</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">默认授课科目</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="例如：语文、数学、英语"
+                className="flex-1 px-3 py-2 border rounded-lg"
+                value={defaultSubject}
+                onChange={(e) => setDefaultSubject(e.target.value)}
+              />
+              <button
+                onClick={handleSave}
+                disabled={updateSettingMutation.isPending}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                {updateSettingMutation.isPending ? '保存中...' : '保存'}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              设置后，新建行课记录时将自动填充此科目
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 const SecurityTab: React.FC = () => {
   return (
     <div className="space-y-6">
@@ -1166,6 +1245,9 @@ export const SettingsPage: React.FC = () => {
 
   /** 渲染当前激活标签页内容 */
   const renderContent = () => {
+    if (activeTab === 'general') {
+      return <GeneralSettingsTab />;
+    }
     if (activeTab === 'ai') {
       return <AiConfigTab />;
     }
@@ -1193,6 +1275,7 @@ export const SettingsPage: React.FC = () => {
 
       <div className="mb-6 flex gap-1 border-b">
         {[
+          { key: 'general' as const, label: '通用', icon: <Settings size={16} /> },
           { key: 'ai' as const, label: 'AI配置', icon: <Cpu size={16} /> },
           { key: 'security' as const, label: '安全隐私', icon: <Shield size={16} /> },
           { key: 'template' as const, label: '模板导出', icon: <FileText size={16} /> },
