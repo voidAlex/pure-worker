@@ -50,8 +50,15 @@ const unwrapResult = <T,>(
   throw new Error(getErrorMessage(res.error));
 };
 
+/** 模型信息接口 */
+interface ModelInfo {
+  id: string;
+  name: string;
+  is_vision: boolean;
+}
+
 export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onComplete }) => {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [workspacePath, setWorkspacePath] = useState<string>('');
 
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
@@ -63,8 +70,13 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
     'idle' | 'testing' | 'success' | 'failed'
   >('idle');
   const [connectionError, setConnectionError] = useState<string>('');
-  const [modelCount, setModelCount] = useState<number>(0);
-  const [defaultModel, setDefaultModel] = useState<string>('');
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+
+  // 教师信息
+  const [teacherName, setTeacherName] = useState<string>('');
+  const [teachingStage, setTeachingStage] = useState<string>('primary');
+  const [teachingSubject, setTeachingSubject] = useState<string>('');
 
   const [saving, setSaving] = useState<boolean>(false);
 

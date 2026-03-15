@@ -221,12 +221,23 @@ const AiConfigTab: React.FC = () => {
     setEditingConfig(item);
     setSelectedPreset(null);
     setIsCustom(true);
-    setModels([]); // 清空模型列表，需要重新获取
+    // 显示已保存的模型作为占位符（只读显示）
+    if (item.default_model) {
+      setModels([
+        {
+          id: item.default_model,
+          name: item.default_model,
+          is_vision: false,
+        },
+      ]);
+    } else {
+      setModels([]);
+    }
     setConfigForm({
       provider_name: item.provider_name,
       display_name: item.display_name,
       base_url: item.base_url,
-      api_key: '', // API Key 需要重新输入才能获取模型
+      api_key: '', // API Key 需要重新输入才能刷新模型列表
       default_model: item.default_model,
       default_text_model: item.default_text_model,
       default_vision_model: item.default_vision_model,
@@ -502,11 +513,11 @@ const AiConfigTab: React.FC = () => {
               </div>
             )}
 
-            {/* 模型列表为空时的提示 */}
-            {models.length === 0 && editingConfig && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <p className="font-medium mb-1">提示</p>
-                <p>编辑配置时需要重新输入 API Key 才能获取可用模型列表。如需更换模型，请先填写 API Key 并点击"获取模型列表"。</p>
+            {/* 编辑配置时的提示 */}
+            {editingConfig && models.length === 1 && models[0].id === editingConfig.default_model && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                <p className="font-medium mb-1">当前已选择模型</p>
+                <p>上方显示的是当前已保存的模型。如需更换模型，请输入 API Key 并点击"获取模型列表"刷新。</p>
               </div>
             )}
 

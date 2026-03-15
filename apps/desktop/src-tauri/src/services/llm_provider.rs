@@ -134,7 +134,11 @@ impl LlmProviderService {
         )
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(String::from("未找到已激活的 AI Provider 配置")))?;
+        .ok_or_else(|| {
+            AppError::NotFound(String::from(
+                "请先在设置中配置并激活 AI 服务。如果您已完成初始化向导，请检查 AI 配置是否已激活。",
+            ))
+        })?;
 
         Ok(config)
     }

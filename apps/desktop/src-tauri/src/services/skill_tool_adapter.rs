@@ -37,15 +37,19 @@ impl BuiltinToolAdapter {
 
 impl ToolDyn for BuiltinToolAdapter {
     fn name(&self) -> String {
-        self.tool_name.clone()
+        // 返回符合 LLM API 命名规范的名称（点号替换为下划线）
+        self.tool_name.replace('.', "_")
     }
 
     fn definition<'a>(
         &'a self,
         _prompt: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
+        // 工具名称必须符合 OpenAI 命名规范: ^[a-zA-Z0-9_-]+$
+        // 将点号替换为下划线以符合规范
+        let safe_name = self.tool_name.replace('.', "_");
         let def = ToolDefinition {
-            name: self.tool_name.clone(),
+            name: safe_name,
             description: self.tool_description.clone(),
             parameters: self.input_schema.clone(),
         };
@@ -137,8 +141,15 @@ impl ToolDyn for SkillToolAdapter {
         &'a self,
         _prompt: String,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
+        // 工具名称必须符合 OpenAI 命名规范: ^[a-zA-Z0-9_-]+$
+        // 将点号和其他特殊字符替换为下划线以符合规范
+        let safe_name = self
+            .skill_name
+            .replace('.', "_")
+            .replace('-', "_")
+            .replace(' ', "_");
         let def = ToolDefinition {
-            name: self.skill_name.clone(),
+            name: safe_name,
             description: self.skill_description.clone(),
             parameters: self.input_schema.clone(),
         };

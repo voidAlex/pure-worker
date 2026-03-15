@@ -501,13 +501,19 @@ pub async fn delete_chat_conversation(
 }
 
 /// 获取当前教师ID
+///
+/// 如果教师档案不存在，返回友好的错误提示，引导用户完成初始化。
 async fn get_current_teacher_id(pool: &SqlitePool) -> Result<String, AppError> {
     let teacher_id: Option<String> =
         sqlx::query_scalar("SELECT id FROM teacher_profile WHERE is_deleted = 0 LIMIT 1")
             .fetch_optional(pool)
             .await?;
 
-    teacher_id.ok_or_else(|| AppError::NotFound(String::from("未找到教师档案")))
+    teacher_id.ok_or_else(|| {
+        AppError::NotFound(String::from(
+            "请先完成教师信息初始化。如果您已完成初始化向导，请尝试重启应用。",
+        ))
+    })
 }
 
 /// 解析工作区路径。
