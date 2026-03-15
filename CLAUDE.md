@@ -1,7 +1,7 @@
 # AGENTS.md — PureWorker
 
-**Updated:** 2026-03-08
-**Commit:** da81777
+**Updated:** 2026-03-15
+**Commit:** 0350731
 **Branch:** master
 
 > 面向教师场景的本地优先桌面 AI 助手（Tauri 2.x + Rust + React/TypeScript + SQLite）。
@@ -49,6 +49,27 @@ pnpm tsc --noEmit           # 仅做类型检查，不生成产物
 cargo fmt --check && cargo clippy -- -D warnings && cargo test
 pnpm eslint src/ && pnpm prettier --check src/ && pnpm tsc --noEmit
 ```
+
+### TypeScript 绑定（重要）
+
+本项目使用 [specta](https://github.com/oscartbeaumont/specta) 自动从 Rust IPC 命令生成 TypeScript 类型绑定。
+
+**关键规则：每次新增或修改 Rust IPC 命令后，必须重新生成并提交 bindings.ts！**
+
+```bash
+# 重新生成 TypeScript 绑定（在 apps/desktop/ 目录下执行）
+pnpm bindings:export
+
+# 等价于
+cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings
+```
+
+**常见问题**：如果 GitHub CI 报错 `git diff --exit-code -- src/bindings.ts` 失败，说明 bindings.ts 未同步。
+
+**解决步骤**：
+1. 运行 `pnpm bindings:export` 重新生成绑定
+2. 提交 `apps/desktop/src/bindings.ts` 文件
+3. 推送到远程仓库
 
 ## 环境配置
 
