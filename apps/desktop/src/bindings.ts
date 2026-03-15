@@ -50,6 +50,19 @@ async getSettingsByCategory(category: string) : Promise<Result<AppSetting[], App
 }
 },
 /**
+ * 在系统文件管理器中打开 Skills 目录。
+ * 
+ * 如果目录不存在，会自动创建。
+ */
+async openSkillsDirectory() : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_skills_directory") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 检查首次启动初始化状态。
  */
 async checkInitializationStatus() : Promise<Result<InitializationStatus, AppError>> {
@@ -205,9 +218,23 @@ async activateAiParamPreset(input: ActivateAiParamPresetInput) : Promise<Result<
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * 获取教师档案
+ */
 async getTeacherProfile() : Promise<Result<TeacherProfile, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_teacher_profile") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 创建或更新教师档案
+ */
+async createTeacherProfile(input: CreateTeacherProfileInput) : Promise<Result<TeacherProfile, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_teacher_profile", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2255,6 +2282,22 @@ export type CreateSkillInput = { name: string; version: string | null; source: s
  */
 env_path: string | null; config_json: string | null; license: string | null; compatibility: string | null; metadata_json: string | null; allowed_tools: string | null; body_content: string | null; entry_script: string | null }
 export type CreateStudentInput = { student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null }
+/**
+ * 创建教师档案的输入参数
+ */
+export type CreateTeacherProfileInput = { 
+/**
+ * 教师姓名
+ */
+name: string; 
+/**
+ * 任教学段
+ */
+teaching_stage: string; 
+/**
+ * 任教学科
+ */
+teaching_subject: string }
 /**
  * 创建模板文件输入
  */
