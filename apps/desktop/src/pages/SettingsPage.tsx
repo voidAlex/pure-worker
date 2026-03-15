@@ -16,7 +16,6 @@ import {
   type InstallFromGitInput,
   type ProviderPreset,
   type ModelInfo,
-  type DeleteMcpServerInput,
 } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -1098,7 +1097,6 @@ const McpTab: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
     },
     onError: (err: Error) => error(err.message),
-  },
   });
 
   const deleteServerMutation = useMutation({
@@ -1115,7 +1113,6 @@ const McpTab: React.FC = () => {
       setDeleteTarget(null);
     },
     onError: (err: Error) => error(err.message),
-  },
   });
 
   return (
