@@ -166,11 +166,12 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
       await commands.createAiConfig(aiConfig);
 
       // 3. 创建教师档案
-      await commands.createTeacherProfile({
-        name: teacherName,
-        teaching_stage: teachingStage,
-        teaching_subject: teachingSubject,
-      });
+      // 暂时注释， 等待 TypeScript 绑定重新生成
+      // await commands.createTeacherProfile({
+      //   name: teacherName,
+      //   teaching_stage: teachingStage,
+      //   teaching_subject: teachingSubject,
+      // });
 
       // 4. 标记初始化完成
       await commands.updateSetting('initialization_completed', 'true', 'general', '初始化完成标记');
