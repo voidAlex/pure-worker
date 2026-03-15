@@ -288,8 +288,11 @@ impl LlmProviderService {
         if let Some(model) = input.default_model.as_deref() {
             Self::validate_required(model, "default_model")?;
         }
-        if let Some(key) = input.api_key.as_deref() {
-            Self::validate_required(key, "api_key")?;
+        // 只在提供了新的非空 API Key 时才进行验证
+        if let Some(ref key) = input.api_key {
+            if !key.trim().is_empty() {
+                Self::validate_required(key, "api_key")?;
+            }
         }
 
         let now = Utc::now().to_rfc3339();

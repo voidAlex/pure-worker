@@ -165,16 +165,23 @@ impl OpenAiAdapter {
     }
 
     /// 将 ToolDefinition 转换为 OpenAI 格式
+    ///
+    /// 注意：OpenAI 要求工具名称必须符合正则表达式 ^[a-zA-Z0-9_-]+$（仅允许字母、数字、下划线和连字符）
+    /// 如果工具名称包含点号（如 "math.compute"），需要将其替换为下划线
     fn convert_tools(tools: Vec<ToolDefinition>) -> Vec<OpenAiTool> {
         tools
             .into_iter()
-            .map(|tool| OpenAiTool {
-                tool_type: "function".to_string(),
-                function: OpenAiFunction {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.parameters,
-                },
+            .map(|tool| {
+                // 规范化工具名称：将点号替换为下划线，以符合 OpenAI 命名规范
+                let normalized_name = tool.name.replace('.', "_");
+                OpenAiTool {
+                    tool_type: "function".to_string(),
+                    function: OpenAiFunction {
+                        name: normalized_name,
+                        description: tool.description,
+                        parameters: tool.parameters,
+                    },
+                }
             })
             .collect()
     }
