@@ -11,6 +11,7 @@ pub mod export;
 pub mod global_shortcut;
 pub mod initialization;
 pub mod lesson_record;
+pub mod log;
 pub mod mcp_server;
 pub mod memory_search;
 pub mod observation_note;

@@ -47,6 +47,7 @@ pub mod student_import;
 pub mod student_memory;
 pub mod student_tag;
 pub mod teacher_memory;
+pub mod teacher_profile;
 pub mod template_file;
 pub mod tool_registry;
 pub mod unified_tool;

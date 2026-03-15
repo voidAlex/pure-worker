@@ -33,6 +33,7 @@ fn create_specta_builder() -> Builder<tauri::Wry> {
         commands::ai_param_preset::delete_ai_param_preset,
         commands::ai_param_preset::activate_ai_param_preset,
         commands::profile::get_teacher_profile,
+        commands::log::get_log_path,
         commands::task::list_tasks,
         commands::task::get_task,
         commands::task::recover_task,
