@@ -18,6 +18,7 @@ import {
   Megaphone,
   ClipboardCheck,
   BookOpen,
+  NotebookPen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleCollapse })
     { path: '/students', icon: GraduationCap, label: '学生档案' },
     { path: '/import', icon: UploadCloud, label: '数据导入' },
     { path: '/schedule', icon: CalendarDays, label: '课表日程' },
+    { path: '/lesson-records', icon: NotebookPen, label: '行课记录' },
     { path: '/semester-comments', icon: FileText, label: '期末评语' },
     { path: '/announcements', icon: Megaphone, label: '班会活动' },
     { path: '/assignment-grading', icon: ClipboardCheck, label: '作业批改' },

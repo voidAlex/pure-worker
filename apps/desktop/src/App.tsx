@@ -19,6 +19,7 @@ import { SemesterCommentsPage } from '@/pages/SemesterCommentsPage';
 import { ActivityAnnouncementsPage } from '@/pages/ActivityAnnouncementsPage';
 import { AssignmentGradingPage } from '@/pages/AssignmentGradingPage';
 import { PracticeSheetsPage } from '@/pages/PracticeSheetsPage';
+import { LessonRecordsPage } from '@/pages/LessonRecordsPage';
 import { InitializationWizard } from '@/components/shared/InitializationWizard';
 import { commands } from '@/services/commandClient';
 
@@ -47,6 +48,7 @@ const AppContent = (): ReactElement => (
         <Route path="/announcements" element={<ActivityAnnouncementsPage />} />
         <Route path="/assignment-grading" element={<AssignmentGradingPage />} />
         <Route path="/practice-sheets" element={<PracticeSheetsPage />} />
+        <Route path="/lesson-records" element={<LessonRecordsPage />} />
       </Route>
     </Routes>
   </BrowserRouter>
