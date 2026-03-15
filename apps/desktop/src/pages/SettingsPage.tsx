@@ -16,6 +16,7 @@ import {
   type InstallFromGitInput,
   type ProviderPreset,
   type ModelInfo,
+  type DeleteMcpServerInput,
 } from '@/services/commandClient';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -42,6 +43,8 @@ import {
   Sparkles,
   Zap,
   Github,
+  FolderOpen,
+  Server,
 } from 'lucide-react';
 
 /** 从 AppError 联合类型中提取错误信息字符串 */
@@ -60,7 +63,7 @@ const unwrapResult = <T,>(
   throw new Error(getErrorMessage(res.error));
 };
 
-type TabKey = 'ai' | 'security' | 'template' | 'shortcut' | 'skills';
+type TabKey = 'ai' | 'security' | 'template' | 'shortcut' | 'skills' | 'mcp';
 
 const INITIAL_AI_FORM: CreateAiConfigInput = {
   provider_name: '',
@@ -748,15 +751,14 @@ const ShortcutTab: React.FC = () => {
   );
 };
 
-/** Skills 与 MCP 标签页组件 */
-const SkillsMcpTab: React.FC = () => {
+/** Skills 技能管理标签页组件 */
+const SkillsTab: React.FC = () => {
   const queryClient = useQueryClient();
   const { success, error } = useToast();
 
   const [showGitImport, setShowGitImport] = useState(false);
   const [gitUrl, setGitUrl] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: 'skill' | 'mcp';
     id: string;
     name: string;
   } | null>(null);
@@ -770,6 +772,20 @@ const SkillsMcpTab: React.FC = () => {
       }
       throw new Error('获取技能列表失败');
     },
+  });
+
+  const openDirectoryMutation = useMutation({
+    mutationFn: async () => {
+      const result = await commands.openSkillsDirectory();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error(getErrorMessage(result.error));
+    },
+    onSuccess: (path) => {
+      success(`已打开目录：${path}`);
+    },
+    onError: (err: Error) => error(err.message),
   });
 
   const installFromGitMutation = useMutation({
@@ -845,6 +861,13 @@ const SkillsMcpTab: React.FC = () => {
           <div className="flex gap-2">
             <button
               className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+              onClick={() => openDirectoryMutation.mutate()}
+              disabled={openDirectoryMutation.isPending}
+            >
+              <FolderOpen size={14} /> 打开目录
+            </button>
+            <button
+              className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
               onClick={() => setShowGitImport(true)}
             >
               <Github size={14} /> 从 GitHub 导入
@@ -863,7 +886,7 @@ const SkillsMcpTab: React.FC = () => {
             />
             <div className="flex gap-2">
               <button
-                className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                className="rounded bg-brand-600 px-3 py-1.5 text-sm text-white hover:bg-brand-700"
                 onClick={handleInstallFromGit}
                 disabled={!gitUrl.trim() || installFromGitMutation.isPending}
               >
@@ -927,7 +950,6 @@ const SkillsMcpTab: React.FC = () => {
                     className="rounded p-1.5 text-red-500 hover:bg-red-100"
                     onClick={() =>
                       setDeleteTarget({
-                        type: 'skill',
                         id: item.id,
                         name: item.display_name ?? item.name,
                       })
@@ -962,6 +984,355 @@ const SkillsMcpTab: React.FC = () => {
   );
 };
 
+/** MCP 服务标签页组件 */
+const McpTab: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { success, error } = useToast();
+
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const mcpServersQuery = useQuery({
+    queryKey: ['settings', 'mcp-servers'],
+    queryFn: async () => {
+      const result = await commands.listMcpServers();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('获取 MCP 服务器列表失败');
+    },
+  });
+
+  const toggleServerMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const result = await commands.updateMcpServer({ id, enabled: enabled });
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error(getErrorMessage(result.error));
+    },
+    onSuccess: () => {
+      success('MCP 服务器状态已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+    },
+    onError: (err: Error) => error(err.message),
+  },
+  });
+
+  const deleteServerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const result = await commands.deleteMcpServer({ id });
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error(getErrorMessage(result.error));
+    },
+    onSuccess: () => {
+      success('MCP 服务器已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+      setDeleteTarget(null);
+    },
+    onError: (err: Error) => error(err.message);
+  },
+  });
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">MCP 服务器</h3>
+          <button
+            className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+            onClick={() => setShowAddServer(true)}
+          >
+            <Plus size={14} /> 添加服务器
+          </button>
+        </div>
+
+        {showAddServer && (
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
+            <h4 className="font-medium">添加 MCP 服务器</h4>
+            <p className="text-sm text-gray-500">
+              MCP (Model Context Protocol) 服务器可以为 AI 提供额外的工具能力。
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="rounded bg-brand-600 px-3 py-1.5 text-sm text-white hover:bg-brand-700"
+                onClick={() => {
+                  // TODO: 实现添加 MCP 服务器
+                  setShowAddServer(false);
+                }
+              >
+                添加
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => setShowAddServer(false)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mcpServersQuery.data && mcpServersQuery.data.length > 0 ? (
+          <div className="space-y-2">
+            {mcpServersQuery.data.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+              >
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    {item.enabled ? (
+                      <CheckCircle2 size={16} className="text-green-500" />
+                    ) : (
+                      <XCircle size={16} className="text-gray-400" />
+                    )}
+                    {item.display_name ?? item.name}
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        item.health_status === 'healthy'
+                          ? 'bg-green-100 text-green-700'
+                          : item.health_status === 'error'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {item.health_status ?? 'unknown'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {item.transport} · {item.command ?? '-'}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className={`rounded p-1.5 ${item.enabled ? 'text-orange-500 hover:bg-orange-100' : 'text-green-500 hover:bg-green-100'}`}
+                    onClick={() =>
+                      toggleServerMutation.mutate({
+                        id: item.id,
+                        enabled: !item.enabled,
+                      })
+                    }
+                    title={item.enabled ? '禁用' : '启用'}
+                  >
+                    {item.enabled ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() =>
+                      setDeleteTarget({
+                        id: item.id,
+                        name: item.display_name ?? item.name,
+                      })
+                    }
+                    title="删除"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="暂无 MCP 服务器"
+            description="点击上方按钮添加 MCP 服务器"
+            icon={<Server size={32} className="text-gray-400" />}
+          />
+        )}
+      </section>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="确认删除"
+        message={`确定要删除 MCP 服务器「${deleteTarget?.name ?? ''}」吗？`}
+        confirmText="删除"
+        isDestructive
+        onConfirm={() => deleteTarget && deleteServerMutation.mutate(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+};
+  const queryClient = useQueryClient();
+  const { success, error } = useToast();
+
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const mcpServersQuery = useQuery({
+    queryKey: ['settings', 'mcp-servers'],
+    queryFn: async () => {
+      const result = await commands.listMcpServers();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('获取 MCP 服务器列表失败');
+    },
+  });
+
+  const toggleServerMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const result = await commands.updateMcpServer({ id, enabled: enabled });
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error(getErrorMessage(result.error));
+    },
+    onSuccess: () => {
+      success('MCP 服务器状态已更新');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+    },
+    onError: (err: Error) => error(err.message),
+  },
+  });
+
+  const deleteServerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const result = await commands.deleteMcpServer({ id });
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error(getErrorMessage(result.error));
+    },
+    onSuccess: () => {
+      success('MCP 服务器已删除');
+      queryClient.invalidateQueries({ queryKey: ['settings', 'mcp-servers'] });
+      setDeleteTarget(null);
+    },
+    onError: (err: Error) => error(err.message),
+  },
+  });
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">MCP 服务器</h3>
+          <button
+            className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+            onClick={() => setShowAddServer(true)}
+          >
+            <Plus size={14} /> 添加服务器
+          </button>
+        </div>
+
+        {showAddServer && (
+          <div className="mb-4 space-y-3 rounded-lg border bg-gray-50 p-4">
+            <h4 className="font-medium">添加 MCP 服务器</h4>
+            <p className="text-sm text-gray-500">
+              MCP (Model Context Protocol) 服务器可以为 AI 提供额外的工具能力。
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="rounded bg-brand-600 px-3 py-1.5 text-sm text-white hover:bg-brand-700"
+                onClick={() => {
+                  // TODO: 实现添加 MCP 服务器
+                  setShowAddServer(false);
+                }}
+              >
+                添加
+              </button>
+              <button
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-100"
+                onClick={() => setShowAddServer(false)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mcpServersQuery.data && mcpServersQuery.data.length > 0 ? (
+          <div className="space-y-2">
+            {mcpServersQuery.data.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+              >
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    {item.enabled ? (
+                      <CheckCircle2 size={16} className="text-green-500" />
+                    ) : (
+                      <XCircle size={16} className="text-gray-400" />
+                    )}
+                    {item.display_name ?? item.name}
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        item.health_status === 'healthy'
+                          ? 'bg-green-100 text-green-700'
+                          : item.health_status === 'error'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {item.health_status ?? 'unknown'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {item.transport} · {item.command ?? '-'}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className={`rounded p-1.5 ${item.enabled ? 'text-orange-500 hover:bg-orange-100' : 'text-green-500 hover:bg-green-100'}`}
+                    onClick={() =>
+                      toggleServerMutation.mutate({
+                        id: item.id,
+                        enabled: !item.enabled,
+                      })
+                    }
+                    title={item.enabled ? '禁用' : '启用'}
+                  >
+                    {item.enabled ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-red-500 hover:bg-red-100"
+                    onClick={() =>
+                      setDeleteTarget({
+                        id: item.id,
+                        name: item.display_name ?? item.name,
+                      })
+                    }
+                    title="删除"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="暂无 MCP 服务器"
+            description="点击上方按钮添加 MCP 服务器"
+            icon={<Server size={32} className="text-gray-400" />}
+          />
+        )}
+      </section>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="确认删除"
+        message={`确定要删除 MCP 服务器「${deleteTarget?.name ?? ''}」吗？`}
+        confirmText="删除"
+        isDestructive
+        onConfirm={() => deleteTarget && deleteServerMutation.mutate(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+};
+
 /** 系统设置页面主组件 */
 export const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('ai');
@@ -980,7 +1351,10 @@ export const SettingsPage: React.FC = () => {
     if (activeTab === 'shortcut') {
       return <ShortcutTab />;
     }
-    return <SkillsMcpTab />;
+    if (activeTab === 'skills') {
+      return <SkillsTab />;
+    }
+    return <McpTab />;
   };
 
   return (
@@ -996,7 +1370,8 @@ export const SettingsPage: React.FC = () => {
           { key: 'security' as const, label: '安全隐私', icon: <Shield size={16} /> },
           { key: 'template' as const, label: '模板导出', icon: <FileText size={16} /> },
           { key: 'shortcut' as const, label: '快捷键', icon: <Keyboard size={16} /> },
-          { key: 'skills' as const, label: 'Skills与MCP', icon: <Puzzle size={16} /> },
+          { key: 'skills' as const, label: '技能管理', icon: <Puzzle size={16} /> },
+          { key: 'mcp' as const, label: 'MCP服务', icon: <Server size={16} /> },
         ].map((tab) => (
           <button
             key={tab.key}

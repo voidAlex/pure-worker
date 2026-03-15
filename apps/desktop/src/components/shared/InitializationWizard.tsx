@@ -24,6 +24,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Rocket,
+  User,
 } from 'lucide-react';
 
 interface InitializationWizardProps {
@@ -109,6 +110,8 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
 
     setConnectionStatus('testing');
     setConnectionError('');
+    setModels([]);
+    setSelectedModelId('');
 
     try {
       const res = await commands.fetchProviderModels(
@@ -116,15 +119,16 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
         selectedPreset.base_url,
         apiKey,
       );
-      const models = unwrapResult(res);
+      const modelList = unwrapResult(res);
 
-      setModelCount(models.length);
-      if (models.length === 0) {
+      setModels(modelList);
+      if (modelList.length === 0) {
         setConnectionStatus('failed');
         setConnectionError('未发现可用模型，请检查 API Key 是否正确');
         return;
       }
-      setDefaultModel(models[0].id);
+      // 默认选择第一个模型
+      setSelectedModelId(modelList[0].id);
       setConnectionStatus('success');
     } catch (error) {
       setConnectionStatus('failed');
@@ -151,7 +155,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
         display_name: selectedPreset.display_name,
         base_url: selectedPreset.base_url,
         api_key: apiKey,
-        default_model: defaultModel,
+        default_model: selectedModelId,
         default_text_model: null,
         default_vision_model: null,
         default_tool_model: null,
@@ -161,7 +165,14 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
       };
       await commands.createAiConfig(aiConfig);
 
-      // 3. 标记初始化完成
+      // 3. 创建教师档案
+      await commands.createTeacherProfile({
+        name: teacherName,
+        teaching_stage: teachingStage,
+        teaching_subject: teachingSubject,
+      });
+
+      // 4. 标记初始化完成
       await commands.updateSetting('initialization_completed', 'true', 'general', '初始化完成标记');
 
       onComplete();
@@ -182,29 +193,29 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
             <Rocket className="text-white" size={32} />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">欢迎使用 PureWorker</h1>
-          <p className="text-gray-500 mt-2">只需两步，即可开启您的智能教学助手之旅</p>
+          <p className="text-gray-500 mt-2">只需三步，即可开启您的智能教学助手之旅</p>
         </div>
 
         {/* Step Indicator */}
-        <div className="flex items-center justify-center py-8 px-12 relative">
-          <div className="flex items-center w-full max-w-md relative z-10">
+        <div className="flex items-center justify-center py-6 px-12 relative">
+          <div className="flex items-center w-full max-w-lg relative z-10">
             {/* Step 1 */}
             <div className="flex flex-col items-center flex-1">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
-                ${step === 1 ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-green-500 bg-green-500 text-white'}`}
+                ${step === 1 ? 'border-brand-600 bg-brand-50 text-brand-600' : step > 1 ? 'border-green-500 bg-green-500 text-white' : 'border-gray-200 bg-white text-gray-400'}`}
               >
                 {step > 1 ? <CheckCircle2 size={20} /> : '1'}
               </div>
               <span
-                className={`mt-2 text-sm font-medium ${step === 1 ? 'text-brand-700' : 'text-gray-500'}`}
+                className={`mt-2 text-sm font-medium ${step === 1 ? 'text-brand-700' : step > 1 ? 'text-gray-500' : 'text-gray-400'}`}
               >
                 选择工作目录
               </span>
             </div>
 
-            {/* Line */}
-            <div className="absolute top-5 left-1/4 right-1/4 h-0.5 bg-gray-200 -z-10">
+            {/* Line 1-2 */}
+            <div className="absolute top-5 left-[16.5%] w-[17%] h-0.5 bg-gray-200 -z-10">
               <div
                 className="h-full bg-green-500 transition-all duration-500 ease-in-out"
                 style={{ width: step > 1 ? '100%' : '0%' }}
@@ -215,14 +226,37 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
             <div className="flex flex-col items-center flex-1">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
-                ${step === 2 ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-gray-200 bg-white text-gray-400'}`}
+                ${step === 2 ? 'border-brand-600 bg-brand-50 text-brand-600' : step > 2 ? 'border-green-500 bg-green-500 text-white' : 'border-gray-200 bg-white text-gray-400'}`}
               >
-                2
+                {step > 2 ? <CheckCircle2 size={20} /> : '2'}
               </div>
               <span
                 className={`mt-2 text-sm font-medium ${step === 2 ? 'text-brand-700' : 'text-gray-400'}`}
               >
                 配置 AI 供应商
+              </span>
+            </div>
+
+            {/* Line 2-3 */}
+            <div className="absolute top-5 left-[49.5%] w-[17%] h-0.5 bg-gray-200 -z-10">
+              <div
+                className="h-full bg-green-500 transition-all duration-500 ease-in-out"
+                style={{ width: step > 2 ? '100%' : '0%' }}
+              />
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex flex-col items-center flex-1">
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors duration-300
+                ${step === 3 ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-gray-200 bg-white text-gray-400'}`}
+              >
+                3
+              </div>
+              <span
+                className={`mt-2 text-sm font-medium ${step === 3 ? 'text-brand-700' : 'text-gray-400'}`}
+              >
+                填写教师信息
               </span>
             </div>
           </div>
@@ -345,11 +379,37 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
 
                     {connectionStatus === 'success' && (
                       <span className="flex items-center text-sm font-medium text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-100">
-                        <CheckCircle2 className="mr-1" size={16} /> 连接成功 (发现 {modelCount}{' '}
+                        <CheckCircle2 className="mr-1" size={16} /> 连接成功 (发现 {models.length}{' '}
                         个模型)
                       </span>
                     )}
+                  </div>
 
+                  {/* 模型选择 - 连接成功后显示 */}
+                  {connectionStatus === 'success' && models.length > 0 && (
+                    <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        选择默认模型
+                      </label>
+                      <select
+                        value={selectedModelId}
+                        onChange={(e) => setSelectedModelId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                      >
+                        {models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                            {model.is_vision ? ' (支持视觉)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-2 text-xs text-gray-500">
+                        已选择 {models.find((m) => m.id === selectedModelId)?.name || selectedModelId}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center space-x-3 mt-4">
                     {connectionStatus === 'failed' && (
                       <span className="flex items-center text-sm font-medium text-red-600 bg-red-50 px-3 py-1.5 rounded border border-red-100">
                         <XCircle className="mr-1 flex-shrink-0" size={16} />
@@ -363,6 +423,78 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
               )}
             </div>
           )}
+
+          {step === 3 && (
+            <div className="flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+                <User className="mr-2 text-brand-500" size={20} />
+                填写您的教师信息
+              </h3>
+              <p className="text-gray-600 mb-6 text-sm">
+                这些信息将帮助 PureWorker 更好地为您提供服务。
+              </p>
+
+              <div className="space-y-5">
+                {/* 姓名 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    您的姓名 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherName}
+                    onChange={(e) => setTeacherName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                    placeholder="请输入您的姓名"
+                  />
+                </div>
+
+                {/* 学段 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    任教学段 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={teachingStage}
+                    onChange={(e) => setTeachingStage(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  >
+                    <option value="primary">小学</option>
+                    <option value="junior">初中</option>
+                    <option value="senior">高中</option>
+                  </select>
+                </div>
+
+                {/* 学科 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    任教学科 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={teachingSubject}
+                    onChange={(e) => setTeachingSubject(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  >
+                    <option value="">请选择学科</option>
+                    <option value="语文">语文</option>
+                    <option value="数学">数学</option>
+                    <option value="英语">英语</option>
+                    <option value="物理">物理</option>
+                    <option value="化学">化学</option>
+                    <option value="生物">生物</option>
+                    <option value="历史">历史</option>
+                    <option value="地理">地理</option>
+                    <option value="政治">政治</option>
+                    <option value="音乐">音乐</option>
+                    <option value="美术">美术</option>
+                    <option value="体育">体育</option>
+                    <option value="信息技术">信息技术</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -371,7 +503,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
             <div /> // Placeholder for layout balance
           ) : (
             <button
-              onClick={() => setStep(1)}
+              onClick={() => setStep((step - 1) as 1 | 2 | 3)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors flex items-center"
             >
               <ArrowLeft className="mr-2" size={16} />
@@ -379,7 +511,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
             </button>
           )}
 
-          {step === 1 ? (
+          {step === 1 && (
             <button
               onClick={() => setStep(2)}
               disabled={!workspacePath}
@@ -388,10 +520,23 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
               下一步
               <ArrowRight className="ml-2" size={16} />
             </button>
-          ) : (
+          )}
+
+          {step === 2 && (
+            <button
+              onClick={() => setStep(3)}
+              disabled={connectionStatus !== 'success'}
+              className="px-6 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+            >
+              下一步
+              <ArrowRight className="ml-2" size={16} />
+            </button>
+          )}
+
+          {step === 3 && (
             <button
               onClick={handleComplete}
-              disabled={connectionStatus !== 'success' || saving}
+              disabled={!teacherName.trim() || !teachingSubject || saving}
               className="px-6 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
             >
               {saving ? (
@@ -400,7 +545,7 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="mr-2" size={16} /> 保存并完成
+                  <CheckCircle2 className="mr-2" size={16} /> 完成设置
                 </>
               )}
             </button>
