@@ -7,6 +7,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { listen, Event } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { listConversationMessages, MessageFilters } from '@/services/chatService';
+
 export interface ChatStreamInput {
   conversation_id?: string;
   message: string;
@@ -40,6 +42,8 @@ export interface UseChatStreamReturn {
   error: string | null;
   sendMessage: (message: string) => Promise<void>;
   clearError: () => void;
+  reset: () => void;
+  loadMessages: (conversationId: string) => Promise<void>;
 }
 
 export function useChatStream(options: UseChatStreamOptions = {}): UseChatStreamReturn {
@@ -54,6 +58,14 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
 
   const streamingMessageIdRef = useRef<string | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
+
+  // 当外部 conversationId 变化时重置状态
+  useEffect(() => {
+    setMessages([]);
+    setError(null);
+    setIsStreaming(false);
+    setCurrentConversationId(initialConversationId);
+  }, [initialConversationId]);
 
   // 设置事件监听
   useEffect(() => {
@@ -176,11 +188,50 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     setError(null);
   }, []);
 
+  const reset = useCallback(() => {
+    setMessages([]);
+    setError(null);
+    setIsStreaming(false);
+    setCurrentConversationId(undefined);
+  }, []);
+
+  /**
+   * 加载指定会话的历史消息
+   * @param conversationId 会话ID
+   */
+  const loadMessages = useCallback(async (conversationId: string) => {
+    try {
+      const filters: MessageFilters = {
+        conversationId,
+        limit: 100,
+      };
+      const result = await listConversationMessages(filters);
+
+      // 将服务层消息转换为 ChatMessage 格式
+      const historyMessages: ChatMessage[] = result.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        tool_name: msg.tool_name,
+        created_at: msg.created_at,
+        isStreaming: false,
+      }));
+
+      setMessages(historyMessages);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : '加载历史消息失败';
+      setError(errorMessage);
+      if (onError) onError(errorMessage);
+    }
+  }, [onError]);
+
   return {
     messages,
     isStreaming,
     error,
     sendMessage,
     clearError,
+    reset,
+    loadMessages,
   };
 }

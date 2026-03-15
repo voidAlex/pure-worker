@@ -29,38 +29,48 @@ export function ChatPanel({
     conversationId,
   );
 
-  const { messages, isStreaming, error, sendMessage, clearError } = useChatStream({
+  const { messages, isStreaming, error, sendMessage, clearError, reset, loadMessages } = useChatStream({
     conversationId: currentConversationId,
     agentRole,
   });
 
   // 加载会话列表
-  useEffect(() => {
-    const loadConversations = async () => {
-      try {
-        const result = await listConversations({
-          teacherId,
-          limit: 50,
-        });
-        setConversations(result.conversations);
-      } catch (e) {
-        console.error('加载会话列表失败:', e);
-      }
-    };
+  const loadConversations = async () => {
+    try {
+      const result = await listConversations({
+        teacherId,
+        limit: 50,
+      });
+      setConversations(result.conversations);
+    } catch (e) {
+      console.error('加载会话列表失败:', e);
+    }
+  };
 
+  useEffect(() => {
     loadConversations();
   }, [teacherId]);
 
-  const handleSelectConversation = (id: string) => {
+  const handleSelectConversation = async (id: string) => {
     setCurrentConversationId(id);
+    if (id) {
+      await loadMessages(id);
+    }
   };
 
   const handleCreateNew = () => {
     setCurrentConversationId(undefined);
+    reset();
+  };
+
+  const handleSendMessage = async (message: string) => {
+    await sendMessage(message);
+    if (!currentConversationId) {
+      await loadConversations();
+    }
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -133,7 +143,7 @@ export function ChatPanel({
 
         {/* 输入框 */}
         <div className="border-t border-gray-200 p-4">
-          <ChatInput onSend={sendMessage} disabled={isStreaming} />
+          <ChatInput onSend={handleSendMessage} disabled={isStreaming} />
         </div>
       </div>
     </div>
