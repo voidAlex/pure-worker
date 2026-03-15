@@ -143,11 +143,17 @@ impl ToolDyn for SkillToolAdapter {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolDefinition> + Send + 'a>> {
         // 工具名称必须符合 OpenAI 命名规范: ^[a-zA-Z0-9_-]+$
         // 将点号和其他特殊字符替换为下划线以符合规范
-        let safe_name = self
+        let safe_name: String = self
             .skill_name
-            .replace('.', "_")
-            .replace('-', "_")
-            .replace(' ', "_");
+            .chars()
+            .map(|c| {
+                if c == '.' || c == '-' || c == ' ' {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
         let def = ToolDefinition {
             name: safe_name,
             description: self.skill_description.clone(),
