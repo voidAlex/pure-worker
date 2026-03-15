@@ -230,6 +230,16 @@ const AiConfigTab: React.FC = () => {
           id: item.default_model,
           name: item.default_model,
           is_vision: false,
+          capabilities: {
+            supports_text_input: true,
+            supports_image_input: false,
+            supports_audio_input: false,
+            supports_tool_calling: true,
+            supports_reasoning: false,
+            supports_json_mode: true,
+            context_window: 8192,
+            max_output_tokens: 4096,
+          },
         },
       ]);
     } else {
@@ -1086,7 +1096,15 @@ const McpTab: React.FC = () => {
 
   const toggleServerMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      const result = await commands.updateMcpServer({ id, enabled: enabled });
+      const result = await commands.updateMcpServer(id, {
+        display_name: null,
+        description: null,
+        command: null,
+        args_json: null,
+        env_json: null,
+        permission_scope: null,
+        enabled: enabled ? 1 : 0,
+      });
       if (result.status === 'ok') {
         return result.data;
       }
