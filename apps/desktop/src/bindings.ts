@@ -214,6 +214,19 @@ async getTeacherProfile() : Promise<Result<TeacherProfile, AppError>> {
 }
 },
 /**
+ * 获取应用程序日志目录路径
+ * 
+ * 返回日志文件夹的完整路径，用于前端显示和排查问题
+ */
+async getLogPath() : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_log_path") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * 查询任务列表（可选按状态过滤）。
  */
 async listTasks(status: string | null) : Promise<Result<AsyncTask[], AppError>> {
