@@ -2,44 +2,18 @@
  * 系统设置页面
  * 包含 5 个主标签页：AI配置、安全隐私、模板导出、快捷键、Skills与MCP。
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   commands,
   type AiConfigSafe,
   type CreateAiConfigInput,
   type UpdateAiConfigInput,
-  type AiParamPreset,
-  type CreatePresetInput,
-  type UpdatePresetInput,
-  type GlobalShortcut,
-  type CreateGlobalShortcutInput,
-  type UpdateGlobalShortcutInput,
-  type SkillRecord,
-  type CreateSkillInput,
-  type UpdateSkillInput,
-  type McpServerRecord,
-  type CreateMcpServerInput,
-  type UpdateMcpServerInput,
-  type TemplateFile,
-  type CreateTemplateFileInput,
-  type StorageStats,
-  type UvHealthResult,
   type AppError,
   type DeleteAiConfigInput,
   type DeleteAiParamPresetInput,
-  type ActivateAiParamPresetInput,
-  type ExportWorkspaceInput,
-  type ArchiveWorkspaceInput,
-  type EraseWorkspaceInput,
-  type ListTemplateFilesInput,
-  type DeleteTemplateFileInput,
-  type DeleteGlobalShortcutInput,
   type DeleteSkillInput,
-  type DeleteMcpServerInput,
-  type CreateSkillEnvInput,
   type InstallFromGitInput,
-  type SkillHealthResult,
   type ProviderPreset,
   type ModelInfo,
 } from '@/services/commandClient';
@@ -61,10 +35,6 @@ import {
   CheckCircle2,
   XCircle,
   Activity,
-  Download,
-  Archive,
-  AlertTriangle,
-  Play,
   RefreshCw,
   Loader2,
   Check,
@@ -90,15 +60,6 @@ const unwrapResult = <T,>(
   throw new Error(getErrorMessage(res.error));
 };
 
-/** 将输入框文本转为可空 number */
-const toNullableNumber = (value: string): number | null => {
-  if (value.trim() === '') {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isNaN(parsed) ? null : parsed;
-};
-
 type TabKey = 'ai' | 'security' | 'template' | 'shortcut' | 'skills';
 
 const INITIAL_AI_FORM: CreateAiConfigInput = {
@@ -113,60 +74,6 @@ const INITIAL_AI_FORM: CreateAiConfigInput = {
   default_reasoning_model: null,
   is_active: null,
   config_json: null,
-};
-
-const INITIAL_PRESET_FORM: CreatePresetInput = {
-  name: '',
-  display_name: '',
-  temperature: 0.7,
-  top_p: null,
-  max_tokens: null,
-  is_default: null,
-  is_active: null,
-};
-
-const INITIAL_TEMPLATE_FORM: CreateTemplateFileInput = {
-  type: '',
-  school_scope: null,
-  version: null,
-  file_path: '',
-  enabled: 1,
-};
-
-const INITIAL_SHORTCUT_FORM: CreateGlobalShortcutInput = {
-  action: '',
-  key_combination: '',
-  enabled: 1,
-  description: null,
-};
-
-const INITIAL_SKILL_FORM: CreateSkillInput = {
-  name: '',
-  version: null,
-  source: null,
-  permission_scope: null,
-  display_name: null,
-  description: null,
-  skill_type: 'builtin',
-  env_path: null,
-  config_json: null,
-  license: null,
-  compatibility: null,
-  metadata_json: null,
-  allowed_tools: null,
-  body_content: null,
-  entry_script: null,
-};
-
-const INITIAL_MCP_FORM: CreateMcpServerInput = {
-  name: '',
-  transport: 'stdio',
-  command: null,
-  args_json: null,
-  env_json: null,
-  permission_scope: null,
-  display_name: null,
-  description: null,
 };
 
 /** 供应商图标映射表：根据供应商名称返回对应的 Lucide 图标组件 */
@@ -195,11 +102,6 @@ const AiConfigTab: React.FC = () => {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
 
-  /* ---- 参数预设表单状态 ---- */
-  const [showPresetForm, setShowPresetForm] = useState(false);
-  const [editingPreset, setEditingPreset] = useState<AiParamPreset | null>(null);
-  const [presetForm, setPresetForm] = useState<CreatePresetInput>(INITIAL_PRESET_FORM);
-
   /* ---- 删除确认状态 ---- */
   const [deleteTarget, setDeleteTarget] = useState<{
     type: 'config' | 'preset';
@@ -222,12 +124,6 @@ const AiConfigTab: React.FC = () => {
   const configsQuery = useQuery({
     queryKey: ['settings', 'ai-configs'],
     queryFn: async () => unwrapResult(await commands.listAiConfigs()),
-  });
-
-  /** 查询参数预设列表 */
-  const presetsQuery = useQuery({
-    queryKey: ['settings', 'ai-presets'],
-    queryFn: async () => unwrapResult(await commands.listAiParamPresets()),
   });
 
   /* ==================== 变更操作 ==================== */
@@ -269,34 +165,6 @@ const AiConfigTab: React.FC = () => {
     onError: (err: Error) => error(err.message),
   });
 
-  /** 创建参数预设 */
-  const createPresetMutation = useMutation({
-    mutationFn: async (input: CreatePresetInput) =>
-      unwrapResult(await commands.createAiParamPreset(input)),
-    onSuccess: () => {
-      success('参数预设已创建');
-      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
-      setShowPresetForm(false);
-      setEditingPreset(null);
-      setPresetForm(INITIAL_PRESET_FORM);
-    },
-    onError: (err: Error) => error(err.message),
-  });
-
-  /** 更新参数预设 */
-  const updatePresetMutation = useMutation({
-    mutationFn: async (input: UpdatePresetInput) =>
-      unwrapResult(await commands.updateAiParamPreset(input)),
-    onSuccess: () => {
-      success('参数预设已更新');
-      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
-      setShowPresetForm(false);
-      setEditingPreset(null);
-      setPresetForm(INITIAL_PRESET_FORM);
-    },
-    onError: (err: Error) => error(err.message),
-  });
-
   /** 删除参数预设 */
   const deletePresetMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -305,19 +173,6 @@ const AiConfigTab: React.FC = () => {
     },
     onSuccess: () => {
       success('参数预设已删除');
-      queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
-    },
-    onError: (err: Error) => error(err.message),
-  });
-
-  /** 激活参数预设 */
-  const activatePresetMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const input: ActivateAiParamPresetInput = { id };
-      return unwrapResult(await commands.activateAiParamPreset(input));
-    },
-    onSuccess: () => {
-      success('预设已激活');
       queryClient.invalidateQueries({ queryKey: ['settings', 'ai-presets'] });
     },
     onError: (err: Error) => error(err.message),
@@ -447,47 +302,6 @@ const AiConfigTab: React.FC = () => {
       return;
     }
     createConfigMutation.mutate(configForm);
-  };
-
-  /** 打开参数预设创建表单 */
-  const openCreatePresetForm = () => {
-    setEditingPreset(null);
-    setPresetForm(INITIAL_PRESET_FORM);
-    setShowPresetForm(true);
-  };
-
-  /** 打开参数预设编辑表单 */
-  const openEditPresetForm = (item: AiParamPreset) => {
-    setEditingPreset(item);
-    setPresetForm({
-      name: item.name,
-      display_name: item.display_name,
-      temperature: item.temperature,
-      top_p: item.top_p,
-      max_tokens: item.max_tokens,
-      is_default: item.is_default === 1,
-      is_active: item.is_active === 1,
-    });
-    setShowPresetForm(true);
-  };
-
-  /** 提交参数预设表单 */
-  const submitPresetForm = () => {
-    if (editingPreset) {
-      const input: UpdatePresetInput = {
-        id: editingPreset.id,
-        name: presetForm.name.trim() === '' ? null : presetForm.name,
-        display_name: presetForm.display_name.trim() === '' ? null : presetForm.display_name,
-        temperature: presetForm.temperature,
-        top_p: presetForm.top_p,
-        max_tokens: presetForm.max_tokens,
-        is_default: presetForm.is_default,
-        is_active: presetForm.is_active,
-      };
-      updatePresetMutation.mutate(input);
-      return;
-    }
-    createPresetMutation.mutate(presetForm);
   };
 
   /** 执行删除动作 */

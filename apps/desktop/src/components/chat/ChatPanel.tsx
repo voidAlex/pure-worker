@@ -23,7 +23,6 @@ export function ChatPanel({
   className = '',
   teacherId,
 }: ChatPanelProps) {
-  const [mounted, setMounted] = useState(false);
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(
     conversationId,
@@ -35,19 +34,18 @@ export function ChatPanel({
   });
 
   // 加载会话列表
-  const loadConversations = async () => {
-    try {
-      const result = await listConversations({
-        teacherId,
-        limit: 50,
-      });
-      setConversations(result.conversations);
-    } catch (e) {
-      console.error('加载会话列表失败:', e);
-    }
-  };
-
   useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const result = await listConversations({
+          teacherId,
+          limit: 50,
+        });
+        setConversations(result.conversations);
+      } catch (e) {
+        console.error('加载会话列表失败:', e);
+      }
+    };
     loadConversations();
   }, [teacherId]);
 
@@ -69,14 +67,6 @@ export function ChatPanel({
       await loadConversations();
     }
   };
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
 
   return (
     <div className={`flex h-full bg-white ${className}`}>
