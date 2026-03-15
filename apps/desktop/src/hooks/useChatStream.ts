@@ -15,11 +15,53 @@ export interface ChatStreamInput {
   agent_role: string;
 }
 
+/**
+ * 流式聊天事件类型（与后端 ChatStreamEvent 保持同步）
+ */
 export type ChatStreamEvent =
   | { type: 'Start'; message_id: string }
   | { type: 'Chunk'; content: string }
   | { type: 'Complete' }
-  | { type: 'Error'; message: string };
+  | { type: 'Error'; message: string }
+  | { type: 'ThinkingStatus'; stage: string; description: string }
+  | { type: 'ToolCall'; tool_name: string; input: unknown }
+  | { type: 'ToolResult'; tool_name: string; output: string; success: boolean }
+  | { type: 'SearchSummary'; sources: string[]; evidence_count: number }
+  | { type: 'Reasoning'; summary: string };
+
+/**
+ * 思考状态阶段枚举
+ */
+export type ThinkingStage = 'searching' | 'reasoning' | 'tool_calling' | 'generating';
+
+/**
+ * 思考轨迹信息
+ */
+export interface ThinkingTrace {
+  stage: ThinkingStage;
+  description: string;
+  toolCalls: ToolCallInfo[];
+  searchSummary?: SearchSummaryInfo;
+  reasoning?: string;
+}
+
+/**
+ * 工具调用信息
+ */
+export interface ToolCallInfo {
+  toolName: string;
+  input?: unknown;
+  output?: string;
+  success?: boolean;
+}
+
+/**
+ * 搜索摘要信息
+ */
+export interface SearchSummaryInfo {
+  sources: string[];
+  evidenceCount: number;
+}
 
 export interface ChatMessage {
   id: string;
@@ -28,6 +70,8 @@ export interface ChatMessage {
   tool_name?: string;
   created_at: string;
   isStreaming?: boolean;
+  /** 思考轨迹信息（仅 assistant 消息） */
+  thinkingTrace?: ThinkingTrace;
 }
 
 export interface UseChatStreamOptions {
@@ -61,7 +105,12 @@ type ChatAction =
   | { type: 'ERROR'; message: string }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SET_MESSAGES'; messages: ChatMessage[] }
-  | { type: 'SET_CONVERSATION_ID'; id: string };
+  | { type: 'SET_CONVERSATION_ID'; id: string }
+  | { type: 'THINKING_STATUS'; stage: ThinkingStage; description: string }
+  | { type: 'TOOL_CALL'; toolName: string; input: unknown }
+  | { type: 'TOOL_RESULT'; toolName: string; output: string; success: boolean }
+  | { type: 'SEARCH_SUMMARY'; sources: string[]; evidenceCount: number }
+  | { type: 'REASONING'; summary: string };
 
 const initialState = (conversationId: string | undefined): ChatState => ({
   messages: [],
@@ -87,6 +136,11 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
             content: '',
             created_at: new Date().toISOString(),
             isStreaming: true,
+            thinkingTrace: {
+              stage: 'searching' as ThinkingStage,
+              description: '',
+              toolCalls: [],
+            },
           },
         ],
       };
@@ -129,6 +183,125 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, messages: action.messages };
     case 'SET_CONVERSATION_ID':
       return { ...state, currentConversationId: action.id };
+    // 处理思考状态更新
+    case 'THINKING_STATUS': {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
+        return {
+          ...state,
+          messages: [
+            ...state.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              thinkingTrace: {
+                ...lastMessage.thinkingTrace,
+                stage: action.stage,
+                description: action.description,
+              },
+            },
+          ],
+        };
+      }
+      return state;
+    }
+    // 处理工具调用
+    case 'TOOL_CALL': {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
+        return {
+          ...state,
+          messages: [
+            ...state.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              thinkingTrace: {
+                ...lastMessage.thinkingTrace,
+                stage: 'tool_calling',
+                toolCalls: [
+                  ...lastMessage.thinkingTrace.toolCalls,
+                  { toolName: action.toolName, input: action.input },
+                ],
+              },
+            },
+          ],
+        };
+      }
+      return state;
+    }
+    // 处理工具调用结果
+    case 'TOOL_RESULT': {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
+        const toolCalls = [...lastMessage.thinkingTrace.toolCalls];
+        // 查找对应的工具调用并更新结果
+        const toolIndex = toolCalls.findIndex((tc) => tc.toolName === action.toolName && tc.output === undefined);
+        if (toolIndex >= 0) {
+          toolCalls[toolIndex] = {
+            ...toolCalls[toolIndex],
+            output: action.output,
+            success: action.success,
+          };
+        }
+        return {
+          ...state,
+          messages: [
+            ...state.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              thinkingTrace: {
+                ...lastMessage.thinkingTrace,
+                toolCalls,
+              },
+            },
+          ],
+        };
+      }
+      return state;
+    }
+    // 处理搜索摘要
+    case 'SEARCH_SUMMARY': {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
+        return {
+          ...state,
+          messages: [
+            ...state.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              thinkingTrace: {
+                ...lastMessage.thinkingTrace,
+                searchSummary: {
+                  sources: action.sources,
+                  evidenceCount: action.evidenceCount,
+                },
+              },
+            },
+          ],
+        };
+      }
+      return state;
+    }
+    // 处理推理摘要
+    case 'REASONING': {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
+        return {
+          ...state,
+          messages: [
+            ...state.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              thinkingTrace: {
+                ...lastMessage.thinkingTrace,
+                stage: 'reasoning',
+                reasoning: action.summary,
+              },
+            },
+          ],
+        };
+      }
+      return state;
+    }
     default:
       return state;
   }
@@ -183,6 +356,51 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
               streamingMessageIdRef.current = null;
               if (onError) onError(payload.message);
               dispatch({ type: 'ERROR', message: payload.message });
+              break;
+
+            // 处理思考状态更新
+            case 'ThinkingStatus':
+              dispatch({
+                type: 'THINKING_STATUS',
+                stage: payload.stage as ThinkingStage,
+                description: payload.description,
+              });
+              break;
+
+            // 处理工具调用
+            case 'ToolCall':
+              dispatch({
+                type: 'TOOL_CALL',
+                toolName: payload.tool_name,
+                input: payload.input,
+              });
+              break;
+
+            // 处理工具调用结果
+            case 'ToolResult':
+              dispatch({
+                type: 'TOOL_RESULT',
+                toolName: payload.tool_name,
+                output: payload.output,
+                success: payload.success,
+              });
+              break;
+
+            // 处理搜索摘要
+            case 'SearchSummary':
+              dispatch({
+                type: 'SEARCH_SUMMARY',
+                sources: payload.sources,
+                evidenceCount: payload.evidence_count,
+              });
+              break;
+
+            // 处理推理摘要
+            case 'Reasoning':
+              dispatch({
+                type: 'REASONING',
+                summary: payload.summary,
+              });
               break;
           }
         },
