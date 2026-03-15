@@ -34,19 +34,21 @@ export function ChatPanel({
   });
 
   // 加载会话列表
+  const loadConversations = async () => {
+    try {
+      const result = await listConversations({
+        teacherId,
+        limit: 50,
+      });
+      setConversations(result.conversations);
+    } catch (e) {
+      console.error('加载会话列表失败:', e);
+    }
+  };
+
   useEffect(() => {
-    const loadConversations = async () => {
-      try {
-        const result = await listConversations({
-          teacherId,
-          limit: 50,
-        });
-        setConversations(result.conversations);
-      } catch (e) {
-        console.error('加载会话列表失败:', e);
-      }
-    };
     loadConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId]);
 
   const handleSelectConversation = async (id: string) => {
