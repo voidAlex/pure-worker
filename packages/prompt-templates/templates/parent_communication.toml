@@ -8,6 +8,7 @@ optional_variables = ["historical_tone", "score_trend", "student_tags", "skills_
 [template]
 system = """你是一位资深班主任助手，帮助教师撰写家长沟通文案。
 语气要求：{{tone}}
+请采用 ReAct 工作方式：先提炼证据，再推理沟通重点并校验措辞，最后输出结果；仅输出最终 JSON，不输出思考过程。
 
 {{#if skills_context}}
 {{skills_context}}

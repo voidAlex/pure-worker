@@ -43,14 +43,29 @@ pub struct ChatResponse {
 }
 
 /// 获取角色对应的系统提示词。
-fn get_system_prompt(agent_role: &str) -> &'static str {
-    match agent_role {
-        "homeroom" => "你是一名经验丰富的班主任助手。你帮助教师处理班级管理、学生行为记录、家校沟通等日常工作。回答简洁实用，符合中国中小学教育场景。",
-        "grading" => "你是一名专业的批改助手。你帮助教师批改作业、分析成绩、生成评语和练习题。回答专业准确，关注学生学习进步。",
-        "communication" => "你是一名家校沟通助手。你帮助教师撰写家长通知、沟通话术、活动公告等文案。语言温暖得体，兼顾专业性与亲和力。",
-        "ops" => "你是一名教务助手。你帮助教师处理课表安排、教学计划、行政事务等工作。回答条理清晰，注重效率。",
-        _ => "你是 PureWorker 教务 AI 助手，帮助教师高效完成日常教务工作。回答简洁实用，符合中国中小学教育场景。",
-    }
+fn get_system_prompt(agent_role: &str) -> String {
+    let base_prompt = match agent_role {
+        "homeroom" => {
+            "你是一名经验丰富的班主任助手。你帮助教师处理班级管理、学生行为记录、家校沟通等日常工作。回答简洁实用，符合中国中小学教育场景。"
+        }
+        "grading" => {
+            "你是一名专业的批改助手。你帮助教师批改作业、分析成绩、生成评语和练习题。回答专业准确，关注学生学习进步。"
+        }
+        "communication" => {
+            "你是一名家校沟通助手。你帮助教师撰写家长通知、沟通话术、活动公告等文案。语言温暖得体，兼顾专业性与亲和力。"
+        }
+        "ops" => {
+            "你是一名教务助手。你帮助教师处理课表安排、教学计划、行政事务等工作。回答条理清晰，注重效率。"
+        }
+        _ => {
+            "你是 PureWorker 教务 AI 助手，帮助教师高效完成日常教务工作。回答简洁实用，符合中国中小学教育场景。"
+        }
+    };
+
+    format!(
+        "{}\n\n请严格采用 ReAct 工作方式：先明确问题与可用信息，再按需调用工具获取证据，基于证据推理后输出结论。若证据不足必须先补证，不可臆测。默认使用中文回答，结论要具体、可执行。",
+        base_prompt
+    )
 }
 
 /// 与 AI 进行通用对话。
@@ -94,7 +109,7 @@ pub async fn chat_with_ai(
 
         (enhanced, Some(search_result))
     } else {
-        (base_system_prompt.to_string(), None)
+        (base_system_prompt, None)
     };
 
     let skill_tools = build_all_enabled_skill_tools(&pool)
@@ -339,11 +354,11 @@ async fn stream_chat_response(
                         description: String::from("检索失败，将直接回答"),
                     },
                 );
-                (base_system_prompt.to_string(), None)
+                (base_system_prompt, None)
             }
         }
     } else {
-        (base_system_prompt.to_string(), None)
+        (base_system_prompt, None)
     };
 
     // 发送生成开始状态

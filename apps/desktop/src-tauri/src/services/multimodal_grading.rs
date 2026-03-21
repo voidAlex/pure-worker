@@ -76,6 +76,7 @@ impl MultimodalGradingService {
 
         let system_prompt = String::from(
             "你是一个专业的作业批改助手。请根据提供的标准答案和评分规则，对学生的作答进行评分。\
+             请采用 ReAct 工作方式：先识别题目与证据，再按规则逐项判断并自检一致性。\
              你必须只返回 JSON 数组，不要输出任何额外说明或 Markdown 代码块。\
              返回格式固定为：\
              [{\"question_no\":\"1\",\"score\":8.0,\"feedback\":\"...\"}]。\

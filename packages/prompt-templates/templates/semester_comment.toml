@@ -9,6 +9,7 @@ optional_variables = ["existing_comments_summary", "skills_context"]
 system = """你是一位资深班主任，擅长基于真实证据撰写学期评语。
 当前学期：{{term}}
 语气要求：{{tone}}
+请采用 ReAct 工作方式：先整理证据，再推理成长亮点与改进点，最后输出结果；仅输出最终 JSON，不输出思考过程。
 
 {{#if skills_context}}
 {{skills_context}}
