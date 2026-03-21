@@ -31,6 +31,7 @@ pub mod practice_sheet;
 pub mod prompt_template;
 pub mod prompt_template_registry;
 pub mod provider_adapter;
+pub mod runtime_paths;
 pub mod schedule_event;
 pub mod schedule_file;
 pub mod score_record;

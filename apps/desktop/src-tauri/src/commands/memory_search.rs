@@ -5,11 +5,12 @@
 use std::path::PathBuf;
 
 use sqlx::SqlitePool;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::error::AppError;
 use crate::models::memory_search::{MemorySearchInput, SearchEvidenceResult};
 use crate::services::memory_search::MemorySearchService;
+use crate::services::runtime_paths;
 
 /// 统一证据检索 IPC 命令。
 #[tauri::command]
@@ -23,7 +24,7 @@ pub async fn search_evidence(
     MemorySearchService::search_evidence(&pool, &workspace_path, input).await
 }
 
-/// 解析工作区路径，优先使用输入参数，其次回退到应用数据目录。
+/// 解析工作区路径，优先使用输入参数，其次回退到运行时配置目录。
 fn resolve_workspace_path(
     app_handle: &tauri::AppHandle,
     input: &MemorySearchInput,
@@ -38,12 +39,5 @@ fn resolve_workspace_path(
         return Ok(PathBuf::from(path));
     }
 
-    let app_data_dir = app_handle.path().app_data_dir().map_err(|error| {
-        AppError::Config(format!(
-            "获取应用数据目录失败，无法推导 workspace_path：{}",
-            error
-        ))
-    })?;
-
-    Ok(app_data_dir.join("workspace"))
+    runtime_paths::resolve_workspace_path(app_handle)
 }

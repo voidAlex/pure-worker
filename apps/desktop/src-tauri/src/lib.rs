@@ -12,6 +12,43 @@ use specta_typescript::BigIntExportBehavior;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
+#[cfg(not(debug_assertions))]
+fn runtime_startup_log_path(app: &tauri::App) -> Option<std::path::PathBuf> {
+    if let Ok(workspace_path) = crate::services::runtime_paths::resolve_workspace_path(app.handle())
+    {
+        if crate::services::runtime_paths::ensure_workspace_layout(&workspace_path).is_ok() {
+            return Some(
+                crate::services::runtime_paths::log_dir_path(&workspace_path).join("startup.log"),
+            );
+        }
+    }
+
+    app.path()
+        .app_log_dir()
+        .ok()
+        .map(|log_dir| log_dir.join("startup.log"))
+}
+
+#[cfg(not(debug_assertions))]
+fn append_startup_log(app: &tauri::App, message: &str, overwrite: bool) {
+    if let Some(log_path) = runtime_startup_log_path(app) {
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        if overwrite {
+            let _ = std::fs::write(&log_path, message);
+            return;
+        }
+
+        let _ = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&log_path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, message.as_bytes()));
+    }
+}
+
 fn create_specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         commands::settings::get_app_settings,
@@ -231,13 +268,9 @@ pub fn run() {
             // 在 release 模式下写入启动日志文件，便于排查安装包崩溃问题
             #[cfg(not(debug_assertions))]
             {
-                if let Ok(log_dir) = app.path().app_log_dir() {
-                    let _ = std::fs::create_dir_all(&log_dir);
-                    let log_path = log_dir.join("startup.log");
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                    let msg = format!("[{}] PureWorker 启动中...\n", timestamp);
-                    let _ = std::fs::write(&log_path, &msg);
-                }
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let msg = format!("[{}] PureWorker 启动中...\n", timestamp);
+                append_startup_log(app, &msg, true);
             }
 
             let app_handle = app.handle().clone();
@@ -247,17 +280,9 @@ pub fn run() {
                     // 数据库初始化失败时，写入日志并返回错误（避免 panic 导致秒退）
                     #[cfg(not(debug_assertions))]
                     {
-                        if let Ok(log_dir) = app.path().app_log_dir() {
-                            let log_path = log_dir.join("startup.log");
-                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                            let msg = format!("[{}] 数据库初始化失败：{}\n", timestamp, error);
-                            let _ = std::fs::OpenOptions::new()
-                                .append(true)
-                                .open(&log_path)
-                                .and_then(|mut f| {
-                                    std::io::Write::write_all(&mut f, msg.as_bytes())
-                                });
-                        }
+                        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                        let msg = format!("[{}] 数据库初始化失败：{}\n", timestamp, error);
+                        append_startup_log(app, &msg, false);
                     }
                     eprintln!("[Startup] 数据库初始化失败：{}", error);
                     return Err(format!("数据库初始化失败：{}", error).into());
@@ -267,15 +292,9 @@ pub fn run() {
             // 数据库初始化成功，记录日志
             #[cfg(not(debug_assertions))]
             {
-                if let Ok(log_dir) = app.path().app_log_dir() {
-                    let log_path = log_dir.join("startup.log");
-                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                    let msg = format!("[{}] 数据库初始化成功，应用启动完成\n", timestamp);
-                    let _ = std::fs::OpenOptions::new()
-                        .append(true)
-                        .open(&log_path)
-                        .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
-                }
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let msg = format!("[{}] 数据库初始化成功，应用启动完成\n", timestamp);
+                append_startup_log(app, &msg, false);
             }
 
             app.manage(pool.clone());
@@ -292,35 +311,18 @@ pub fn run() {
                 Ok(count) => {
                     #[cfg(not(debug_assertions))]
                     {
-                        if let Ok(log_dir) = app.path().app_log_dir() {
-                            let log_path = log_dir.join("startup.log");
-                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                            let msg =
-                                format!("[{}] MCP 工具注册成功：{} 个工具\n", timestamp, count);
-                            let _ = std::fs::OpenOptions::new()
-                                .append(true)
-                                .open(&log_path)
-                                .and_then(|mut f| {
-                                    std::io::Write::write_all(&mut f, msg.as_bytes())
-                                });
-                        }
+                        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                        let msg = format!("[{}] MCP 工具注册成功：{} 个工具\n", timestamp, count);
+                        append_startup_log(app, &msg, false);
                     }
                     println!("[Startup] MCP 工具注册成功：{} 个工具", count);
                 }
                 Err(e) => {
                     #[cfg(not(debug_assertions))]
                     {
-                        if let Ok(log_dir) = app.path().app_log_dir() {
-                            let log_path = log_dir.join("startup.log");
-                            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-                            let msg = format!("[{}] MCP 工具注册失败：{}\n", timestamp, e);
-                            let _ = std::fs::OpenOptions::new()
-                                .append(true)
-                                .open(&log_path)
-                                .and_then(|mut f| {
-                                    std::io::Write::write_all(&mut f, msg.as_bytes())
-                                });
-                        }
+                        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                        let msg = format!("[{}] MCP 工具注册失败：{}\n", timestamp, e);
+                        append_startup_log(app, &msg, false);
                     }
                     eprintln!("[Startup] MCP 工具注册失败：{}", e);
                     // 不阻断启动，继续运行

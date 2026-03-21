@@ -4,13 +4,13 @@
 
 use serde::Deserialize;
 use specta::Type;
-use tauri::Manager;
 
 use crate::error::AppError;
 use crate::models::student_memory::{
     AppendMemoryNoteInput, InitStudentMemoryInput, MemoryEntry, ReadCommentMaterialsInput,
     ReadMemoryByTopicInput, ReadMemoryTimelineInput, SensitiveInfoResult,
 };
+use crate::services::runtime_paths;
 use crate::services::student_memory;
 
 /// 文本敏感信息检测输入。
@@ -21,11 +21,7 @@ pub struct CheckSensitiveInput {
 }
 
 fn get_workspace_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
-    let data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::FileOperation(format!("获取数据目录失败：{e}")))?;
-    Ok(data_dir.join("workspace"))
+    runtime_paths::resolve_workspace_path(app_handle)
 }
 
 /// 初始化学生长期记忆目录与当月模板。

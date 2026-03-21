@@ -1,6 +1,5 @@
-use tauri::Manager;
-
 use crate::error::AppError;
+use crate::services::runtime_paths;
 
 /// 获取应用程序日志目录路径
 ///
@@ -8,10 +7,9 @@ use crate::error::AppError;
 #[tauri::command]
 #[specta::specta]
 pub fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, AppError> {
-    let log_dir = app_handle
-        .path()
-        .app_log_dir()
-        .map_err(|e| AppError::Internal(format!("无法获取日志目录：{}", e)))?;
+    let workspace_path = runtime_paths::resolve_workspace_path(&app_handle)?;
+    runtime_paths::ensure_workspace_layout(&workspace_path)?;
+    let log_dir = runtime_paths::log_dir_path(&workspace_path);
 
     // 确保日志目录存在
     if let Err(e) = std::fs::create_dir_all(&log_dir) {

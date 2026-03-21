@@ -3,23 +3,20 @@
 //! 暴露教师偏好管理、soul.md/user.md 文件管理、候选记忆处理等 IPC 命令。
 
 use sqlx::SqlitePool;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::error::AppError;
 use crate::models::teacher_memory::{
     ConfirmCandidateInput, ListCandidatesInput, MemoryCandidate, RejectCandidateInput,
     ReloadSoulMdInput, SetPreferenceInput, SoulMdContent, SystemPromptContext, TeacherPreference,
 };
+use crate::services::runtime_paths;
 use crate::services::soul_md_manager::SoulMdManager;
 use crate::services::teacher_memory::TeacherMemoryService;
 
 /// 获取 workspace 路径
 fn get_workspace_path(app_handle: &AppHandle) -> Result<std::path::PathBuf, AppError> {
-    let data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| AppError::FileOperation(format!("获取数据目录失败: {}", e)))?;
-    Ok(data_dir.join("workspace"))
+    runtime_paths::resolve_workspace_path(app_handle)
 }
 
 /// 获取所有教师偏好

@@ -30,12 +30,20 @@ pub async fn get_setting(pool: State<'_, SqlitePool>, key: String) -> Result<App
 #[tauri::command]
 #[specta::specta]
 pub async fn update_setting(
+    app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
     key: String,
     value: String,
     category: String,
     description: Option<String>,
 ) -> Result<AppSetting, AppError> {
+    if key == "workspace_path" {
+        let workspace_path =
+            crate::services::runtime_paths::normalize_workspace_setting_value(&value);
+        crate::services::runtime_paths::persist_workspace_path(&app_handle, &workspace_path)?;
+        crate::services::runtime_paths::ensure_workspace_layout(&workspace_path)?;
+    }
+
     services::app_settings::AppSettingsService::upsert_setting(
         &pool,
         &key,

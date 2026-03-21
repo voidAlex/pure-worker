@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqlitePool;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::error::AppError;
 use crate::models::assignment_grading::{
@@ -19,15 +19,7 @@ use crate::models::assignment_grading::{
 use crate::models::async_task::AsyncTask;
 use crate::services;
 use crate::services::async_task::AsyncTaskService;
-
-/// 获取应用工作区路径。
-fn get_workspace_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
-    let data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|error| AppError::FileOperation(format!("获取数据目录失败：{error}")))?;
-    Ok(data_dir.join("workspace"))
-}
+use crate::services::runtime_paths;
 
 /// 列出某个班级批改任务的请求参数。
 #[derive(Debug, Deserialize, Type)]
@@ -241,7 +233,7 @@ pub async fn start_grading(
     )
     .await?;
     let pool_clone = pool.inner().clone();
-    let workspace_path = get_workspace_path(&app_handle)?;
+    let workspace_path = runtime_paths::resolve_workspace_path(&app_handle)?;
     let job_id = input.job_id.clone();
     let task_id = task.id.clone();
     let grading_mode = job.grading_mode.clone();
@@ -424,7 +416,7 @@ pub async fn generate_practice_sheet(
     pool: State<'_, SqlitePool>,
     input: GeneratePracticeSheetInput,
 ) -> Result<PracticeSheet, AppError> {
-    let workspace_path = get_workspace_path(&app_handle)?;
+    let workspace_path = runtime_paths::resolve_workspace_path(&app_handle)?;
     services::practice_sheet::PracticeSheetService::generate_practice_sheet(
         &pool,
         input,

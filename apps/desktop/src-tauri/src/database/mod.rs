@@ -13,22 +13,63 @@ use std::time::Duration;
 use tauri::Manager;
 
 use crate::error::AppError;
+use crate::services::runtime_paths;
 
 /// Database file name
 const DB_NAME: &str = "pureworker.db";
 
-/// Get the default database directory (app data directory)
-fn get_default_db_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
-    let app_data_dir = app_handle
+fn get_database_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
+    let workspace_path = runtime_paths::resolve_workspace_path(app_handle)?;
+    runtime_paths::ensure_workspace_layout(&workspace_path)?;
+    let target_path = runtime_paths::database_file_path(&workspace_path);
+
+    migrate_legacy_database_if_needed(app_handle, &target_path)?;
+    Ok(target_path)
+}
+
+fn migrate_legacy_database_if_needed(
+    app_handle: &tauri::AppHandle,
+    target_db_path: &std::path::Path,
+) -> Result<(), AppError> {
+    if target_db_path.exists() {
+        return Ok(());
+    }
+
+    let legacy_db_path = app_handle
         .path()
         .app_data_dir()
-        .map_err(|e| AppError::Internal(format!("无法获取应用数据目录：{}", e)))?;
+        .map_err(|e| AppError::Internal(format!("无法获取应用数据目录：{}", e)))?
+        .join(DB_NAME);
 
-    // Create directory if it doesn't exist
-    std::fs::create_dir_all(&app_data_dir)
-        .map_err(|e| AppError::Internal(format!("无法创建应用数据目录：{}", e)))?;
+    if !legacy_db_path.exists() {
+        return Ok(());
+    }
 
-    Ok(app_data_dir.join(DB_NAME))
+    if let Some(parent) = target_db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::Internal(format!("无法创建数据库目录：{}", e)))?;
+    }
+
+    std::fs::copy(&legacy_db_path, target_db_path)
+        .map_err(|e| AppError::Internal(format!("迁移数据库文件失败：{}", e)))?;
+    copy_sidecar_if_exists(&legacy_db_path, target_db_path, "-wal")?;
+    copy_sidecar_if_exists(&legacy_db_path, target_db_path, "-shm")
+}
+
+fn copy_sidecar_if_exists(
+    source_db_path: &std::path::Path,
+    target_db_path: &std::path::Path,
+    suffix: &str,
+) -> Result<(), AppError> {
+    let source = PathBuf::from(format!("{}{}", source_db_path.display(), suffix));
+    if !source.exists() {
+        return Ok(());
+    }
+
+    let target = PathBuf::from(format!("{}{}", target_db_path.display(), suffix));
+    std::fs::copy(&source, &target)
+        .map_err(|e| AppError::Internal(format!("迁移数据库附属文件失败：{}", e)))?;
+    Ok(())
 }
 
 /// Initialize SQLite connection pool with PRAGMA settings and run migrations
@@ -45,7 +86,7 @@ fn get_default_db_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppErro
 /// - PRAGMA settings fail
 /// - Migrations fail
 pub async fn init_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, AppError> {
-    let db_path = get_default_db_path(app_handle)?;
+    let db_path = get_database_path(app_handle)?;
 
     println!("[Database] Initializing database at: {:?}", db_path);
 

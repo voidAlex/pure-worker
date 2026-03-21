@@ -40,6 +40,7 @@ pure-worker/
 - 产品需求：`doc/prd-v1.0.md`
 - 技术方案：`doc/tech-solution-v1.0.md`
 - 细粒度开发计划：`doc/development-plan-v1.0.md`
+- 工作目录结构规范：`doc/workspace-directory-structure.md`
 
 ## 开发原则
 

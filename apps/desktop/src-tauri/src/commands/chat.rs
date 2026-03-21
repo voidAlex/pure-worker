@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqlitePool;
 use tauri::Emitter;
-use tauri::Manager;
 use tauri::State;
 
 use crate::error::AppError;
@@ -20,6 +19,7 @@ use crate::services::agentic_search::AgenticSearchOrchestrator;
 use crate::services::agentic_search_agent::format_search_result_for_prompt;
 use crate::services::conversation_service::ConversationService;
 use crate::services::llm_provider::LlmProviderService;
+use crate::services::runtime_paths;
 use crate::services::skill_tool_adapter::build_all_enabled_skill_tools;
 
 /// 聊天请求输入。
@@ -518,14 +518,7 @@ async fn get_current_teacher_id(pool: &SqlitePool) -> Result<String, AppError> {
 
 /// 解析工作区路径。
 fn resolve_workspace_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, AppError> {
-    let app_data_dir = app_handle.path().app_data_dir().map_err(|error| {
-        AppError::Config(format!(
-            "获取应用数据目录失败，无法推导 workspace_path：{}",
-            error
-        ))
-    })?;
-
-    Ok(app_data_dir.join("workspace"))
+    runtime_paths::resolve_workspace_path(app_handle)
 }
 
 #[cfg(test)]
