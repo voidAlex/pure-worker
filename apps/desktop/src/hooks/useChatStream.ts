@@ -32,7 +32,13 @@ export type ChatStreamEvent =
 /**
  * 思考状态阶段枚举
  */
-export type ThinkingStage = 'searching' | 'reasoning' | 'tool_calling' | 'generating';
+export type ThinkingStage =
+  | 'searching'
+  | 'reasoning'
+  | 'tool_calling'
+  | 'generating'
+  | 'search_failed'
+  | 'complete';
 
 /**
  * 思考轨迹信息
@@ -99,6 +105,8 @@ interface ChatState {
 
 type ChatAction =
   | { type: 'RESET'; conversationId: string | undefined }
+  | { type: 'ADD_MESSAGE'; message: ChatMessage }
+  | { type: 'SET_STREAMING'; value: boolean }
   | { type: 'START'; messageId: string }
   | { type: 'CHUNK'; content: string }
   | { type: 'COMPLETE' }
@@ -123,6 +131,16 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case 'RESET':
       return initialState(action.conversationId);
+    case 'ADD_MESSAGE':
+      return {
+        ...state,
+        messages: [...state.messages, action.message],
+      };
+    case 'SET_STREAMING':
+      return {
+        ...state,
+        isStreaming: action.value,
+      };
     case 'START':
       return {
         ...state,
@@ -307,6 +325,110 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
+function normalizeChatStreamEvent(payload: unknown): ChatStreamEvent | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  if (typeof payload.type === 'string') {
+    return payload as ChatStreamEvent;
+  }
+
+  if (isRecord(payload.Start) && typeof payload.Start.message_id === 'string') {
+    return { type: 'Start', message_id: payload.Start.message_id };
+  }
+
+  if (isRecord(payload.Chunk) && typeof payload.Chunk.content === 'string') {
+    return { type: 'Chunk', content: payload.Chunk.content };
+  }
+
+  if ('Complete' in payload) {
+    return { type: 'Complete' };
+  }
+
+  if (isRecord(payload.Error) && typeof payload.Error.message === 'string') {
+    return { type: 'Error', message: payload.Error.message };
+  }
+
+  if (
+    isRecord(payload.ThinkingStatus) &&
+    typeof payload.ThinkingStatus.stage === 'string' &&
+    typeof payload.ThinkingStatus.description === 'string'
+  ) {
+    return {
+      type: 'ThinkingStatus',
+      stage: payload.ThinkingStatus.stage,
+      description: payload.ThinkingStatus.description,
+    };
+  }
+
+  if (
+    isRecord(payload.ToolCall) &&
+    typeof payload.ToolCall.tool_name === 'string' &&
+    payload.ToolCall.input !== undefined
+  ) {
+    return {
+      type: 'ToolCall',
+      tool_name: payload.ToolCall.tool_name,
+      input: payload.ToolCall.input,
+    };
+  }
+
+  if (
+    isRecord(payload.ToolResult) &&
+    typeof payload.ToolResult.tool_name === 'string' &&
+    typeof payload.ToolResult.output === 'string' &&
+    typeof payload.ToolResult.success === 'boolean'
+  ) {
+    return {
+      type: 'ToolResult',
+      tool_name: payload.ToolResult.tool_name,
+      output: payload.ToolResult.output,
+      success: payload.ToolResult.success,
+    };
+  }
+
+  if (
+    isRecord(payload.SearchSummary) &&
+    Array.isArray(payload.SearchSummary.sources) &&
+    typeof payload.SearchSummary.evidence_count === 'number'
+  ) {
+    const sources = payload.SearchSummary.sources.filter((item): item is string => typeof item === 'string');
+    return {
+      type: 'SearchSummary',
+      sources,
+      evidence_count: payload.SearchSummary.evidence_count,
+    };
+  }
+
+  if (isRecord(payload.Reasoning) && typeof payload.Reasoning.summary === 'string') {
+    return {
+      type: 'Reasoning',
+      summary: payload.Reasoning.summary,
+    };
+  }
+
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toThinkingStage(stage: string): ThinkingStage {
+  if (
+    stage === 'searching' ||
+    stage === 'reasoning' ||
+    stage === 'tool_calling' ||
+    stage === 'generating' ||
+    stage === 'search_failed' ||
+    stage === 'complete'
+  ) {
+    return stage;
+  }
+  return 'generating';
+}
+
 export function useChatStream(options: UseChatStreamOptions = {}): UseChatStreamReturn {
   const { conversationId: initialConversationId, agentRole = 'homeroom', onError } = options;
 
@@ -335,7 +457,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         (event: Event<ChatStreamEvent>) => {
           if (!isActive) return;
 
-          const payload = event.payload;
+          const payload = normalizeChatStreamEvent(event.payload);
+          if (!payload) {
+            return;
+          }
 
           switch (payload.type) {
             case 'Start':
@@ -362,7 +487,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
             case 'ThinkingStatus':
               dispatch({
                 type: 'THINKING_STATUS',
-                stage: payload.stage as ThinkingStage,
+                stage: toThinkingStage(payload.stage),
                 description: payload.description,
               });
               break;
@@ -424,12 +549,17 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     async (message: string) => {
       if (!message.trim() || isStreaming) return;
 
-      const userMessageId = `user-${Date.now()}`;
-
       dispatch({
-        type: 'START',
-        messageId: userMessageId,
+        type: 'ADD_MESSAGE',
+        message: {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          content: message.trim(),
+          created_at: new Date().toISOString(),
+          isStreaming: false,
+        },
       });
+      dispatch({ type: 'SET_STREAMING', value: true });
 
       try {
         const input: ChatStreamInput = {
@@ -443,6 +573,8 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         if (!currentConversationId && result) {
           dispatch({ type: 'SET_CONVERSATION_ID', id: result });
         }
+
+        dispatch({ type: 'COMPLETE' });
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : '发送消息失败';
         if (onError) onError(errorMessage);
