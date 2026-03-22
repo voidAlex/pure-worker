@@ -18,6 +18,7 @@ use crate::models::assignment_grading::{
 };
 use crate::models::async_task::AsyncTask;
 use crate::services;
+use crate::services::ai_orchestration::{run_grading_pipeline, GradingPipelineConfig};
 use crate::services::async_task::AsyncTaskService;
 use crate::services::runtime_paths;
 
@@ -197,7 +198,13 @@ pub async fn delete_assignment_asset(
     Ok(DeleteResponse { success: true })
 }
 
-/// 启动作业批改异步任务。
+/// 启动作业批改异步任务（使用统一执行编排器）。
+///
+/// 流程：
+/// 1. 获取批改任务和作业资产
+/// 2. 创建异步任务记录
+/// 3. 对每个资产调用统一的批改管道（OCR + LLM 批改 + 结果融合）
+/// 4. 更新任务进度和状态
 #[tauri::command]
 #[specta::specta]
 pub async fn start_grading(
@@ -244,35 +251,43 @@ pub async fn start_grading(
         let run_result = async {
             let mut processed = 0i32;
             let mut failed = 0i32;
-            let conflicts = 0i32;
+            let mut conflicts = 0i32;
 
             for asset in assets {
-                match services::ocr::OcrService::run_ocr_pipeline(
+                // 使用统一的批改管道
+                let pipeline_config = GradingPipelineConfig {
+                    enable_ocr: true,
+                    enable_llm_grading: grading_mode == "enhanced",
+                    enable_fusion: true,
+                    answer_key_json: answer_key.clone(),
+                    scoring_rules_json: scoring_rules.clone(),
+                    workspace_path: workspace_path.clone(),
+                };
+
+                match run_grading_pipeline(
                     &pool_clone,
-                    &asset.id,
+                    &asset,
                     &job_id,
-                    &workspace_path,
+                    &pipeline_config,
                 )
                 .await
                 {
-                    Ok(_) => {
-                        processed += 1;
-
-                        if grading_mode == "enhanced" {
-                            if let Err(error) = services::multimodal_grading::MultimodalGradingService::run_enhanced_grading(
-                                &pool_clone,
-                                &job_id,
-                                &asset.id,
-                                answer_key.as_deref(),
-                                scoring_rules.as_deref(),
-                            )
-                            .await
-                            {
-                                eprintln!("增强批改失败，asset_id={}，error={}", asset.id, error);
-                            }
+                    Ok(pipeline_result) => {
+                        if pipeline_result.success {
+                            processed += 1;
+                            // 计算冲突数量
+                            let asset_conflicts = pipeline_result
+                                .fused_results
+                                .iter()
+                                .filter(|r| r.conflict_flag == 1)
+                                .count() as i32;
+                            conflicts += asset_conflicts;
+                        } else {
+                            failed += 1;
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        eprintln!("批改管道执行失败，asset_id={}，error={}", asset.id, e);
                         failed += 1;
                     }
                 }
@@ -286,7 +301,12 @@ pub async fn start_grading(
                 )
                 .await;
 
-                let _ = AsyncTaskService::update_progress(&pool_clone, &task_id, &serde_json::json!({ "processed": processed, "failed": failed }).to_string()).await;
+                let _ = AsyncTaskService::update_progress(
+                    &pool_clone,
+                    &task_id,
+                    &serde_json::json!({ "processed": processed, "failed": failed, "conflicts": conflicts }).to_string(),
+                )
+                .await;
             }
 
             services::assignment_grading::AssignmentGradingService::update_job_status(
@@ -296,8 +316,6 @@ pub async fn start_grading(
             )
             .await?;
             AsyncTaskService::complete(&pool_clone, &task_id, None).await?;
-
-            let _ = conflicts;
 
             Ok::<(), AppError>(())
         }

@@ -411,7 +411,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
     }
     let mut content = String::new();
     writeln!(&mut content, "# Agent Runtime 手工回归清单")?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "- 工作区：`{}`", workspace.display())?;
     writeln!(&mut content, "- 教师：`{}`", TEACHER_NAME)?;
     writeln!(&mut content, "- 班级：`三年级二班`")?;
@@ -421,7 +421,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
         STUDENT_NAME, STUDENT_NO
     )?;
     writeln!(&mut content, "- 批改样例：`{}`", asset_path.display())?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 预检")?;
     writeln!(&mut content, "1. 启动应用后，工作区选择为上面的目录。")?;
     writeln!(&mut content, "2. 在设置页确认至少有一个激活的 AI 配置。")?;
@@ -430,7 +430,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
         "3. 在教师档案页确认教师为 `{} / 数学 / 温和正式`。",
         TEACHER_NAME
     )?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 场景 1：聊天")?;
     writeln!(&mut content, "1. 打开 Dashboard 的 AI 助手面板。")?;
     writeln!(
@@ -441,7 +441,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
     writeln!(&mut content, "   - 看到流式输出；")?;
     writeln!(&mut content, "   - 思考轨迹包含检索/推理状态；")?;
     writeln!(&mut content, "   - 回答提到课堂表现、成绩趋势或标签信息。")?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 场景 2：家长沟通")?;
     writeln!(&mut content, "1. 打开学生详情页，定位学生 `张小明`。")?;
     writeln!(&mut content, "2. 触发“生成家长沟通”。")?;
@@ -449,7 +449,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
     writeln!(&mut content, "   - 新记录状态为 `draft`；")?;
     writeln!(&mut content, "   - 内容呈现“肯定 -> 问题 -> 建议”三段式；")?;
     writeln!(&mut content, "   - 语气延续历史 `温和正式`。")?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 场景 3：学期评语")?;
     writeln!(&mut content, "1. 打开学期评语页，选择 `三年级二班`。")?;
     writeln!(&mut content, "2. 发起批量生成。")?;
@@ -457,7 +457,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
     writeln!(&mut content, "   - 任务进入队列并有进度；")?;
     writeln!(&mut content, "   - 为 `张小明` 生成 `draft` 评语；")?;
     writeln!(&mut content, "   - 内容包含成绩/观察依据。")?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 场景 4：作业批改")?;
     writeln!(&mut content, "1. 打开作业批改页，班级选 `三年级二班`。")?;
     writeln!(
@@ -477,7 +477,7 @@ fn write_checklist(workspace: &Path, asset_path: &Path) -> Result<PathBuf, DynEr
     )?;
     writeln!(&mut content, "   - OCR 结果/批改结果表格出现数据；")?;
     writeln!(&mut content, "   - 如使用默认图标样例，只要求走通上传/启动链路；若要验证真实 OCR/批改质量，请换成真实作业照片。")?;
-    writeln!(&mut content, "")?;
+    writeln!(&mut content)?;
     writeln!(&mut content, "## 失败时优先查看")?;
     writeln!(&mut content, "- `workspace/logs/startup.log`")?;
     writeln!(&mut content, "- 相关页面的错误 toast")?;

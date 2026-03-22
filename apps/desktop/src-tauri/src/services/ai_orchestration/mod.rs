@@ -7,6 +7,7 @@
 //! - 执行编排器与请求工厂
 
 pub mod agent_profile_registry;
+pub mod agentic_search_stage;
 pub mod error;
 pub mod execution_orchestrator;
 pub mod execution_request_factory;
@@ -20,9 +21,11 @@ pub mod tool_exposure;
 
 use self::agent_profile_registry::OutputProtocol;
 pub use agent_profile_registry::AgentProfileRegistry;
+pub use agentic_search_stage::AgenticSearchStage;
 pub use error::{OrchestrationError, OrchestrationResult};
 pub use execution_orchestrator::{
-    ExecutionArtifacts, ExecutionOrchestrator, ExecutionOrchestratorBuilder, RuntimeModelSelection,
+    run_grading_pipeline, ExecutionArtifacts, ExecutionOrchestrator, ExecutionOrchestratorBuilder,
+    GradingPipelineConfig, GradingPipelineResult, GradingStage, RuntimeModelSelection,
 };
 pub use execution_stage::{ExecutionStage, ExecutionStageContext, ExecutionStageOutput};
 pub use model_routing::{RoutingCapability, RoutingTrace, SelectedModel};
