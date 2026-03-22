@@ -5,16 +5,20 @@
 //! - 执行阶段 trait
 //! - 运行时关键能力（profile、prompt、model routing、store、event bus）trait 定义
 
+pub mod agent_profile_registry;
 pub mod error;
 pub mod execution_stage;
-pub mod agent_profile_registry;
 pub mod model_routing;
 pub mod provider_catalog;
 
+use self::agent_profile_registry::OutputProtocol;
 pub use error::{OrchestrationError, OrchestrationResult};
 pub use execution_stage::{ExecutionStage, ExecutionStageContext, ExecutionStageOutput};
 
-use crate::models::execution::{ExecutionRequest, ExecutionStatus, SessionEvent};
+use crate::models::execution::{
+    ExecutionEntrypoint, ExecutionRequest, ExecutionStatus, SessionEvent,
+};
+use crate::services::unified_tool::ToolRiskLevel;
 
 /// Agent Profile 读取能力
 pub trait AgentProfileResolver: Send + Sync {
@@ -66,8 +70,14 @@ pub trait SessionEventPublisher: Send + Sync {
 pub struct RuntimeAgentProfile {
     pub id: String,
     pub name: String,
-    pub output_protocol: String,
-    pub max_tool_risk: String,
+    pub description: String,
+    pub entrypoint: ExecutionEntrypoint,
+    pub tool_allowlist: Vec<String>,
+    pub tool_denylist: Vec<String>,
+    pub output_protocol: OutputProtocol,
+    pub max_tool_risk: ToolRiskLevel,
+    pub requires_agentic_search: bool,
+    pub prefer_multimodal: bool,
 }
 
 /// 运行时模型选择结果精简快照

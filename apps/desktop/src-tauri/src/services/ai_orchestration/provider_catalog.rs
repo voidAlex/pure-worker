@@ -40,6 +40,13 @@ pub struct ProviderCatalogEntry {
     pub models: Vec<CatalogModel>,
 }
 
+/// Provider 发现结果
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderDiscoveryResult {
+    pub provider_id: String,
+    pub model_ids: Vec<String>,
+}
+
 /// Provider 目录
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCatalog {
@@ -49,6 +56,14 @@ pub struct ProviderCatalog {
 impl ProviderCatalog {
     /// 从 AI 配置构建 provider 目录
     pub fn from_configs(configs: &[AiConfig]) -> Self {
+        Self::from_sources(configs, &[])
+    }
+
+    /// 从静态配置与发现结果构建 provider 目录
+    pub fn from_sources(
+        configs: &[AiConfig],
+        discovery_results: &[ProviderDiscoveryResult],
+    ) -> Self {
         let mut providers = HashMap::new();
 
         for config in configs {
@@ -58,7 +73,12 @@ impl ProviderCatalog {
                 enabled: config.is_active == 1,
                 healthy: true,
                 loader_kind: loader_kind_from_provider(&config.provider_name),
-                models: model_catalog_from_config(config),
+                models: model_catalog_from_config(
+                    config,
+                    discovery_results
+                        .iter()
+                        .find(|result| result.provider_id == config.id),
+                ),
             };
             providers.insert(entry.provider_id.clone(), entry);
         }
@@ -90,11 +110,14 @@ impl ProviderCatalog {
     }
 }
 
-fn model_catalog_from_config(config: &AiConfig) -> Vec<CatalogModel> {
+fn model_catalog_from_config(
+    config: &AiConfig,
+    discovery_result: Option<&ProviderDiscoveryResult>,
+) -> Vec<CatalogModel> {
     let mut seen = HashSet::new();
     let mut models = Vec::new();
 
-    for model_id in fallback_model_candidates(config) {
+    for model_id in merged_model_candidates(config, discovery_result) {
         if model_id.is_empty() || !seen.insert(model_id.clone()) {
             continue;
         }
@@ -108,8 +131,15 @@ fn model_catalog_from_config(config: &AiConfig) -> Vec<CatalogModel> {
     models
 }
 
-fn fallback_model_candidates(config: &AiConfig) -> Vec<String> {
-    let mut models = vec![config.default_model.clone()];
+fn merged_model_candidates(
+    config: &AiConfig,
+    discovery_result: Option<&ProviderDiscoveryResult>,
+) -> Vec<String> {
+    let mut models = discovery_result
+        .map(|result| result.model_ids.clone())
+        .unwrap_or_default();
+
+    models.push(config.default_model.clone());
     if let Some(model) = config.default_text_model.clone() {
         models.push(model);
     }
@@ -234,5 +264,28 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), provider.models.len());
+    }
+
+    /// 验证 discovery 结果与静态 fallback 模型会合并
+    #[test]
+    fn test_model_catalog_merges_discovery_and_static_fallback() {
+        let discovery = ProviderDiscoveryResult {
+            provider_id: String::from("cfg-openai"),
+            model_ids: vec![String::from("gpt-4.1"), String::from("gpt-4o")],
+        };
+
+        let catalog = ProviderCatalog::from_sources(&[build_config()], &[discovery]);
+        let provider = catalog
+            .get_provider("cfg-openai")
+            .expect("provider should exist");
+
+        assert!(provider
+            .models
+            .iter()
+            .any(|model| model.model_id == "gpt-4.1"));
+        assert!(provider
+            .models
+            .iter()
+            .any(|model| model.model_id == "gpt-4o-mini"));
     }
 }

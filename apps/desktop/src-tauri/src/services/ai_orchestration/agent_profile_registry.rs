@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use crate::models::execution::ExecutionEntrypoint;
 use crate::services::unified_tool::ToolRiskLevel;
 
-use super::error::{OrchestrationError, OrchestrationResult};
+use super::{
+    error::{OrchestrationError, OrchestrationResult},
+    AgentProfileResolver, RuntimeAgentProfile,
+};
 
 /// 输出协议类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,14 +51,34 @@ pub struct AgentProfileRegistry {
     profiles: HashMap<String, AgentProfile>,
 }
 
+/// Agent Profile 来源抽象
+pub trait AgentProfileSource: Send + Sync {
+    fn load_profiles(&self) -> Vec<AgentProfile>;
+}
+
+/// 静态内置 profile 来源
+pub struct StaticAgentProfileSource {
+    profiles: Vec<AgentProfile>,
+}
+
+impl StaticAgentProfileSource {
+    pub fn builtin() -> Self {
+        Self {
+            profiles: builtin_profiles(),
+        }
+    }
+}
+
+impl AgentProfileSource for StaticAgentProfileSource {
+    fn load_profiles(&self) -> Vec<AgentProfile> {
+        self.profiles.clone()
+    }
+}
+
 impl AgentProfileRegistry {
     /// 创建默认注册表（内置 profile）
     pub fn new_default() -> Self {
-        let profiles = builtin_profiles()
-            .into_iter()
-            .map(|profile| (profile.id.clone(), profile))
-            .collect();
-        Self { profiles }
+        Self::from_source(&StaticAgentProfileSource::builtin())
     }
 
     /// 从外部 profile 列表创建注册表
@@ -74,6 +97,11 @@ impl AgentProfileRegistry {
         })
     }
 
+    /// 从 profile 来源构建注册表
+    pub fn from_source(source: &dyn AgentProfileSource) -> Self {
+        Self::from_profiles(source.load_profiles())
+    }
+
     /// 获取全部 profile
     pub fn list_profiles(&self) -> Vec<&AgentProfile> {
         self.profiles.values().collect()
@@ -82,6 +110,30 @@ impl AgentProfileRegistry {
     /// 检查 profile 是否存在
     pub fn has_profile(&self, profile_id: &str) -> bool {
         self.profiles.contains_key(profile_id)
+    }
+}
+
+impl AgentProfileResolver for AgentProfileRegistry {
+    fn get_profile(&self, profile_id: &str) -> OrchestrationResult<RuntimeAgentProfile> {
+        let profile = AgentProfileRegistry::get_profile(self, profile_id)?;
+        Ok(RuntimeAgentProfile::from(profile))
+    }
+}
+
+impl From<&AgentProfile> for RuntimeAgentProfile {
+    fn from(profile: &AgentProfile) -> Self {
+        Self {
+            id: profile.id.clone(),
+            name: profile.name.clone(),
+            description: profile.description.clone(),
+            entrypoint: profile.entrypoint.clone(),
+            tool_allowlist: profile.tool_allowlist.clone(),
+            tool_denylist: profile.tool_denylist.clone(),
+            output_protocol: profile.output_protocol,
+            max_tool_risk: profile.max_tool_risk,
+            requires_agentic_search: profile.requires_agentic_search,
+            prefer_multimodal: profile.prefer_multimodal,
+        }
     }
 }
 
@@ -206,5 +258,31 @@ mod tests {
         assert_eq!(profile.max_tool_risk, ToolRiskLevel::Medium);
         assert_eq!(profile.output_protocol, OutputProtocol::Json);
         assert!(profile.prefer_multimodal);
+    }
+
+    /// 验证注册表可从来源抽象构建
+    #[test]
+    fn test_registry_can_build_from_source() {
+        let source = StaticAgentProfileSource::builtin();
+        let registry = AgentProfileRegistry::from_source(&source);
+
+        assert!(registry.has_profile("chat.homeroom"));
+        assert!(registry.has_profile("search.agentic"));
+    }
+
+    /// 验证运行时 profile 快照包含 Chunk3 所需字段
+    #[test]
+    fn test_runtime_profile_snapshot_contains_tool_fields() {
+        let registry = AgentProfileRegistry::new_default();
+        let runtime_profile = AgentProfileResolver::get_profile(&registry, "chat.ops")
+            .expect("chat.ops should exist");
+
+        assert_eq!(runtime_profile.output_protocol, OutputProtocol::Markdown);
+        assert_eq!(runtime_profile.max_tool_risk, ToolRiskLevel::Medium);
+        assert!(runtime_profile
+            .tool_denylist
+            .iter()
+            .any(|item| item == "filesystem.delete"));
+        assert!(runtime_profile.requires_agentic_search);
     }
 }
