@@ -4,7 +4,14 @@
  * 首次启动时显示初始化向导，引导用户完成工作目录和 AI 配置。
  */
 
-import { useState, useEffect, type ReactElement, Component, type ErrorInfo, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  type ReactElement,
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+} from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -36,7 +43,10 @@ const queryClient = new QueryClient({
 });
 
 /** 错误边界组件 - 捕获渲染错误并显示友好提示 */
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
   constructor(props: { children: ReactNode }) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -109,10 +119,7 @@ export const App = (): ReactElement => {
           }, INIT_TIMEOUT_MS);
         });
 
-        const result = await Promise.race([
-          commands.checkInitializationStatus(),
-          timeoutPromise,
-        ]);
+        const result = await Promise.race([commands.checkInitializationStatus(), timeoutPromise]);
 
         if (!mounted) return;
 

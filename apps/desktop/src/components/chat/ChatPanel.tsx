@@ -28,10 +28,11 @@ export function ChatPanel({
     conversationId,
   );
 
-  const { messages, isStreaming, error, sendMessage, clearError, reset, loadMessages } = useChatStream({
-    conversationId: currentConversationId,
-    agentRole,
-  });
+  const { messages, isStreaming, error, sendMessage, clearError, reset, loadMessages } =
+    useChatStream({
+      conversationId: currentConversationId,
+      agentRole,
+    });
 
   // 加载会话列表
   const loadConversations = async () => {

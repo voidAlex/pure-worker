@@ -8,7 +8,10 @@ import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { listen, Event } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { listConversationMessages, MessageFilters, MessageListItem } from '@/services/chatService';
-import { normalizeExecutionEvent, toThinkingStage } from '@/components/chat/execution-event-normalizer';
+import {
+  normalizeExecutionEvent,
+  toThinkingStage,
+} from '@/components/chat/execution-event-normalizer';
 import type {
   ChatMessageItem as ChatMessage,
   RuntimeExecutionEvent as ChatStreamEvent,
@@ -120,10 +123,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return {
           ...state,
           isStreaming: false,
-          messages: [
-            ...state.messages.slice(0, -1),
-            { ...lastMessage, isStreaming: false },
-          ],
+          messages: [...state.messages.slice(0, -1), { ...lastMessage, isStreaming: false }],
         };
       }
       return { ...state, isStreaming: false };
@@ -296,7 +296,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           }
         });
 
-      const unlisteners = await Promise.all([bindChannel('chat-stream'), bindChannel('execution-stream')]);
+      const unlisteners = await Promise.all([
+        bindChannel('chat-stream'),
+        bindChannel('execution-stream'),
+      ]);
 
       unlistenRef.current = () => {
         unlisteners.forEach((unlisten) => unlisten());
@@ -365,31 +368,34 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
    * 加载指定会话的历史消息
    * @param conversationId 会话ID
    */
-  const loadMessages = useCallback(async (conversationId: string) => {
-    try {
-      const filters: MessageFilters = {
-        conversationId,
-        limit: 100,
-      };
-      const result = await listConversationMessages(filters);
+  const loadMessages = useCallback(
+    async (conversationId: string) => {
+      try {
+        const filters: MessageFilters = {
+          conversationId,
+          limit: 100,
+        };
+        const result = await listConversationMessages(filters);
 
-      // 将服务层消息转换为 ChatMessage 格式
-      const historyMessages: ChatMessage[] = result.map((msg: MessageListItem) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        tool_name: msg.tool_name,
-        created_at: msg.created_at,
-        isStreaming: false,
-      }));
+        // 将服务层消息转换为 ChatMessage 格式
+        const historyMessages: ChatMessage[] = result.map((msg: MessageListItem) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          tool_name: msg.tool_name,
+          created_at: msg.created_at,
+          isStreaming: false,
+        }));
 
-      dispatch({ type: 'SET_MESSAGES', messages: historyMessages });
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : '加载历史消息失败';
-      if (onError) onError(errorMessage);
-      dispatch({ type: 'ERROR', message: errorMessage });
-    }
-  }, [onError]);
+        dispatch({ type: 'SET_MESSAGES', messages: historyMessages });
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : '加载历史消息失败';
+        if (onError) onError(errorMessage);
+        dispatch({ type: 'ERROR', message: errorMessage });
+      }
+    },
+    [onError],
+  );
 
   return {
     messages,

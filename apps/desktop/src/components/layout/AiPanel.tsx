@@ -5,7 +5,7 @@
  * - fullscreen：全屏嵌入模式，类似 ChatGPT 的聊天布局（仪表盘 AiWorkbench 使用）
  *
  * 功能包括：角色切换、斜杠快捷指令、消息发送与自动滚动、真实后端对话调用。
- * 
+ *
  * 【WP-AI-BIZ-001】已统一使用 useChatStream 流式接口，与 ChatPanel 保持一致
  */
 
@@ -70,7 +70,10 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   }, [messages, isStreaming]);
 
   /** 判断是否可以发送消息 */
-  const canSend = useMemo(() => inputText.trim().length > 0 && !isStreaming, [inputText, isStreaming]);
+  const canSend = useMemo(
+    () => inputText.trim().length > 0 && !isStreaming,
+    [inputText, isStreaming],
+  );
 
   /** 是否为全屏模式 */
   const isFullscreen = props.mode === 'fullscreen';

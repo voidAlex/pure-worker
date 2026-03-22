@@ -141,7 +141,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
           {message.thinkingTrace?.reasoning && (
             <section className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
               <div className="text-xs font-medium text-amber-800 mb-2">思考摘要</div>
-              <p className="text-sm text-slate-700 leading-relaxed">{message.thinkingTrace.reasoning}</p>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {message.thinkingTrace.reasoning}
+              </p>
             </section>
           )}
 
