@@ -163,6 +163,50 @@ impl ExecutionRequestFactory {
             .with_agentic_search(true)
             .build()
     }
+
+    // 【WP-AI-BIZ-004】生成型业务统一请求工厂方法
+
+    /// 创建家长沟通生成请求
+    pub fn for_parent_communication(
+        user_input: impl Into<String>,
+        metadata: serde_json::Value,
+        session_id: Option<String>,
+    ) -> ExecutionRequest {
+        ExecutionRequestBuilder::new("generation.parent_communication", user_input)
+            .with_session_id(session_id.unwrap_or_default())
+            .with_entrypoint(ExecutionEntrypoint::Communication)
+            .with_stream_mode(StreamMode::NonStreaming)
+            .with_metadata(metadata)
+            .build()
+    }
+
+    /// 创建学期评语生成请求
+    pub fn for_semester_comment(
+        user_input: impl Into<String>,
+        metadata: serde_json::Value,
+        session_id: Option<String>,
+    ) -> ExecutionRequest {
+        ExecutionRequestBuilder::new("generation.semester_comment", user_input)
+            .with_session_id(session_id.unwrap_or_default())
+            .with_entrypoint(ExecutionEntrypoint::Communication)
+            .with_stream_mode(StreamMode::NonStreaming)
+            .with_metadata(metadata)
+            .build()
+    }
+
+    /// 创建活动公告生成请求
+    pub fn for_activity_announcement(
+        user_input: impl Into<String>,
+        metadata: serde_json::Value,
+        session_id: Option<String>,
+    ) -> ExecutionRequest {
+        ExecutionRequestBuilder::new("generation.activity_announcement", user_input)
+            .with_session_id(session_id.unwrap_or_default())
+            .with_entrypoint(ExecutionEntrypoint::Communication)
+            .with_stream_mode(StreamMode::NonStreaming)
+            .with_metadata(metadata)
+            .build()
+    }
 }
 
 /// 将旧的角色标识映射到 Agent Profile ID
