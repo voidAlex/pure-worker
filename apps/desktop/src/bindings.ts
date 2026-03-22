@@ -1015,9 +1015,9 @@ async execute(input: ExecuteInput) : Promise<Result<ExecutionResult, AppError>> 
 /**
  * 执行流式 AI 请求
  */
-async executeStream(input: StreamExecutionInput) : Promise<Result<string, AppError>> {
+async executeStream(input: StreamExecutionInput, assistantMessageId: string | null) : Promise<Result<string, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("execute_stream", { input }) };
+    return { status: "ok", data: await TAURI_INVOKE("execute_stream", { input, assistantMessageId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
