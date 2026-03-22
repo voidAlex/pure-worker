@@ -13,7 +13,9 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::assignment_grading::AssignmentOcrResult;
-use crate::models::execution::{ExecutionEntrypoint, ExecutionRequest, StreamMode};
+use crate::models::execution::{
+    ExecutionAttachment, ExecutionEntrypoint, ExecutionRequest, StreamMode,
+};
 use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegistry;
 use crate::services::ai_orchestration::execution_orchestrator::ExecutionOrchestratorBuilder;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
@@ -81,6 +83,16 @@ impl MultimodalGradingService {
         user_prompt_sections.push(String::from(
             "请确保 question_no 与作答题号对应；若无法判断题号，请使用原始题号文本。",
         ));
+
+        // 【WP-AI-BIZ-006】查询图像路径
+        let image_path: Option<String> = sqlx::query_scalar(
+            "SELECT file_path FROM assignment_asset WHERE id = ? AND is_deleted = 0",
+        )
+        .bind(asset_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
         let response = Self::execute_runtime_grading(
             pool,
             serde_json::json!({
@@ -93,6 +105,7 @@ impl MultimodalGradingService {
                 "job_id": job_id,
                 "raw_request": user_prompt_sections.join("\n")
             }),
+            image_path, // 【WP-AI-BIZ-006】传入图像路径
         )
         .await?;
 
@@ -182,6 +195,7 @@ impl MultimodalGradingService {
     async fn execute_runtime_grading(
         pool: &SqlitePool,
         metadata_json: serde_json::Value,
+        image_path: Option<String>, // 【WP-AI-BIZ-006】图像附件路径
     ) -> Result<String, AppError> {
         let event_bus = SessionEventBus::new();
         let profile_registry = AgentProfileRegistry::new_default();
@@ -191,20 +205,34 @@ impl MultimodalGradingService {
             .with_tool_registry(get_registry())
             .build()?;
 
+        // 【WP-AI-BIZ-006】构建附件列表
+        let attachments = if let Some(path) = image_path {
+            vec![ExecutionAttachment {
+                path,
+                media_type: Some(String::from("image/jpeg")),
+                display_name: Some(String::from("作业图片")),
+            }]
+        } else {
+            vec![]
+        };
+
         let result = orchestrator
-            .execute(&ExecutionRequest {
-                session_id: None,
-                entrypoint: ExecutionEntrypoint::Grading,
-                agent_profile_id: String::from("chat.grading"),
-                user_input: String::from("请输出逐题评分 JSON"),
-                attachments: vec![],
-                use_agentic_search: false,
-                stream_mode: StreamMode::NonStreaming,
-                metadata_json: Some(metadata_json),
-            })
+            .execute(
+                &ExecutionRequest {
+                    session_id: None,
+                    entrypoint: ExecutionEntrypoint::Grading,
+                    agent_profile_id: String::from("chat.grading"),
+                    user_input: String::from("请输出逐题评分 JSON"),
+                    attachments, // 【WP-AI-BIZ-006】传入图像附件
+                    use_agentic_search: false,
+                    stream_mode: StreamMode::NonStreaming,
+                    metadata_json: Some(metadata_json),
+                },
+                None,
+            )
             .await?;
 
-        Ok(result.content)
+        Ok(result.1.content)
     }
 
     /// 融合 OCR 与 LLM 判分结果，并对冲突或低置信度样本打标。
