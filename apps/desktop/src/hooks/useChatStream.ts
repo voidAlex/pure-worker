@@ -56,8 +56,6 @@ type ChatAction =
   | { type: 'SET_MESSAGES'; messages: ChatMessage[] }
   | { type: 'SET_CONVERSATION_ID'; id: string }
   | { type: 'THINKING_STATUS'; stage: ThinkingStage; description: string }
-  | { type: 'TOOL_CALL'; toolName: string; input: unknown }
-  | { type: 'TOOL_RESULT'; toolName: string; output: string; success: boolean }
   | { type: 'SEARCH_SUMMARY'; sources: string[]; evidenceCount: number }
   | { type: 'REASONING'; summary: string };
 
@@ -163,60 +161,8 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       }
       return state;
     }
-    // 处理工具调用
-    case 'TOOL_CALL': {
-      const lastMessage = state.messages[state.messages.length - 1];
-      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
-        return {
-          ...state,
-          messages: [
-            ...state.messages.slice(0, -1),
-            {
-              ...lastMessage,
-              thinkingTrace: {
-                ...lastMessage.thinkingTrace,
-                stage: 'tool_calling',
-                toolCalls: [
-                  ...lastMessage.thinkingTrace.toolCalls,
-                  { toolName: action.toolName, input: action.input },
-                ],
-              },
-            },
-          ],
-        };
-      }
-      return state;
-    }
-    // 处理工具调用结果
-    case 'TOOL_RESULT': {
-      const lastMessage = state.messages[state.messages.length - 1];
-      if (lastMessage && lastMessage.isStreaming && lastMessage.thinkingTrace) {
-        const toolCalls = [...lastMessage.thinkingTrace.toolCalls];
-        // 查找对应的工具调用并更新结果
-        const toolIndex = toolCalls.findIndex((tc) => tc.toolName === action.toolName && tc.output === undefined);
-        if (toolIndex >= 0) {
-          toolCalls[toolIndex] = {
-            ...toolCalls[toolIndex],
-            output: action.output,
-            success: action.success,
-          };
-        }
-        return {
-          ...state,
-          messages: [
-            ...state.messages.slice(0, -1),
-            {
-              ...lastMessage,
-              thinkingTrace: {
-                ...lastMessage.thinkingTrace,
-                toolCalls,
-              },
-            },
-          ],
-        };
-      }
-      return state;
-    }
+    // 【WP-AI-BIZ-007】ToolCall/ToolResult 暂未实现，已移除处理逻辑
+
     // 处理搜索摘要
     case 'SEARCH_SUMMARY': {
       const lastMessage = state.messages[state.messages.length - 1];
@@ -328,24 +274,8 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
               });
               break;
 
-            // 处理工具调用
-            case 'ToolCall':
-              dispatch({
-                type: 'TOOL_CALL',
-                toolName: payload.tool_name,
-                input: payload.input,
-              });
-              break;
-
-            // 处理工具调用结果
-            case 'ToolResult':
-              dispatch({
-                type: 'TOOL_RESULT',
-                toolName: payload.tool_name,
-                output: payload.output,
-                success: payload.success,
-              });
-              break;
+            // 【WP-AI-BIZ-007】ToolCall/ToolResult 暂未实现，已移除监听
+            // 如需支持工具调用，请在 execution_orchestrator.rs 中添加真实产出
 
             // 处理搜索摘要
             case 'SearchSummary':
