@@ -10,9 +10,14 @@ use rig::completion::ToolDefinition;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
+use crate::models::execution::{
+    CreateExecutionMessageInput, CreateExecutionRecordInput, CreateExecutionSessionInput,
+    ExecutionEntrypoint, ExecutionStatus,
+};
 use crate::models::execution::{ExecutionRequest, SessionEvent, SESSION_EVENT_VERSION};
 use crate::models::mcp_server::McpServerRecord;
 use crate::services::agentic_search::AgenticSearchOrchestrator;
+use crate::services::ai_orchestration::execution_store::ExecutionStoreService;
 use crate::services::ai_orchestration::model_routing::{ModelRoutingService, RoutingCapability};
 use crate::services::ai_orchestration::prompt_assembler::PromptAssemblerService;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
@@ -139,15 +144,14 @@ impl<'a> ExecutionOrchestrator<'a> {
         // 【WP-AI-BIZ-002】Agentic Search 阶段
         let mut evidence_items = Vec::new();
         let mut search_summary_json = None;
-        
+
         if request.use_agentic_search {
             // 执行搜索阶段
             let search_orchestrator = AgenticSearchOrchestrator::new();
-            let workspace_path = std::path::PathBuf::from(
-                std::env::var("HOME")
-                    .unwrap_or_default()
-            ).join(".pureworker/workspace");
-            
+            let workspace_path =
+                std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                    .join(".pureworker/workspace");
+
             match search_orchestrator
                 .search_stage(
                     self.pool,
@@ -171,10 +175,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         }
 
         // 将证据转换为字符串列表
-        let evidence: Vec<String> = evidence_items
-            .into_iter()
-            .map(|e| e.content)
-            .collect();
+        let evidence: Vec<String> = evidence_items.into_iter().map(|e| e.content).collect();
 
         // 4. 组装提示词
         let templates_dir = runtime_templates_dir();
@@ -246,6 +247,77 @@ impl<'a> ExecutionOrchestrator<'a> {
                 version: SESSION_EVENT_VERSION,
             },
         )?;
+
+        // 【WP-AI-BIZ-003】持久化执行记录到 ExecutionStore
+        // 注意：这里使用非阻塞方式调用，不等待结果
+        let pool = self.pool.clone();
+        let session_id_for_store = session_id.clone();
+        let message_id_for_store = message_id.clone();
+        let content_for_store = content.clone();
+        let model_id_for_store = selected_model.model_id.clone();
+        let search_summary_for_store = search_summary_json.clone();
+        let entrypoint_for_store = request.entrypoint.clone();
+        let agent_profile_id_for_store = request.agent_profile_id.clone();
+        let user_input_for_store = request.user_input.clone();
+
+        tokio::spawn(async move {
+            // 1. 创建或获取会话
+            let session_result = ExecutionStoreService::create_session(
+                &pool,
+                CreateExecutionSessionInput {
+                    teacher_id: String::from("system"), // TODO: 从请求中获取真实 teacher_id
+                    title: Some(format!("执行会话 {}", &session_id_for_store[..8])),
+                    entrypoint: entrypoint_for_store.clone(),
+                    agent_profile_id: agent_profile_id_for_store.clone(),
+                },
+            )
+            .await;
+
+            if let Ok(session) = session_result {
+                // 2. 创建用户消息
+                let _user_msg = ExecutionStoreService::create_message(
+                    &pool,
+                    CreateExecutionMessageInput {
+                        session_id: session.id.clone(),
+                        role: String::from("user"),
+                        content: user_input_for_store,
+                        tool_name: None,
+                    },
+                )
+                .await;
+
+                // 3. 创建助手消息
+                if let Ok(_assistant_msg) = ExecutionStoreService::create_message(
+                    &pool,
+                    CreateExecutionMessageInput {
+                        session_id: session.id.clone(),
+                        role: String::from("assistant"),
+                        content: content_for_store.clone(),
+                        tool_name: None,
+                    },
+                )
+                .await
+                {
+                    // 4. 创建执行记录
+                    let _ = ExecutionStoreService::create_record(
+                        &pool,
+                        CreateExecutionRecordInput {
+                            session_id: session_id_for_store.clone(),
+                            execution_message_id: message_id_for_store.clone(),
+                            entrypoint: entrypoint_for_store.clone(),
+                            agent_profile_id: agent_profile_id_for_store.clone(),
+                            model_id: model_id_for_store,
+                            status: ExecutionStatus::Completed,
+                            reasoning_summary: None,
+                            search_summary_json: search_summary_for_store,
+                            tool_calls_summary_json: None,
+                            metadata_json: None,
+                        },
+                    )
+                    .await;
+                }
+            }
+        });
 
         Ok((
             session_id,
