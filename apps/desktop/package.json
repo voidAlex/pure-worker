@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "bindings:export": "cargo run --manifest-path src-tauri/Cargo.toml --bin export-bindings",
+    "regression:manual": "cargo run --manifest-path src-tauri/Cargo.toml --bin manual-runtime-regression --",
+    "regression:manual:check": "cargo run --manifest-path src-tauri/Cargo.toml --bin manual-runtime-regression -- --check-only",
     "lint": "eslint src/",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
