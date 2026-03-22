@@ -12,6 +12,7 @@ use sqlx::SqlitePool;
 use crate::error::AppError;
 use crate::models::execution::{ExecutionRequest, SessionEvent, SESSION_EVENT_VERSION};
 use crate::models::mcp_server::McpServerRecord;
+use crate::services::agentic_search::AgenticSearchOrchestrator;
 use crate::services::ai_orchestration::model_routing::{ModelRoutingService, RoutingCapability};
 use crate::services::ai_orchestration::prompt_assembler::PromptAssemblerService;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
@@ -97,7 +98,8 @@ impl<'a> ExecutionOrchestrator<'a> {
     pub async fn execute(
         &self,
         request: &ExecutionRequest,
-    ) -> Result<ExecutionArtifacts, AppError> {
+        assistant_message_id: Option<String>,
+    ) -> Result<(String, ExecutionArtifacts), AppError> {
         let session_id = request
             .session_id
             .clone()
@@ -134,6 +136,46 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // 【WP-AI-BIZ-002】Agentic Search 阶段
+        let mut evidence_items = Vec::new();
+        let mut search_summary_json = None;
+        
+        if request.use_agentic_search {
+            // 执行搜索阶段
+            let search_orchestrator = AgenticSearchOrchestrator::new();
+            let workspace_path = std::path::PathBuf::from(
+                std::env::var("HOME")
+                    .unwrap_or_default()
+            ).join(".pureworker/workspace");
+            
+            match search_orchestrator
+                .search_stage(
+                    self.pool,
+                    &workspace_path,
+                    crate::models::agentic_search::AgenticSearchInput {
+                        query: request.user_input.clone(),
+                        session_id: Some(session_id.clone()),
+                        force_refresh: None,
+                    },
+                )
+                .await
+            {
+                Ok(search_result) => {
+                    evidence_items = search_result.evidence;
+                    search_summary_json = Some(search_result.search_summary_json.clone());
+                }
+                Err(e) => {
+                    eprintln!("[ExecutionOrchestrator] Agentic Search 失败: {}", e);
+                }
+            }
+        }
+
+        // 将证据转换为字符串列表
+        let evidence: Vec<String> = evidence_items
+            .into_iter()
+            .map(|e| e.content)
+            .collect();
+
         // 4. 组装提示词
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
@@ -142,13 +184,13 @@ impl<'a> ExecutionOrchestrator<'a> {
                 request,
                 &profile,
                 &selected_model,
-                &[], // evidence - will be filled by agentic search if enabled
+                &evidence, // 【WP-AI-BIZ-002】传入真实证据
                 &tool_summary,
             )
             .map_err(|e| e.to_app_error())?;
 
-        // 5. 发布开始事件
-        let message_id = uuid::Uuid::new_v4().to_string();
+        // 5. 发布开始事件 - 使用 assistant_message_id 或生成新的
+        let message_id = assistant_message_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         self.publish_event(
             &session_id,
             SessionEvent::Start {
@@ -205,21 +247,30 @@ impl<'a> ExecutionOrchestrator<'a> {
             },
         )?;
 
-        Ok(ExecutionArtifacts {
-            content,
-            model_id: selected_model.model_id,
-            reasoning_summary: None,
-            search_summary_json: None,
-            tool_calls_summary_json: None,
-        })
+        Ok((
+            session_id,
+            ExecutionArtifacts {
+                content,
+                model_id: selected_model.model_id,
+                reasoning_summary: None,
+                search_summary_json: None,
+                tool_calls_summary_json: None,
+            },
+        ))
     }
 
-    /// 执行流式请求，返回事件流
+    /// 执行流式请求，返回 (session_id, 事件流)
     pub async fn execute_streaming(
         &self,
         request: &ExecutionRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<SessionEvent, AppError>> + Send + '_>>, AppError>
-    {
+        assistant_message_id: Option<String>,
+    ) -> Result<
+        (
+            String,
+            Pin<Box<dyn Stream<Item = Result<SessionEvent, AppError>> + Send + '_>>,
+        ),
+        AppError,
+    > {
         let session_id = request
             .session_id
             .clone()
@@ -256,6 +307,79 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // 【WP-AI-BIZ-002】Agentic Search 阶段 - 仅在流式执行中集成
+        let mut evidence_items = Vec::new();
+        let mut search_summary_json = None;
+
+        if request.use_agentic_search {
+            // 发布思考状态事件 - 开始搜索
+            let _ = self.publish_event(
+                &session_id,
+                SessionEvent::ThinkingStatus {
+                    version: SESSION_EVENT_VERSION,
+                    stage: String::from("searching"),
+                    description: String::from("正在检索相关证据..."),
+                },
+            );
+
+            // 执行搜索阶段
+            let search_orchestrator = AgenticSearchOrchestrator::new();
+            let workspace_path =
+                std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                    .join(".pureworker/workspace");
+
+            match search_orchestrator
+                .search_stage(
+                    self.pool,
+                    &workspace_path,
+                    crate::models::agentic_search::AgenticSearchInput {
+                        query: request.user_input.clone(),
+                        session_id: Some(session_id.clone()),
+                        force_refresh: None,
+                    },
+                )
+                .await
+            {
+                Ok(search_result) => {
+                    evidence_items = search_result.evidence;
+                    search_summary_json = Some(search_result.search_summary_json.clone());
+
+                    // 发布搜索摘要事件
+                    let sources: Vec<String> = evidence_items
+                        .iter()
+                        .map(|e| e.source_table.clone())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .collect();
+
+                    let _ = self.publish_event(
+                        &session_id,
+                        SessionEvent::SearchSummary {
+                            version: SESSION_EVENT_VERSION,
+                            sources,
+                            evidence_count: evidence_items.len(),
+                        },
+                    );
+
+                    // 发布推理摘要事件
+                    let _ = self.publish_event(
+                        &session_id,
+                        SessionEvent::Reasoning {
+                            version: SESSION_EVENT_VERSION,
+                            summary: search_result.reasoning_summary,
+                        },
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[ExecutionOrchestrator] Agentic Search 失败: {}", e);
+                    // 搜索失败继续执行，只是无证据
+                }
+            }
+        }
+
+        // 将证据转换为字符串列表
+        let evidence: Vec<String> = evidence_items.into_iter().map(|e| e.content).collect();
+
         // 4. 组装提示词
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
@@ -264,7 +388,7 @@ impl<'a> ExecutionOrchestrator<'a> {
                 request,
                 &profile,
                 &selected_model,
-                &[], // evidence
+                &evidence, // 【WP-AI-BIZ-002】传入真实证据
                 &tool_summary,
             )
             .map_err(|e| e.to_app_error())?;
@@ -309,11 +433,11 @@ impl<'a> ExecutionOrchestrator<'a> {
             .chat_stream(&selected_model.model_id, messages, tools)
             .await?;
 
-        // 7. 转换为 SessionEvent 流
-        let message_id = uuid::Uuid::new_v4().to_string();
-        let event_stream = self.create_event_stream(session_id, message_id, stream);
+        // 7. 转换为 SessionEvent 流 - 使用 assistant_message_id
+        let message_id = assistant_message_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let event_stream = self.create_event_stream(session_id.clone(), message_id, stream);
 
-        Ok(Box::pin(event_stream))
+        Ok((session_id, Box::pin(event_stream)))
     }
 
     /// 创建事件流，将 provider 的字符流转换为 SessionEvent 流
