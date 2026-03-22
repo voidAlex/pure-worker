@@ -16,6 +16,8 @@ use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegis
 use crate::services::ai_orchestration::execution_request_factory::ExecutionRequestFactory;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
 use crate::services::ai_orchestration::ExecutionOrchestratorBuilder;
+use crate::services::conversation_service::ConversationService;
+use crate::services::mcp_server::McpServerService;
 use crate::services::tool_registry::get_registry;
 
 /// 流式执行请求输入
@@ -96,23 +98,27 @@ pub async fn execute(
     // 获取工具注册表
     let tool_registry = get_registry();
 
+    // 【WP-AI-BIZ-010】加载 MCP 服务器状态
+    let mcp_servers = McpServerService::list_mcp_servers(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|server| (server.id.clone(), server))
+        .collect();
+
     // 构建编排器
     let orchestrator = ExecutionOrchestratorBuilder::new(&pool)
         .with_profile_registry(&profile_registry)
         .with_event_bus(&event_bus)
         .with_tool_registry(tool_registry)
+        .with_mcp_servers(mcp_servers)
         .build()?;
 
-    // 生成会话ID和消息ID
-    let session_id = input
-        .request
-        .session_id
-        .clone()
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let message_id = uuid::Uuid::new_v4().to_string();
+    // 执行请求 - 从编排器获取 session_id 和产物
+    let (session_id, artifacts) = orchestrator.execute(&input.request, None).await?;
 
-    // 执行请求
-    let artifacts = orchestrator.execute(&input.request).await?;
+    // 使用会话ID作为消息ID（非流式模式下两者一致）
+    let message_id = session_id.clone();
 
     Ok(ExecutionResult {
         content: artifacts.content,
@@ -129,6 +135,7 @@ pub async fn execute_stream(
     app: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
     input: StreamExecutionInput,
+    assistant_message_id: Option<String>,
 ) -> Result<String, AppError> {
     if input.request.user_input.trim().is_empty() {
         return Err(AppError::InvalidInput(String::from("输入内容不能为空")));
@@ -147,33 +154,37 @@ pub async fn execute_stream(
     // 获取工具注册表
     let tool_registry = get_registry();
 
+    // 【WP-AI-BIZ-010】加载 MCP 服务器状态
+    let mcp_servers = McpServerService::list_mcp_servers(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|server| (server.id.clone(), server))
+        .collect();
+
     // 构建编排器
     let orchestrator = ExecutionOrchestratorBuilder::new(&pool)
         .with_profile_registry(&profile_registry)
         .with_event_bus(&event_bus)
         .with_tool_registry(tool_registry)
+        .with_mcp_servers(mcp_servers)
         .build()?;
 
-    // 生成会话ID
-    let session_id = input
-        .request
-        .session_id
-        .clone()
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    // 执行流式请求 - 从编排器获取 session_id 和流
+    let (session_id, mut stream) = orchestrator
+        .execute_streaming(&input.request, assistant_message_id.clone())
+        .await?;
+
+    // 使用 assistant_message_id 或 session_id 作为消息ID
+    let message_id = assistant_message_id.unwrap_or_else(|| session_id.clone());
 
     // 发送开始事件
-    let message_id = uuid::Uuid::new_v4().to_string();
     let _ = app.emit(
         &event_channel,
         StreamExecutionEvent::Start {
             message_id: message_id.clone(),
         },
     );
-
-    // 执行流式请求
-    let mut stream: std::pin::Pin<
-        Box<dyn futures::Stream<Item = Result<SessionEvent, AppError>> + Send>,
-    > = orchestrator.execute_streaming(&input.request).await?;
 
     // 消费流并转发事件到前端
     let mut accumulated_content = String::new();
@@ -232,6 +243,15 @@ pub async fn execute_stream(
                         message: error_msg.clone(),
                     },
                 );
+                // 流错误清理：更新消息内容为错误信息
+                if !message_id.is_empty() && message_id != session_id {
+                    let _ = ConversationService::update_message_content(
+                        &pool,
+                        &message_id,
+                        &format!("生成失败: {}", error_msg),
+                    )
+                    .await;
+                }
                 return Err(e);
             }
             _ => {}
@@ -283,7 +303,7 @@ pub async fn execute_from_chat_input(
     .await?;
 
     // 创建 AI 消息占位
-    let _assistant_message = ConversationService::create_message(
+    let assistant_message = ConversationService::create_message(
         &pool,
         crate::models::conversation::CreateMessageInput {
             conversation_id: conversation_id.clone(),
@@ -298,7 +318,7 @@ pub async fn execute_from_chat_input(
     let request =
         ExecutionRequestFactory::from_chat_stream_input(&chat_input, Some(conversation_id.clone()));
 
-    // 调用新的流式执行
+    // 调用新的流式执行，传递 assistant_message_id
     execute_stream(
         app,
         pool,
@@ -306,6 +326,7 @@ pub async fn execute_from_chat_input(
             request,
             event_channel: Some("chat-stream".to_string()),
         },
+        Some(assistant_message.id.clone()),
     )
     .await?;
 
