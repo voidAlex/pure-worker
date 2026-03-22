@@ -57,7 +57,9 @@ impl StudentImportService {
                     continue;
                 }
 
-                let hm = header_map.as_ref().unwrap();
+                let hm = header_map
+                    .as_ref()
+                    .expect("表头映射已设置，数据行必然存在表头信息");
                 let student_no = cell_to_string(row.get(hm.student_no_idx));
                 let name = cell_to_string(row.get(hm.name_idx));
                 let gender = hm.gender_idx.and_then(|idx| {

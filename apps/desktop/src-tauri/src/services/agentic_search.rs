@@ -430,7 +430,11 @@ impl AgenticSearchOrchestrator {
         }
 
         let mut ranked: Vec<(EvidenceItem, EvidenceSourceType)> = unique.into_values().collect();
-        ranked.sort_by(|a, b| b.0.score.partial_cmp(&a.0.score).unwrap());
+        ranked.sort_by(|a, b| {
+            b.0.score
+                .partial_cmp(&a.0.score)
+                .expect("证据分数比较失败：存在 NaN 值或不可比较的分数")
+        });
 
         // 限制数量
         ranked.truncate(15);

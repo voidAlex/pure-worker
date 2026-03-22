@@ -257,10 +257,11 @@ impl IntentClassifier {
 
         // 模式："XX同学"、"XX最近"、"XX的表现"
         let patterns = [
-            Regex::new(r"([\u4e00-\u9fa5]{2,4})同学").unwrap(),
-            Regex::new(r"([\u4e00-\u9fa5]{2,4})最近").unwrap(),
-            Regex::new(r"([\u4e00-\u9fa5]{2,4})的").unwrap(),
-            Regex::new(r"([\u4e00-\u9fa5]{2,4})(表现|成绩|作业|情况)").unwrap(),
+            Regex::new(r"([\u4e00-\u9fa5]{2,4})同学").expect("有效正则表达式：匹配中文姓名+同学"),
+            Regex::new(r"([\u4e00-\u9fa5]{2,4})最近").expect("有效正则表达式：匹配中文姓名+最近"),
+            Regex::new(r"([\u4e00-\u9fa5]{2,4})的").expect("有效正则表达式：匹配中文姓名+的"),
+            Regex::new(r"([\u4e00-\u9fa5]{2,4})(表现|成绩|作业|情况)")
+                .expect("有效正则表达式：匹配中文姓名+表现/成绩/作业/情况"),
         ];
 
         for pattern in &patterns {
