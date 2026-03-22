@@ -3,7 +3,7 @@
  * 用于记录和管理每次行课的详细信息，包括教学主题、目标、作业摘要和教师备注。
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit2, Trash2, Calendar, BookOpen } from 'lucide-react';
 import { commands, type LessonRecord, type CreateLessonRecordInput, type AppError } from '@/services/commandClient';
@@ -48,6 +48,17 @@ export const LessonRecordsPage: React.FC = () => {
     },
   });
 
+  const { data: teacherProfile } = useQuery({
+    queryKey: ['teacher-profile'],
+    queryFn: async () => {
+      const result = await commands.getTeacherProfile();
+      if (result.status === 'ok') {
+        return result.data;
+      }
+      throw new Error('获取教师信息失败');
+    },
+  });
+
   // 获取应用设置（用于读取默认科目）
   const { data: appSettings } = useQuery({
     queryKey: ['app-settings'],
@@ -60,8 +71,27 @@ export const LessonRecordsPage: React.FC = () => {
     },
   });
 
-  // 获取默认科目
-  const defaultSubject = appSettings?.find((s) => s.key === 'default_subject')?.value || '';
+  const defaultSubject = useMemo(() => {
+    const subjectFromProfile = teacherProfile?.subject?.trim() ?? '';
+    if (subjectFromProfile) {
+      return subjectFromProfile;
+    }
+
+    const subjectSetting = appSettings?.find((s) => s.key === 'default_subject');
+    return subjectSetting?.value?.trim() || '';
+  }, [appSettings, teacherProfile]);
+
+  const selectedClassSubject = useMemo(() => {
+    if (!formData.class_id) {
+      return '';
+    }
+    const currentClass = classrooms?.find((cls) => cls.id === formData.class_id);
+    return currentClass?.subject ?? '';
+  }, [classrooms, formData.class_id]);
+
+  const resolvedSubject = selectedClassSubject || defaultSubject;
+  const effectiveSubject =
+    editingRecord && formData.subject?.trim() ? formData.subject.trim() : resolvedSubject;
 
   const { data: records, isLoading } = useQuery({
     queryKey: ['lesson-records'],
@@ -177,14 +207,19 @@ export const LessonRecordsPage: React.FC = () => {
   };
 
   const handleSubmit = () => {
-    if (!formData.class_id || !formData.subject || !formData.lesson_date) {
-      error('请填写班级、科目和日期');
+    if (!formData.class_id || !formData.lesson_date) {
+      error('请填写班级和日期');
+      return;
+    }
+
+    if (!effectiveSubject) {
+      error('请先在初始化向导或系统设置中设置授课科目');
       return;
     }
 
     const input: CreateLessonRecordInput = {
       class_id: formData.class_id!,
-      subject: formData.subject!,
+      subject: effectiveSubject,
       lesson_date: formData.lesson_date!,
       schedule_event_id: null,
       lesson_index: null,
@@ -271,13 +306,9 @@ export const LessonRecordsPage: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">科目</label>
-              <input
-                type="text"
-                placeholder="科目"
-                className="w-full px-3 py-2 border rounded-lg"
-                value={formData.subject || ''}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-              />
+              <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                {effectiveSubject || '未设置，请先到初始化向导或系统设置填写授课科目'}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">日期</label>

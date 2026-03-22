@@ -9,6 +9,7 @@ import {
   type ProviderPreset,
   type CreateAiConfigInput,
 } from '@/services/commandClient';
+import { TEACHING_STAGE_OPTIONS, TEACHING_SUBJECT_OPTIONS } from '@/constants/teacherProfile';
 import {
   Bot,
   Sparkles,
@@ -142,11 +143,13 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
     setSaving(true);
     try {
       // 1. 保存工作区路径
-      await commands.updateSetting(
-        'workspace_path',
-        JSON.stringify(workspacePath),
-        'general',
-        '工作区目录路径',
+      unwrapResult(
+        await commands.updateSetting(
+          'workspace_path',
+          JSON.stringify(workspacePath),
+          'general',
+          '工作区目录路径',
+        ),
       );
 
       // 2. 创建 AI 配置
@@ -163,18 +166,31 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
         is_active: true,
         config_json: null,
       };
-      await commands.createAiConfig(aiConfig);
+      unwrapResult(await commands.createAiConfig(aiConfig));
 
       // 3. 创建教师档案
-      // 暂时注释， 等待 TypeScript 绑定重新生成
-      // await commands.createTeacherProfile({
-      //   name: teacherName,
-      //   teaching_stage: teachingStage,
-      //   teaching_subject: teachingSubject,
-      // });
+      unwrapResult(
+        await commands.createTeacherProfile({
+          name: teacherName,
+          teaching_stage: teachingStage,
+          teaching_subject: teachingSubject,
+        }),
+      );
 
-      // 4. 标记初始化完成
-      await commands.updateSetting('initialization_completed', 'true', 'general', '初始化完成标记');
+      // 4. 同步默认授课科目
+      unwrapResult(
+        await commands.updateSetting('default_subject', teachingSubject, 'general', '默认授课科目'),
+      );
+
+      // 5. 标记初始化完成
+      unwrapResult(
+        await commands.updateSetting(
+          'initialization_completed',
+          'true',
+          'general',
+          '初始化完成标记',
+        ),
+      );
 
       onComplete();
     } catch (error) {
@@ -405,7 +421,8 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                         ))}
                       </select>
                       <p className="mt-2 text-xs text-gray-500">
-                        已选择 {models.find((m) => m.id === selectedModelId)?.name || selectedModelId}
+                        已选择{' '}
+                        {models.find((m) => m.id === selectedModelId)?.name || selectedModelId}
                       </p>
                     </div>
                   )}
@@ -460,9 +477,11 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                     onChange={(e) => setTeachingStage(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                   >
-                    <option value="primary">小学</option>
-                    <option value="junior">初中</option>
-                    <option value="senior">高中</option>
+                    {TEACHING_STAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -477,20 +496,11 @@ export const InitializationWizard: React.FC<InitializationWizardProps> = ({ onCo
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                   >
                     <option value="">请选择学科</option>
-                    <option value="语文">语文</option>
-                    <option value="数学">数学</option>
-                    <option value="英语">英语</option>
-                    <option value="物理">物理</option>
-                    <option value="化学">化学</option>
-                    <option value="生物">生物</option>
-                    <option value="历史">历史</option>
-                    <option value="地理">地理</option>
-                    <option value="政治">政治</option>
-                    <option value="音乐">音乐</option>
-                    <option value="美术">美术</option>
-                    <option value="体育">体育</option>
-                    <option value="信息技术">信息技术</option>
-                    <option value="其他">其他</option>
+                    {TEACHING_SUBJECT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

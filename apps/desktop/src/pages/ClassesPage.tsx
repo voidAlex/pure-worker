@@ -3,7 +3,7 @@
  * 展示班级列表，支持创建、编辑、删除班级
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   commands,
@@ -29,6 +29,34 @@ export const ClassesPage: React.FC = () => {
     subject: '',
     teacher_id: null,
   });
+
+  const { data: teacherProfile } = useQuery({
+    queryKey: ['teacher-profile'],
+    queryFn: async () => {
+      const result = await commands.getTeacherProfile();
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+  });
+
+  const { data: appSettings } = useQuery({
+    queryKey: ['app-settings'],
+    queryFn: async () => {
+      const result = await commands.getAppSettings();
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+  });
+
+  const defaultSubject = useMemo(() => {
+    const subjectFromProfile = teacherProfile?.subject?.trim() ?? '';
+    if (subjectFromProfile) {
+      return subjectFromProfile;
+    }
+
+    const subjectSetting = appSettings?.find((item) => item.key === 'default_subject');
+    return subjectSetting?.value?.trim() ?? '';
+  }, [appSettings, teacherProfile]);
 
   const { data: classes, isLoading } = useQuery({
     queryKey: ['classrooms'],
@@ -84,7 +112,7 @@ export const ClassesPage: React.FC = () => {
   });
 
   const resetForm = () => {
-    setFormData({ grade: '', class_name: '', subject: '', teacher_id: null });
+    setFormData({ grade: '', class_name: '', subject: defaultSubject, teacher_id: null });
     setEditingClass(null);
   };
 
@@ -105,16 +133,25 @@ export const ClassesPage: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!editingClass && !defaultSubject) {
+      error('请先在初始化向导或系统设置中设置授课科目');
+      return;
+    }
+
     if (editingClass) {
       updateMutation.mutate({
         id: editingClass.id,
         grade: formData.grade,
         class_name: formData.class_name,
-        subject: formData.subject,
+        subject: null,
         teacher_id: null,
       });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate({
+        ...formData,
+        subject: defaultSubject,
+      });
     }
   };
 
@@ -235,17 +272,14 @@ export const ClassesPage: React.FC = () => {
                   placeholder="例如：一班"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">科目</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow"
-                  placeholder="例如：语文"
-                />
-              </div>
+              {!editingClass && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">科目</label>
+                  <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                    {defaultSubject || '未设置，请先到初始化向导或系统设置填写授课科目'}
+                  </div>
+                </div>
+              )}
               <div className="pt-4 flex justify-end gap-3">
                 <button
                   type="button"

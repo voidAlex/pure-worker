@@ -76,12 +76,11 @@ impl TeacherProfileService {
         let now = Utc::now().to_rfc3339();
 
         // 检查是否已存在教师档案
-        let existing: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM teacher_profile WHERE is_deleted = 0 LIMIT 1",
-        )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| AppError::Database(format!("查询教师档案失败：{}", e)))?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT id FROM teacher_profile WHERE is_deleted = 0 LIMIT 1")
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| AppError::Database(format!("查询教师档案失败：{}", e)))?;
 
         if let Some(teacher_id) = existing {
             // 更新现有档案

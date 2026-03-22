@@ -20,6 +20,7 @@ import {
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { TEACHING_STAGE_OPTIONS, TEACHING_SUBJECT_OPTIONS } from '@/constants/teacherProfile';
 import {
   Cpu,
   Shield,
@@ -723,9 +724,10 @@ const AiConfigTab: React.FC = () => {
 const GeneralSettingsTab: React.FC = () => {
   const queryClient = useQueryClient();
   const { success, error } = useToast();
-  const [defaultSubject, setDefaultSubject] = useState('');
+  const [teacherName, setTeacherName] = useState('');
+  const [teachingStage, setTeachingStage] = useState('primary');
+  const [teachingSubject, setTeachingSubject] = useState('');
 
-  // 查询应用设置
   const settingsQuery = useQuery({
     queryKey: ['settings', 'app-settings'],
     queryFn: async () => {
@@ -737,32 +739,73 @@ const GeneralSettingsTab: React.FC = () => {
     },
   });
 
-  // 初始化表单数据
-  React.useEffect(() => {
-    if (settingsQuery.data) {
-      const subjectSetting = settingsQuery.data.find((s) => s.key === 'default_subject');
-      setDefaultSubject(subjectSetting?.value || '');
-    }
-  }, [settingsQuery.data]);
-
-  // 更新设置
-  const updateSettingMutation = useMutation({
-    mutationFn: async (value: string) => {
-      const result = await commands.updateSetting('default_subject', value, 'general', '默认授课科目');
+  const teacherProfileQuery = useQuery({
+    queryKey: ['teacher-profile'],
+    queryFn: async () => {
+      const result = await commands.getTeacherProfile();
       if (result.status === 'ok') {
         return result.data;
       }
-      throw new Error('保存设置失败');
+      throw new Error('获取教师档案失败');
+    },
+  });
+
+  React.useEffect(() => {
+    if (teacherProfileQuery.data) {
+      setTeacherName(teacherProfileQuery.data.name || '');
+      setTeachingStage(teacherProfileQuery.data.stage || 'primary');
+      setTeachingSubject(teacherProfileQuery.data.subject || '');
+      return;
+    }
+
+    if (settingsQuery.data && !teachingSubject) {
+      const subjectSetting = settingsQuery.data.find((s) => s.key === 'default_subject');
+      if (subjectSetting?.value) {
+        setTeachingSubject(subjectSetting.value);
+      }
+    }
+  }, [settingsQuery.data, teacherProfileQuery.data, teachingSubject]);
+
+  const saveTeachingProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!teacherName.trim()) {
+        throw new Error('请输入教师姓名');
+      }
+      if (!teachingSubject) {
+        throw new Error('请选择任教学科');
+      }
+
+      const profileResult = await commands.createTeacherProfile({
+        name: teacherName.trim(),
+        teaching_stage: teachingStage,
+        teaching_subject: teachingSubject,
+      });
+      if (profileResult.status === 'error') {
+        throw new Error(getErrorMessage(profileResult.error));
+      }
+
+      const settingResult = await commands.updateSetting(
+        'default_subject',
+        teachingSubject,
+        'general',
+        '默认授课科目',
+      );
+      if (settingResult.status === 'error') {
+        throw new Error(getErrorMessage(settingResult.error));
+      }
+
+      return { profile: profileResult.data, setting: settingResult.data };
     },
     onSuccess: () => {
       success('设置已保存');
+      queryClient.invalidateQueries({ queryKey: ['teacher-profile'] });
       queryClient.invalidateQueries({ queryKey: ['settings', 'app-settings'] });
     },
     onError: (err: Error) => error(err.message),
   });
 
   const handleSave = () => {
-    updateSettingMutation.mutate(defaultSubject);
+    saveTeachingProfileMutation.mutate();
   };
 
   return (
@@ -771,25 +814,59 @@ const GeneralSettingsTab: React.FC = () => {
         <h3 className="mb-4 text-lg font-semibold text-gray-900">教学设置</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">默认授课科目</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="例如：语文、数学、英语"
-                className="flex-1 px-3 py-2 border rounded-lg"
-                value={defaultSubject}
-                onChange={(e) => setDefaultSubject(e.target.value)}
-              />
-              <button
-                onClick={handleSave}
-                disabled={updateSettingMutation.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-              >
-                {updateSettingMutation.isPending ? '保存中...' : '保存'}
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">教师姓名</label>
+            <input
+              type="text"
+              placeholder="请输入您的姓名"
+              className="w-full px-3 py-2 border rounded-lg"
+              value={teacherName}
+              onChange={(e) => setTeacherName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">任教学段</label>
+            <select
+              className="w-full px-3 py-2 border rounded-lg bg-white"
+              value={teachingStage}
+              onChange={(e) => setTeachingStage(e.target.value)}
+            >
+              {TEACHING_STAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">任教学科</label>
+            <select
+              className="w-full px-3 py-2 border rounded-lg bg-white"
+              value={teachingSubject}
+              onChange={(e) => setTeachingSubject(e.target.value)}
+            >
+              <option value="">请选择学科</option>
+              {TEACHING_SUBJECT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saveTeachingProfileMutation.isPending}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+            >
+              {saveTeachingProfileMutation.isPending ? '保存中...' : '保存'}
+            </button>
+          </div>
+          <div>
             <p className="mt-2 text-xs text-gray-500">
-              设置后，新建行课记录时将自动填充此科目
+              与初始化向导保持一致：设置后将作为班级、行课等流程的默认科目来源。
             </p>
           </div>
         </div>

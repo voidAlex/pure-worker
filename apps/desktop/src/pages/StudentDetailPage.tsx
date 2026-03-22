@@ -3,7 +3,7 @@
  * 展示单个学生的详细信息，包含标签、成绩、观察记录、家校沟通等 tab 页签
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -86,6 +86,62 @@ export const StudentDetailPage: React.FC = () => {
     },
     enabled: !!id,
   });
+
+  const { data: teacherProfile } = useQuery({
+    queryKey: ['teacher-profile'],
+    queryFn: async () => {
+      const result = await commands.getTeacherProfile();
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+  });
+
+  const { data: appSettings } = useQuery({
+    queryKey: ['app-settings'],
+    queryFn: async () => {
+      const result = await commands.getAppSettings();
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+  });
+
+  const { data: classroom } = useQuery({
+    queryKey: ['classroom', student?.class_id],
+    queryFn: async () => {
+      if (!student?.class_id) {
+        return null;
+      }
+      const result = await commands.getClassroom(student.class_id);
+      if (result.status === 'error') throw new Error(JSON.stringify(result.error));
+      return result.data;
+    },
+    enabled: !!student?.class_id,
+  });
+
+  const defaultSubject = useMemo(() => {
+    const subjectFromProfile = teacherProfile?.subject?.trim() ?? '';
+    if (subjectFromProfile) {
+      return subjectFromProfile;
+    }
+
+    const subjectSetting = appSettings?.find((item) => item.key === 'default_subject');
+    return subjectSetting?.value?.trim() ?? '';
+  }, [appSettings, teacherProfile]);
+
+  const resolvedScoreSubject = (classroom?.subject?.trim() || defaultSubject).trim();
+
+  React.useEffect(() => {
+    if (!resolvedScoreSubject) {
+      return;
+    }
+
+    setScoreForm((prev) => {
+      if (prev.subject === resolvedScoreSubject) {
+        return prev;
+      }
+      return { ...prev, subject: resolvedScoreSubject };
+    });
+  }, [resolvedScoreSubject]);
 
   const { data: tags } = useQuery({
     queryKey: ['studentTags', id],
@@ -193,7 +249,7 @@ export const StudentDetailPage: React.FC = () => {
       setIsScoreModalOpen(false);
       setScoreForm({
         exam_name: '',
-        subject: '',
+        subject: resolvedScoreSubject,
         score: '',
         full_score: '100',
         rank_in_class: '',
@@ -306,9 +362,15 @@ export const StudentDetailPage: React.FC = () => {
    */
   const handleCreateScore = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!resolvedScoreSubject) {
+      error('请先在初始化向导或系统设置中设置授课科目');
+      return;
+    }
+
     createScoreMutation.mutate({
       exam_name: scoreForm.exam_name,
-      subject: scoreForm.subject,
+      subject: resolvedScoreSubject,
       score: Number(scoreForm.score),
       full_score: Number(scoreForm.full_score),
       rank_in_class: scoreForm.rank_in_class ? Number(scoreForm.rank_in_class) : null,
@@ -973,14 +1035,9 @@ export const StudentDetailPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">科目</label>
-                <input
-                  required
-                  type="text"
-                  value={scoreForm.subject}
-                  onChange={(e) => setScoreForm({ ...scoreForm, subject: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow text-sm"
-                  placeholder="如：语文"
-                />
+                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm">
+                  {resolvedScoreSubject || '未设置，请先到初始化向导或系统设置填写授课科目'}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
