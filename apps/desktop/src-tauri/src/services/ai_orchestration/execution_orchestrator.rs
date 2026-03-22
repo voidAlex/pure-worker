@@ -913,11 +913,15 @@ impl<'a> ExecutionOrchestrator<'a> {
                 }
                 Err(e) => {
                     result.error_message = Some(format!("OCR 阶段失败: {}", e));
+                    let error_msg = result
+                        .error_message
+                        .clone()
+                        .unwrap_or_else(|| "OCR 失败".to_string());
                     self.publish_event(
                         &session_id,
                         SessionEvent::Error {
                             version: SESSION_EVENT_VERSION,
-                            message: result.error_message.clone().unwrap(),
+                            message: error_msg,
                         },
                     )?;
                     return Ok(result);

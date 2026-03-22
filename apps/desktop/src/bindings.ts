@@ -1431,7 +1431,13 @@ async deleteAssignmentAsset(input: DeleteAssetInput) : Promise<Result<DeleteResp
 }
 },
 /**
- * 启动作业批改异步任务。
+ * 启动作业批改异步任务（使用统一执行编排器）。
+ * 
+ * 流程：
+ * 1. 获取批改任务和作业资产
+ * 2. 创建异步任务记录
+ * 3. 对每个资产调用统一的批改管道（OCR + LLM 批改 + 结果融合）
+ * 4. 更新任务进度和状态
  */
 async startGrading(input: StartGradingInput) : Promise<Result<AsyncTask, AppError>> {
     try {
