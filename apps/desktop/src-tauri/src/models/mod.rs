@@ -9,6 +9,7 @@ pub mod async_task;
 pub mod audit_log;
 pub mod classroom;
 pub mod conversation;
+pub mod execution;
 pub mod global_shortcut;
 pub mod lesson_record;
 pub mod mcp_server;
