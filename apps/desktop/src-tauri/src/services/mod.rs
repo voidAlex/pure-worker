@@ -2,6 +2,7 @@ pub mod activity_announcement;
 pub mod agentic_search;
 pub mod agentic_search_agent;
 pub mod ai_generation;
+pub mod ai_orchestration;
 pub mod ai_param_preset;
 pub mod app_settings;
 pub mod approval;
