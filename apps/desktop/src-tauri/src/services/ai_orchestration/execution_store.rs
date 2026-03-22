@@ -21,7 +21,8 @@ impl ExecutionStoreService {
         pool: &SqlitePool,
         input: CreateExecutionSessionInput,
     ) -> Result<ExecutionSession, AppError> {
-        let id = Uuid::new_v4().to_string();
+        // 使用提供的ID或生成新的
+        let id = input.id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = Utc::now().to_rfc3339();
 
         sqlx::query(
@@ -152,6 +153,20 @@ impl ExecutionStoreService {
         Self::get_record_by_id(pool, &input.id).await
     }
 
+    pub async fn update_message_content(
+        pool: &SqlitePool,
+        message_id: &str,
+        content: &str,
+    ) -> Result<ExecutionMessage, AppError> {
+        sqlx::query("UPDATE execution_message SET content = ? WHERE id = ?")
+            .bind(content)
+            .bind(message_id)
+            .execute(pool)
+            .await?;
+
+        Self::get_message_by_id(pool, message_id).await
+    }
+
     pub async fn get_session_by_id(
         pool: &SqlitePool,
         id: &str,
@@ -232,6 +247,7 @@ mod tests {
         let session = ExecutionStoreService::create_session(
             &pool,
             CreateExecutionSessionInput {
+                id: None,
                 teacher_id: String::from("teacher-1"),
                 title: Some(String::from("测试会话")),
                 entrypoint: crate::models::execution::ExecutionEntrypoint::Chat,
@@ -252,6 +268,7 @@ mod tests {
         let session = ExecutionStoreService::create_session(
             &pool,
             CreateExecutionSessionInput {
+                id: None,
                 teacher_id: String::from("teacher-1"),
                 title: None,
                 entrypoint: crate::models::execution::ExecutionEntrypoint::Chat,
@@ -284,6 +301,7 @@ mod tests {
         let session = ExecutionStoreService::create_session(
             &pool,
             CreateExecutionSessionInput {
+                id: None,
                 teacher_id: String::from("teacher-1"),
                 title: None,
                 entrypoint: crate::models::execution::ExecutionEntrypoint::Chat,
@@ -347,6 +365,7 @@ mod tests {
         let session = ExecutionStoreService::create_session(
             &pool,
             CreateExecutionSessionInput {
+                id: None,
                 teacher_id: String::from("teacher-1"),
                 title: None,
                 entrypoint: crate::models::execution::ExecutionEntrypoint::Chat,

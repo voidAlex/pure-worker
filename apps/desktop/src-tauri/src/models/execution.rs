@@ -31,8 +31,13 @@ pub enum StreamMode {
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum ExecutionStatus {
+    /// 执行中
+    Running,
+    /// 已完成
     Completed,
+    /// 失败
     Failed,
+    /// 已取消
     Cancelled,
 }
 
@@ -209,6 +214,8 @@ pub struct ExecutionRecord {
 /// 创建执行会话输入
 #[derive(Debug, Deserialize, Type)]
 pub struct CreateExecutionSessionInput {
+    /// 会话ID（可选，不提供时自动生成）
+    pub id: Option<String>,
     /// 教师ID
     pub teacher_id: String,
     /// 会话标题

@@ -170,6 +170,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         &self,
         request: &ExecutionRequest,
     ) -> Result<ExecutionArtifacts, AppError> {
+        // 使用 request.session_id 如果存在，否则生成新的
         let session_id = request
             .session_id
             .clone()
@@ -181,7 +182,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             .get_profile(&request.agent_profile_id)
             .map_err(|e| e.to_app_error())?;
 
-        // 2. 创建 ExecutionStore 会话和消息记录
+        // 2. 创建 ExecutionStore 会话（使用与 event_bus 相同的 session_id）
         let teacher_id = self.get_current_teacher_id().await?;
         let session = ExecutionStoreService::create_session(
             self.pool,
@@ -190,35 +191,19 @@ impl<'a> ExecutionOrchestrator<'a> {
                 title: Some(request.user_input.clone()),
                 entrypoint: request.entrypoint.clone(),
                 agent_profile_id: request.agent_profile_id.clone(),
+                id: Some(session_id.clone()), // 使用相同的 session_id
             },
         )
         .await?;
 
-        let message = ExecutionStoreService::create_message(
+        // 创建用户消息
+        let _user_message = ExecutionStoreService::create_message(
             self.pool,
             crate::models::execution::CreateExecutionMessageInput {
                 session_id: session.id.clone(),
                 role: "user".to_string(),
                 content: request.user_input.clone(),
                 tool_name: None,
-            },
-        )
-        .await?;
-
-        // 创建执行记录（初始状态为进行中）
-        let record = ExecutionStoreService::create_record(
-            self.pool,
-            crate::models::execution::CreateExecutionRecordInput {
-                session_id: session.id.clone(),
-                execution_message_id: message.id.clone(),
-                entrypoint: request.entrypoint.clone(),
-                agent_profile_id: request.agent_profile_id.clone(),
-                model_id: String::new(), // 将在路由后填充
-                status: crate::models::execution::ExecutionStatus::Completed,
-                reasoning_summary: None,
-                search_summary_json: None,
-                tool_calls_summary_json: None,
-                metadata_json: request.metadata_json.clone(),
             },
         )
         .await?;
@@ -234,7 +219,37 @@ impl<'a> ExecutionOrchestrator<'a> {
         )
         .map_err(|e| e.to_app_error())?;
 
-        // 4. 构建工具视图
+        // 4. 先创建助手占位消息（用于关联执行记录）
+        let assistant_message = ExecutionStoreService::create_message(
+            self.pool,
+            crate::models::execution::CreateExecutionMessageInput {
+                session_id: session.id.clone(),
+                role: "assistant".to_string(),
+                content: String::new(), // 占位内容，稍后更新
+                tool_name: None,
+            },
+        )
+        .await?;
+
+        // 创建执行记录（初始状态为执行中）
+        let record = ExecutionStoreService::create_record(
+            self.pool,
+            crate::models::execution::CreateExecutionRecordInput {
+                session_id: session.id.clone(),
+                execution_message_id: assistant_message.id.clone(), // 关联到助手消息
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+                model_id: selected_model.model_id.clone(), // 存储模型ID
+                status: crate::models::execution::ExecutionStatus::Running, // 初始状态为执行中
+                reasoning_summary: None,
+                search_summary_json: None,
+                tool_calls_summary_json: None,
+                metadata_json: request.metadata_json.clone(),
+            },
+        )
+        .await?;
+
+        // 5. 构建工具视图
         let tool_view = ToolExposureService::build_session_tool_view(
             &profile,
             self.tool_registry,
@@ -248,7 +263,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // 5. 执行 Agentic Search（如果启用）
+        // 6. 执行 Agentic Search（如果启用）
         let mut evidence = vec![];
         let mut search_summary_json = None;
         let mut reasoning_summary = None;
@@ -285,7 +300,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             }
         }
 
-        // 6. 组装提示词（使用搜索得到的证据）
+        // 7. 组装提示词（使用搜索得到的证据）
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
         let assembled = assembler
@@ -298,7 +313,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             )
             .map_err(|e| e.to_app_error())?;
 
-        // 7. 发布开始事件
+        // 8. 发布开始事件
         let message_id = uuid::Uuid::new_v4().to_string();
         self.publish_event(
             &session_id,
@@ -308,7 +323,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             },
         )?;
 
-        // 8. 创建 Provider Adapter 并调用
+        // 9. 创建 Provider Adapter 并调用
         let provider_config = LlmProviderService::create_provider_config(&config)?;
         let adapter = AdapterFactory::create(&provider_config);
 
@@ -343,14 +358,22 @@ impl<'a> ExecutionOrchestrator<'a> {
             )
         };
 
-        // 9. 调用模型
+        // 10. 调用模型
         let content = adapter
             .chat(&selected_model.model_id, messages, tools)
             .await;
 
         match content {
             Ok(content) => {
-                // 10. 更新执行记录为成功
+                // 11. 更新助手消息内容为最终结果
+                let _ = ExecutionStoreService::update_message_content(
+                    self.pool,
+                    &assistant_message.id,
+                    &content,
+                )
+                .await;
+
+                // 12. 更新执行记录为成功
                 let _ = ExecutionStoreService::finalize_success(
                     self.pool,
                     crate::models::execution::UpdateExecutionRecordInput {
@@ -364,7 +387,7 @@ impl<'a> ExecutionOrchestrator<'a> {
                 )
                 .await;
 
-                // 11. 发布执行摘要和完成事件
+                // 13. 发布执行摘要和完成事件
                 self.publish_event(
                     &session_id,
                     SessionEvent::ExecutionSummary {
@@ -436,11 +459,12 @@ impl<'a> ExecutionOrchestrator<'a> {
             .get_profile(&request.agent_profile_id)
             .map_err(|e| e.to_app_error())?;
 
-        // 2. 创建 ExecutionStore 会话和消息记录
+        // 2. 创建 ExecutionStore 会话（使用与 event_bus 相同的 session_id）
         let teacher_id = self.get_current_teacher_id().await?;
         let session = ExecutionStoreService::create_session(
             self.pool,
             crate::models::execution::CreateExecutionSessionInput {
+                id: Some(session_id.clone()),
                 teacher_id,
                 title: Some(request.user_input.clone()),
                 entrypoint: request.entrypoint.clone(),
@@ -449,31 +473,14 @@ impl<'a> ExecutionOrchestrator<'a> {
         )
         .await?;
 
-        let message = ExecutionStoreService::create_message(
+        // 创建用户消息
+        let _user_message = ExecutionStoreService::create_message(
             self.pool,
             crate::models::execution::CreateExecutionMessageInput {
                 session_id: session.id.clone(),
                 role: "user".to_string(),
                 content: request.user_input.clone(),
                 tool_name: None,
-            },
-        )
-        .await?;
-
-        // 创建执行记录
-        let record = ExecutionStoreService::create_record(
-            self.pool,
-            crate::models::execution::CreateExecutionRecordInput {
-                session_id: session.id.clone(),
-                execution_message_id: message.id.clone(),
-                entrypoint: request.entrypoint.clone(),
-                agent_profile_id: request.agent_profile_id.clone(),
-                model_id: String::new(),
-                status: crate::models::execution::ExecutionStatus::Completed,
-                reasoning_summary: None,
-                search_summary_json: None,
-                tool_calls_summary_json: None,
-                metadata_json: request.metadata_json.clone(),
             },
         )
         .await?;
@@ -489,7 +496,37 @@ impl<'a> ExecutionOrchestrator<'a> {
         )
         .map_err(|e| e.to_app_error())?;
 
-        // 4. 构建工具视图
+        // 4. 先创建助手占位消息（用于关联执行记录）
+        let assistant_message = ExecutionStoreService::create_message(
+            self.pool,
+            crate::models::execution::CreateExecutionMessageInput {
+                session_id: session.id.clone(),
+                role: "assistant".to_string(),
+                content: String::new(),
+                tool_name: None,
+            },
+        )
+        .await?;
+
+        // 创建执行记录（初始状态为执行中）
+        let record = ExecutionStoreService::create_record(
+            self.pool,
+            crate::models::execution::CreateExecutionRecordInput {
+                session_id: session.id.clone(),
+                execution_message_id: assistant_message.id.clone(),
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+                model_id: selected_model.model_id.clone(),
+                status: crate::models::execution::ExecutionStatus::Running,
+                reasoning_summary: None,
+                search_summary_json: None,
+                tool_calls_summary_json: None,
+                metadata_json: request.metadata_json.clone(),
+            },
+        )
+        .await?;
+
+        // 5. 构建工具视图
         let tool_view = ToolExposureService::build_session_tool_view(
             &profile,
             self.tool_registry,
@@ -503,7 +540,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // 5. 执行 Agentic Search（如果启用）
+        // 6. 执行 Agentic Search（如果启用）
         let mut evidence = vec![];
         let mut search_summary_json = None;
         let mut reasoning_summary = None;
@@ -532,14 +569,14 @@ impl<'a> ExecutionOrchestrator<'a> {
             }
         }
 
-        // 6. 组装提示词（使用搜索得到的证据）
+        // 7. 组装提示词（使用搜索得到的证据）
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
         let assembled = assembler
             .assemble(request, &profile, &selected_model, &evidence, &tool_summary)
             .map_err(|e| e.to_app_error())?;
 
-        // 7. 创建 Provider Adapter
+        // 8. 创建 Provider Adapter
         let provider_config = LlmProviderService::create_provider_config(&config)?;
         let adapter = AdapterFactory::create(&provider_config);
 
@@ -574,16 +611,17 @@ impl<'a> ExecutionOrchestrator<'a> {
             )
         };
 
-        // 8. 获取流式响应
+        // 9. 获取流式响应
         let stream = adapter
             .chat_stream(&selected_model.model_id, messages, tools)
             .await?;
 
-        // 9. 转换为 SessionEvent 流（包含存储和事件发射）
+        // 10. 转换为 SessionEvent 流（包含存储和事件发射）
         let message_id = uuid::Uuid::new_v4().to_string();
         let model_id = selected_model.model_id.clone();
         let pool = self.pool.clone();
         let record_id = record.id.clone();
+        let assistant_message_id = assistant_message.id.clone();
         let event_stream = self.create_event_stream_with_store(
             session_id,
             message_id,
@@ -592,6 +630,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             model_id,
             pool,
             record_id,
+            assistant_message_id,
             search_summary_json,
             reasoning_summary,
         );
@@ -633,6 +672,7 @@ impl<'a> ExecutionOrchestrator<'a> {
 
     /// 创建带存储的事件流，将 provider 的字符流转换为 SessionEvent 流
     /// 包含 ExecutionStore 更新和 ExecutionSummary 事件发射
+    /// 流错误时会调用 record_failure 并发射 Error 事件
     #[allow(clippy::too_many_arguments)]
     fn create_event_stream_with_store(
         &self,
@@ -643,9 +683,13 @@ impl<'a> ExecutionOrchestrator<'a> {
         model_id: String,
         pool: SqlitePool,
         record_id: String,
+        assistant_message_id: String,
         search_summary_json: Option<String>,
         reasoning_summary: Option<String>,
     ) -> impl Stream<Item = Result<SessionEvent, AppError>> + Send + '_ {
+        use futures::stream::StreamExt;
+        use std::sync::{Arc, Mutex};
+
         let start_event = SessionEvent::Start {
             version: SESSION_EVENT_VERSION,
             message_id,
@@ -657,40 +701,114 @@ impl<'a> ExecutionOrchestrator<'a> {
         // 发射搜索阶段事件
         let search_stream = futures::stream::iter(search_events.into_iter().map(Ok));
 
-        // 处理 provider 流
-        let pool_clone = pool.clone();
-        let record_id_clone = record_id.clone();
-        let model_id_clone = model_id.clone();
+        // 使用 Arc<Mutex<String>> 来安全地在异步流中累积内容
+        let accumulated_content = Arc::new(Mutex::new(String::new()));
+        let has_error = Arc::new(Mutex::new(false));
+        let error_message = Arc::new(Mutex::new(String::new()));
+
+        let content_acc = accumulated_content.clone();
+        let has_err = has_error.clone();
+        let err_msg = error_message.clone();
+
+        // 处理 provider 流，累积内容并检测错误
         let content_stream = provider_stream.map(move |result| match result {
-            Ok(content) => Ok(SessionEvent::Chunk {
-                version: SESSION_EVENT_VERSION,
-                content,
-            }),
-            Err(e) => Err(e),
+            Ok(content) => {
+                // 累积内容
+                if let Ok(mut acc) = content_acc.lock() {
+                    acc.push_str(&content);
+                }
+                Ok(SessionEvent::Chunk {
+                    version: SESSION_EVENT_VERSION,
+                    content,
+                })
+            }
+            Err(e) => {
+                // 标记错误并记录错误信息
+                if let Ok(mut he) = has_err.lock() {
+                    *he = true;
+                }
+                if let Ok(mut em) = err_msg.lock() {
+                    *em = e.to_string();
+                }
+                Err(e)
+            }
         });
 
         // 完成流，包含 ExecutionSummary 和存储更新
+        let pool_clone = pool.clone();
+        let record_id_clone = record_id.clone();
+        let model_id_clone = model_id.clone();
+        let content_acc_clone = accumulated_content.clone();
+        let assistant_msg_id_clone = assistant_message_id.clone();
+        let has_err_clone = has_error.clone();
+        let err_msg_clone = error_message.clone();
+
         let complete_stream = futures::stream::once(async move {
-            // 更新执行记录为成功
-            let _ = ExecutionStoreService::finalize_success(
+            // 获取累积的内容
+            let final_content = content_acc_clone
+                .lock()
+                .map(|acc| acc.clone())
+                .unwrap_or_default();
+
+            // 更新助手消息内容为最终结果（即使出错也保存已接收的内容）
+            let _ = ExecutionStoreService::update_message_content(
                 &pool_clone,
-                crate::models::execution::UpdateExecutionRecordInput {
-                    id: record_id_clone,
-                    status: Some(crate::models::execution::ExecutionStatus::Completed),
-                    reasoning_summary,
-                    search_summary_json,
-                    tool_calls_summary_json: None,
-                    error_message: None,
-                },
+                &assistant_msg_id_clone,
+                &final_content,
             )
             .await;
 
-            // 发射 ExecutionSummary 事件
-            Ok(SessionEvent::ExecutionSummary {
-                version: SESSION_EVENT_VERSION,
-                status: "completed".to_string(),
-                used_model: model_id_clone,
-            })
+            // 检查是否发生错误
+            let is_error = has_err_clone.lock().map(|he| *he).unwrap_or(false);
+
+            if is_error {
+                // 获取错误信息
+                let error_str = err_msg_clone
+                    .lock()
+                    .map(|em| em.clone())
+                    .unwrap_or_default();
+
+                // 记录失败
+                let _ = ExecutionStoreService::record_failure(
+                    &pool_clone,
+                    crate::models::execution::UpdateExecutionRecordInput {
+                        id: record_id_clone,
+                        status: Some(crate::models::execution::ExecutionStatus::Failed),
+                        reasoning_summary,
+                        search_summary_json,
+                        tool_calls_summary_json: None,
+                        error_message: Some(error_str.clone()),
+                    },
+                )
+                .await;
+
+                // 发射错误事件
+                Ok(SessionEvent::Error {
+                    version: SESSION_EVENT_VERSION,
+                    message: error_str,
+                })
+            } else {
+                // 更新执行记录为成功
+                let _ = ExecutionStoreService::finalize_success(
+                    &pool_clone,
+                    crate::models::execution::UpdateExecutionRecordInput {
+                        id: record_id_clone,
+                        status: Some(crate::models::execution::ExecutionStatus::Completed),
+                        reasoning_summary,
+                        search_summary_json,
+                        tool_calls_summary_json: None,
+                        error_message: None,
+                    },
+                )
+                .await;
+
+                // 发射 ExecutionSummary 事件
+                Ok(SessionEvent::ExecutionSummary {
+                    version: SESSION_EVENT_VERSION,
+                    status: "completed".to_string(),
+                    used_model: model_id_clone,
+                })
+            }
         });
 
         // 最终完成事件
@@ -700,6 +818,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             })
         });
 
+        // 组合流
         start_stream
             .chain(search_stream)
             .chain(content_stream)
