@@ -28,10 +28,12 @@ pub enum ProviderType {
 }
 
 impl ProviderType {
-    /// 从字符串解析 ProviderType
+    /// 从字符串解析 ProviderType，支持 OpenAI 兼容协议（OpenAI/DeepSeek/Qwen/Gemini/自定义）和 Anthropic
     pub fn from_provider_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "openai" | "deepseek" | "qwen" | "custom" => Some(Self::OpenAiCompatible),
+            "openai" | "deepseek" | "qwen" | "gemini" | "google" | "custom" => {
+                Some(Self::OpenAiCompatible)
+            }
             "anthropic" | "claude" => Some(Self::AnthropicNative),
             _ => None,
         }

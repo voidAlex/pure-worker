@@ -315,7 +315,7 @@ pub struct AiOrchestrationRuntime {
 
 统一请求对象，建议字段：
 
-- `conversation_id: Option<String>`
+- `session_id: Option<String>`
 - `entrypoint: ExecutionEntrypoint`（chat / grading / communication / search）
 - `agent_profile_id: String`
 - `user_input: String`
@@ -328,7 +328,7 @@ pub struct AiOrchestrationRuntime {
 
 | 字段 | 是否必填 | 约束 |
 |------|----------|------|
-| `conversation_id` | 否 | 流式续聊时必填；新会话可为空 |
+| `session_id` | 否 | 流式续聊时必填；新会话可为空 |
 | `entrypoint` | 是 | 仅允许 `chat / grading / communication / search` |
 | `agent_profile_id` | 是 | 必须能在 `AgentProfileRegistry` 中解析 |
 | `user_input` | 是 | trim 后不能为空 |
@@ -359,7 +359,7 @@ pub struct ExecutionAttachment {
 }
 
 pub struct ExecutionRequest {
-    pub conversation_id: Option<String>,
+    pub session_id: Option<String>,
     pub entrypoint: ExecutionEntrypoint,
     pub agent_profile_id: String,
     pub user_input: String,
@@ -505,7 +505,7 @@ pub enum SessionEvent {
 ```text
 execution_record
 - id
-- conversation_id
+- session_id
 - assistant_message_id
 - entrypoint
 - agent_profile_id
@@ -1300,3 +1300,4 @@ Raw SessionEvent(v1)
 5. `WP-AI-016 ModelRoutingService 与 Provider Catalog`
 
 其中第一批实施应以“新 Runtime 独立闭环 + 旧执行链全部删除”为验收样板，而不是旧入口接入新中台。
+          

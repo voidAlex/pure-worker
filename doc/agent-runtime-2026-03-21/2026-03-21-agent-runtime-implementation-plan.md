@@ -276,6 +276,10 @@ Build a first implementation that aligns with opencode provider runtime mechanis
 3. provider loader matrix abstraction (openai-compatible / anthropic-native / custom-compatible)
 4. catalog metadata fields at least include `input_modalities`, `supports_text_input`, `supports_image_input`, `supports_tool_calling`, `supports_reasoning`, `context_window`, `max_output_tokens`
 
+> **审核修正 (P0)**：
+> 1. 当前 `provider_adapter/mod.rs` 的 `from_provider_name("gemini")` 返回 `None`，需在 ProviderCatalog 构建前修复（已在审核中修正代码，此处确认计划覆盖）。
+> 2. 当前 `llm_provider.rs` 的 `get_vision_model()` 在 vision model 未配置时静默回落到 text model，违反设计硬约束「multimodal 绝不回落到 text-only」。新 ModelRoutingService 必须返回 `ModelCapabilityInsufficient` 错误而非静默回落。Step 1 的测试用例已覆盖此场景。
+
 - [ ] **Step 4: Run focused tests**
 
 Run: `cargo test model_routing`
@@ -311,6 +315,10 @@ Cover:
 - grading assembly
 - search-enabled assembly
 - tool-summary inclusion
+
+- [ ] **Step 1.5: 盘点现有模板资源**
+
+扫描 `packages/prompt-templates/templates/*.toml`，列出所有活跃业务模板，确认每个模板在新 PromptAssembler 中的 task layer 入口映射。若某个模板无法映射，在此步骤中标记为需设计扩展。
 
 - [ ] **Step 2: Refactor `prompt_template_registry.rs` into template data provider only**
 
@@ -434,6 +442,8 @@ git commit -m "feat: 新增执行运行时存储服务"
 - Modify: `apps/desktop/src-tauri/src/services/agentic_search_agent.rs`
 - Review: `apps/desktop/src-tauri/src/commands/chat.rs`
 
+> **审核补充 (P2)**：当前 `execution.rs` 中的 `ExecutionResponse` 是前端 IPC 返回用的精简结构（仅含 content/model/status）。本 Task 实现 `ExecutionOrchestrator` 时，内部执行链应使用完整的 `ExecutionResult`（含 tool_calls_summary、search_summary、reasoning_summary、error_message），仅在 IPC 命令层将 `ExecutionResult` 映射为精简 `ExecutionResponse`。
+
 - [ ] **Step 1: Write failing event/replay tests**
 
 Cover:
@@ -473,10 +483,21 @@ git commit -m "feat: 统一执行事件总线并内聚检索阶段"
 
 ### Task 10: Implement ExecutionOrchestrator
 
+> **审核修正 (P1)**：当前 `chat.rs:456-475` 的流式实现是假流式（生成完整响应后按句分割 + 30ms 延迟逐句发）。本 Task 替换为 provider adapter 真实流式推送，而非保留此模拟行为。
+
 **Files:**
 - Create: `apps/desktop/src-tauri/src/services/ai_orchestration/execution_orchestrator.rs`
 - Create: `apps/desktop/src-tauri/src/services/ai_orchestration/execution_request_factory.rs`
 - Review: all orchestration module files from previous tasks
+
+- [ ] **Step 0: Rig 流式能力 spike（原型验证）**
+
+在开始实现前，用最小代码验证 `rig-core` 当前版本是否支持：
+1. 流式 chat completion（`CompletionModel::stream()` 或等价路径）
+2. 流式 + tool calling 协同工作
+3. 流式中断时的错误处理边界
+
+若 Rig 不支持所需流式能力，在此步骤中记录限制并提出替代方案（如直接调用 provider HTTP streaming API）后再继续。
 
 - [ ] **Step 1: Write failing integration tests for orchestrator**
 
@@ -636,6 +657,15 @@ git commit -m "feat: 统一批改与沟通类 AI 入口到运行时主链"
 ## Chunk 8: Final verification and cleanup
 
 ### Task 14: Remove dead legacy paths and verify end-to-end behavior
+
+> **审核补充（风险控制）**：在开始删除旧代码之前，新 Runtime 执行链必须已通过全部集成测试。建议在此处打 git tag（如 `pre-cleanup-checkpoint`）作为回滚点，确保单轨替换出问题时可快速恢复。
+
+- [ ] **Step 0: 创建回滚检查点**
+
+确认新 Runtime 全部集成测试通过后，执行：
+```bash
+git tag pre-cleanup-checkpoint
+```
 
 **Files:**
 - Modify/Delete: legacy logic identified in `commands/chat.rs`, `services/agentic_search*.rs`, `services/prompt_template_registry.rs`, `models/conversation.rs`
