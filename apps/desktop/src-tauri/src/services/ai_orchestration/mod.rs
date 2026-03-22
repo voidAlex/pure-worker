@@ -4,16 +4,29 @@
 //! - 错误边界与 `AppError` 映射
 //! - 执行阶段 trait
 //! - 运行时关键能力（profile、prompt、model routing、store、event bus）trait 定义
+//! - 执行编排器与请求工厂
 
 pub mod agent_profile_registry;
 pub mod error;
+pub mod execution_orchestrator;
+pub mod execution_request_factory;
 pub mod execution_stage;
+pub mod execution_store;
 pub mod model_routing;
+pub mod prompt_assembler;
 pub mod provider_catalog;
+pub mod session_event_bus;
+pub mod tool_exposure;
 
 use self::agent_profile_registry::OutputProtocol;
+pub use agent_profile_registry::AgentProfileRegistry;
 pub use error::{OrchestrationError, OrchestrationResult};
+pub use execution_orchestrator::{
+    ExecutionArtifacts, ExecutionOrchestrator, ExecutionOrchestratorBuilder, RuntimeModelSelection,
+};
 pub use execution_stage::{ExecutionStage, ExecutionStageContext, ExecutionStageOutput};
+pub use model_routing::{RoutingCapability, RoutingTrace, SelectedModel};
+pub use prompt_assembler::AssembledPrompt;
 
 use crate::models::execution::{
     ExecutionEntrypoint, ExecutionRequest, ExecutionStatus, SessionEvent,
@@ -33,9 +46,10 @@ pub trait PromptAssembler: Send + Sync {
         &self,
         request: &ExecutionRequest,
         profile: &RuntimeAgentProfile,
+        selected_model: &model_routing::SelectedModel,
         evidence: &[String],
         tool_summary: &str,
-    ) -> OrchestrationResult<String>;
+    ) -> OrchestrationResult<AssembledPrompt>;
 }
 
 /// 模型路由能力
@@ -45,7 +59,7 @@ pub trait ModelRouter: Send + Sync {
         &self,
         request: &ExecutionRequest,
         profile: &RuntimeAgentProfile,
-    ) -> OrchestrationResult<SelectedRuntimeModel>;
+    ) -> OrchestrationResult<SelectedModel>;
 }
 
 /// 执行存储能力
@@ -78,12 +92,4 @@ pub struct RuntimeAgentProfile {
     pub max_tool_risk: ToolRiskLevel,
     pub requires_agentic_search: bool,
     pub prefer_multimodal: bool,
-}
-
-/// 运行时模型选择结果精简快照
-#[derive(Debug, Clone)]
-pub struct SelectedRuntimeModel {
-    pub provider_id: String,
-    pub model_id: String,
-    pub fallback_used: bool,
 }

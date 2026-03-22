@@ -8,76 +8,17 @@ import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { listen, Event } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { listConversationMessages, MessageFilters, MessageListItem } from '@/services/chatService';
+import { normalizeExecutionEvent, toThinkingStage } from '@/components/chat/execution-event-normalizer';
+import type {
+  ChatMessageItem as ChatMessage,
+  RuntimeExecutionEvent as ChatStreamEvent,
+  ThinkingStage,
+} from '@/components/chat/types';
 
 export interface ChatStreamInput {
   conversation_id?: string;
   message: string;
   agent_role: string;
-}
-
-/**
- * 流式聊天事件类型（与后端 ChatStreamEvent 保持同步）
- */
-export type ChatStreamEvent =
-  | { type: 'Start'; message_id: string }
-  | { type: 'Chunk'; content: string }
-  | { type: 'Complete' }
-  | { type: 'Error'; message: string }
-  | { type: 'ThinkingStatus'; stage: string; description: string }
-  | { type: 'ToolCall'; tool_name: string; input: unknown }
-  | { type: 'ToolResult'; tool_name: string; output: string; success: boolean }
-  | { type: 'SearchSummary'; sources: string[]; evidence_count: number }
-  | { type: 'Reasoning'; summary: string };
-
-/**
- * 思考状态阶段枚举
- */
-export type ThinkingStage =
-  | 'searching'
-  | 'reasoning'
-  | 'tool_calling'
-  | 'generating'
-  | 'search_failed'
-  | 'complete';
-
-/**
- * 思考轨迹信息
- */
-export interface ThinkingTrace {
-  stage: ThinkingStage;
-  description: string;
-  toolCalls: ToolCallInfo[];
-  searchSummary?: SearchSummaryInfo;
-  reasoning?: string;
-}
-
-/**
- * 工具调用信息
- */
-export interface ToolCallInfo {
-  toolName: string;
-  input?: unknown;
-  output?: string;
-  success?: boolean;
-}
-
-/**
- * 搜索摘要信息
- */
-export interface SearchSummaryInfo {
-  sources: string[];
-  evidenceCount: number;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  tool_name?: string;
-  created_at: string;
-  isStreaming?: boolean;
-  /** 思考轨迹信息（仅 assistant 消息） */
-  thinkingTrace?: ThinkingTrace;
 }
 
 export interface UseChatStreamOptions {
@@ -325,110 +266,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
-function normalizeChatStreamEvent(payload: unknown): ChatStreamEvent | null {
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  if (typeof payload.type === 'string') {
-    return payload as ChatStreamEvent;
-  }
-
-  if (isRecord(payload.Start) && typeof payload.Start.message_id === 'string') {
-    return { type: 'Start', message_id: payload.Start.message_id };
-  }
-
-  if (isRecord(payload.Chunk) && typeof payload.Chunk.content === 'string') {
-    return { type: 'Chunk', content: payload.Chunk.content };
-  }
-
-  if ('Complete' in payload) {
-    return { type: 'Complete' };
-  }
-
-  if (isRecord(payload.Error) && typeof payload.Error.message === 'string') {
-    return { type: 'Error', message: payload.Error.message };
-  }
-
-  if (
-    isRecord(payload.ThinkingStatus) &&
-    typeof payload.ThinkingStatus.stage === 'string' &&
-    typeof payload.ThinkingStatus.description === 'string'
-  ) {
-    return {
-      type: 'ThinkingStatus',
-      stage: payload.ThinkingStatus.stage,
-      description: payload.ThinkingStatus.description,
-    };
-  }
-
-  if (
-    isRecord(payload.ToolCall) &&
-    typeof payload.ToolCall.tool_name === 'string' &&
-    payload.ToolCall.input !== undefined
-  ) {
-    return {
-      type: 'ToolCall',
-      tool_name: payload.ToolCall.tool_name,
-      input: payload.ToolCall.input,
-    };
-  }
-
-  if (
-    isRecord(payload.ToolResult) &&
-    typeof payload.ToolResult.tool_name === 'string' &&
-    typeof payload.ToolResult.output === 'string' &&
-    typeof payload.ToolResult.success === 'boolean'
-  ) {
-    return {
-      type: 'ToolResult',
-      tool_name: payload.ToolResult.tool_name,
-      output: payload.ToolResult.output,
-      success: payload.ToolResult.success,
-    };
-  }
-
-  if (
-    isRecord(payload.SearchSummary) &&
-    Array.isArray(payload.SearchSummary.sources) &&
-    typeof payload.SearchSummary.evidence_count === 'number'
-  ) {
-    const sources = payload.SearchSummary.sources.filter((item): item is string => typeof item === 'string');
-    return {
-      type: 'SearchSummary',
-      sources,
-      evidence_count: payload.SearchSummary.evidence_count,
-    };
-  }
-
-  if (isRecord(payload.Reasoning) && typeof payload.Reasoning.summary === 'string') {
-    return {
-      type: 'Reasoning',
-      summary: payload.Reasoning.summary,
-    };
-  }
-
-  return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function toThinkingStage(stage: string): ThinkingStage {
-  if (
-    stage === 'searching' ||
-    stage === 'reasoning' ||
-    stage === 'tool_calling' ||
-    stage === 'generating' ||
-    stage === 'search_failed' ||
-    stage === 'complete'
-  ) {
-    return stage;
-  }
-  return 'generating';
-}
-
 export function useChatStream(options: UseChatStreamOptions = {}): UseChatStreamReturn {
   const { conversationId: initialConversationId, agentRole = 'homeroom', onError } = options;
 
@@ -452,12 +289,11 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     let isActive = true;
 
     const setupListener = async () => {
-      const unlisten = await listen<ChatStreamEvent>(
-        'chat-stream',
-        (event: Event<ChatStreamEvent>) => {
+      const bindChannel = async (channel: 'chat-stream' | 'execution-stream') =>
+        listen<ChatStreamEvent>(channel, (event: Event<ChatStreamEvent>) => {
           if (!isActive) return;
 
-          const payload = normalizeChatStreamEvent(event.payload);
+          const payload = normalizeExecutionEvent(event.payload);
           if (!payload) {
             return;
           }
@@ -528,10 +364,13 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
               });
               break;
           }
-        },
-      );
+        });
 
-      unlistenRef.current = unlisten;
+      const unlisteners = await Promise.all([bindChannel('chat-stream'), bindChannel('execution-stream')]);
+
+      unlistenRef.current = () => {
+        unlisteners.forEach((unlisten) => unlisten());
+      };
     };
 
     setupListener();

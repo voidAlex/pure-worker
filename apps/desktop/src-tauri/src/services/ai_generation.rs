@@ -11,29 +11,28 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use rig::completion::Prompt;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::models::activity_announcement::{ActivityAnnouncement, CreateActivityAnnouncementInput};
-use crate::models::ai_param_preset::AiParamPreset;
 use crate::models::async_task::{AsyncTask, BatchProgress, CreateAsyncTaskInput};
+use crate::models::execution::{ExecutionEntrypoint, ExecutionRequest, StreamMode};
 use crate::models::memory_search::MemorySearchInput;
 use crate::models::parent_communication::{CreateParentCommunicationInput, ParentCommunication};
 use crate::models::semester_comment::{CreateSemesterCommentInput, SemesterComment};
 use crate::services::activity_announcement::ActivityAnnouncementService;
-use crate::services::ai_param_preset::AiParamPresetService;
+use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegistry;
+use crate::services::ai_orchestration::execution_orchestrator::ExecutionOrchestratorBuilder;
+use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
 use crate::services::async_task::AsyncTaskService;
 use crate::services::audit::AuditService;
-use crate::services::desensitize::DesensitizeService;
-use crate::services::llm_provider::LlmProviderService;
 use crate::services::memory_search::MemorySearchService;
 use crate::services::parent_communication::ParentCommunicationService;
-use crate::services::prompt_template::PromptTemplateService;
 use crate::services::semester_comment::SemesterCommentService;
 use crate::services::skill::SkillService;
+use crate::services::tool_registry::get_registry;
 
 /// 家长沟通文案 AI 生成结果。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -131,7 +130,7 @@ impl AiGenerationService {
     pub async fn generate_parent_communication(
         pool: &SqlitePool,
         workspace_path: &Path,
-        templates_dir: &Path,
+        _templates_dir: &Path,
         input: GenerateParentCommInput,
     ) -> Result<ParentCommunication, AppError> {
         let student_name = get_student_name(pool, &input.student_id).await?;
@@ -153,8 +152,6 @@ impl AiGenerationService {
         )
         .await?;
         let evidence_text = format_evidence_text(&evidence_result.items);
-
-        let template = PromptTemplateService::load_template(templates_dir, "parent_communication")?;
 
         let mut variables = HashMap::new();
         variables.insert(String::from("student_name"), student_name);
@@ -189,28 +186,16 @@ impl AiGenerationService {
         let skills_context = format_enabled_skills_context(pool).await?;
         variables.insert(String::from("skills_context"), skills_context);
 
-        let rendered = PromptTemplateService::render(&template, &variables)?;
-        let safe_user_prompt =
-            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
-
-        let config = LlmProviderService::get_active_config(pool).await?;
-        let client = LlmProviderService::create_client(&config)?;
-        let preset = AiParamPresetService::get_active_preset(pool)
-            .await
-            .unwrap_or_else(|_| AiParamPreset::default_balanced());
-        let temperature = preset.temperature;
-
-        // Prompt-based 模式：不使用 tools，完全依赖 LLM 自主决策
-        let agent = LlmProviderService::create_agent(
-            &client,
-            &config.default_model,
-            &rendered.system,
-            temperature,
-        );
-        let response: String = agent
-            .prompt(&safe_user_prompt)
-            .await
-            .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
+        let response = Self::execute_runtime_generation(
+            pool,
+            "generation.parent_communication",
+            GenerateRuntimeInput {
+                user_input: format!("请生成学生「{}」的家长沟通文案", variables["student_name"]),
+                entrypoint: ExecutionEntrypoint::Communication,
+                metadata_json: serde_json::json!(variables),
+            },
+        )
+        .await?;
 
         let draft = serde_json::from_str::<ParentCommunicationDraft>(&response)
             .map_err(|error| AppError::ExternalService(format!("LLM 返回格式解析失败：{error}")))?;
@@ -273,7 +258,7 @@ impl AiGenerationService {
     pub async fn generate_semester_comment(
         pool: &SqlitePool,
         workspace_path: &Path,
-        templates_dir: &Path,
+        _templates_dir: &Path,
         input: GenerateSemesterCommentInput,
     ) -> Result<SemesterComment, AppError> {
         let student_name = get_student_name(pool, &input.student_id).await?;
@@ -296,8 +281,6 @@ impl AiGenerationService {
         .await?;
         let evidence_text = format_evidence_text(&evidence_result.items);
 
-        let template = PromptTemplateService::load_template(templates_dir, "semester_comment")?;
-
         let mut variables = HashMap::new();
         variables.insert(String::from("student_name"), student_name);
         variables.insert(String::from("evidence_text"), evidence_text);
@@ -314,28 +297,16 @@ impl AiGenerationService {
         let skills_context = format_enabled_skills_context(pool).await?;
         variables.insert(String::from("skills_context"), skills_context);
 
-        let rendered = PromptTemplateService::render(&template, &variables)?;
-        let safe_user_prompt =
-            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
-
-        let config = LlmProviderService::get_active_config(pool).await?;
-        let client = LlmProviderService::create_client(&config)?;
-        let preset = AiParamPresetService::get_active_preset(pool)
-            .await
-            .unwrap_or_else(|_| AiParamPreset::default_balanced());
-        let temperature = preset.temperature;
-
-        // Prompt-based 模式
-        let agent = LlmProviderService::create_agent(
-            &client,
-            &config.default_model,
-            &rendered.system,
-            temperature,
-        );
-        let response: String = agent
-            .prompt(&safe_user_prompt)
-            .await
-            .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
+        let response = Self::execute_runtime_generation(
+            pool,
+            "generation.semester_comment",
+            GenerateRuntimeInput {
+                user_input: format!("请生成学生「{}」的学期评语", variables["student_name"]),
+                entrypoint: ExecutionEntrypoint::Communication,
+                metadata_json: serde_json::json!(variables),
+            },
+        )
+        .await?;
 
         // 语义去重检查
         let _is_duplicate = if let Some(summary) = &input.existing_comments_summary {
@@ -481,7 +452,7 @@ impl AiGenerationService {
     pub async fn generate_activity_announcement(
         pool: &SqlitePool,
         _workspace_path: &Path,
-        templates_dir: &Path,
+        _templates_dir: &Path,
         _template_file_dir: &Path,
         input: GenerateActivityAnnouncementInput,
     ) -> Result<ActivityAnnouncement, AppError> {
@@ -496,9 +467,6 @@ impl AiGenerationService {
         } else {
             None
         };
-
-        let template =
-            PromptTemplateService::load_template(templates_dir, "activity_announcement")?;
 
         let mut variables = HashMap::new();
         variables.insert(String::from("class_name"), class_name);
@@ -517,28 +485,16 @@ impl AiGenerationService {
         let skills_context = format_enabled_skills_context(pool).await?;
         variables.insert(String::from("skills_context"), skills_context);
 
-        let rendered = PromptTemplateService::render(&template, &variables)?;
-        let safe_user_prompt =
-            DesensitizeService::desensitize_if_enabled(pool, &rendered.user).await?;
-
-        let config = LlmProviderService::get_active_config(pool).await?;
-        let client = LlmProviderService::create_client(&config)?;
-        let preset = AiParamPresetService::get_active_preset(pool)
-            .await
-            .unwrap_or_else(|_| AiParamPreset::default_balanced());
-        let temperature = preset.temperature;
-
-        // Prompt-based 模式
-        let agent = LlmProviderService::create_agent(
-            &client,
-            &config.default_model,
-            &rendered.system,
-            temperature,
-        );
-        let response: String = agent
-            .prompt(&safe_user_prompt)
-            .await
-            .map_err(|error| AppError::ExternalService(format!("LLM 调用失败：{error}")))?;
+        let response = Self::execute_runtime_generation(
+            pool,
+            "generation.activity_announcement",
+            GenerateRuntimeInput {
+                user_input: format!("请生成活动公告：{}", input.title),
+                entrypoint: ExecutionEntrypoint::Communication,
+                metadata_json: serde_json::json!(variables),
+            },
+        )
+        .await?;
 
         let draft: ActivityAnnouncementDraft = serde_json::from_str(&response)
             .map_err(|error| AppError::ExternalService(format!("LLM 返回格式解析失败：{error}")))?;
@@ -572,6 +528,43 @@ impl AiGenerationService {
         .await?;
 
         Ok(result)
+    }
+}
+
+struct GenerateRuntimeInput {
+    user_input: String,
+    entrypoint: ExecutionEntrypoint,
+    metadata_json: serde_json::Value,
+}
+
+impl AiGenerationService {
+    async fn execute_runtime_generation(
+        pool: &SqlitePool,
+        profile_id: &str,
+        input: GenerateRuntimeInput,
+    ) -> Result<String, AppError> {
+        let event_bus = SessionEventBus::new();
+        let profile_registry = AgentProfileRegistry::new_default();
+        let orchestrator = ExecutionOrchestratorBuilder::new(pool)
+            .with_profile_registry(&profile_registry)
+            .with_event_bus(&event_bus)
+            .with_tool_registry(get_registry())
+            .build()?;
+
+        let result = orchestrator
+            .execute(&ExecutionRequest {
+                session_id: None,
+                entrypoint: input.entrypoint,
+                agent_profile_id: String::from(profile_id),
+                user_input: input.user_input,
+                attachments: vec![],
+                use_agentic_search: false,
+                stream_mode: StreamMode::NonStreaming,
+                metadata_json: Some(input.metadata_json),
+            })
+            .await?;
+
+        Ok(result.content)
     }
 }
 

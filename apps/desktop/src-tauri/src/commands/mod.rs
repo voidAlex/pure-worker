@@ -7,6 +7,7 @@ pub mod assignment_grading;
 pub mod chat;
 pub mod classroom;
 pub mod conversation;
+pub mod execution;
 pub mod export;
 pub mod global_shortcut;
 pub mod initialization;

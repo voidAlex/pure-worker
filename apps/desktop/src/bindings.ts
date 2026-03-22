@@ -943,7 +943,9 @@ async generateActivityAnnouncement(input: GenerateActivityAnnouncementInput) : P
 }
 },
 /**
- * 与 AI 进行通用对话。
+ * 与 AI 进行通用对话（非流式）
+ * 
+ * 兼容性包装：委托给新的执行编排器
  */
 async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
     try {
@@ -954,7 +956,9 @@ async chatWithAi(input: ChatInput) : Promise<Result<ChatResponse, AppError>> {
 }
 },
 /**
- * 流式 AI 对话命令
+ * 流式 AI 对话命令（兼容性包装）
+ * 
+ * 委托给新的执行编排器的 execute_stream 命令
  */
 async chatStream(input: ChatStreamInput) : Promise<Result<string, AppError>> {
     try {
@@ -992,6 +996,39 @@ async getChatConversation(conversationId: string) : Promise<Result<MessageListIt
 async deleteChatConversation(conversationId: string) : Promise<Result<null, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_chat_conversation", { conversationId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 执行非流式 AI 请求
+ */
+async execute(input: ExecuteInput) : Promise<Result<ExecutionResult, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("execute", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 执行流式 AI 请求
+ */
+async executeStream(input: StreamExecutionInput) : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("execute_stream", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 从旧的 ChatStreamInput 执行流式请求（兼容性包装）
+ */
+async executeFromChatInput(chatInput: ChatStreamInput) : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("execute_from_chat_input", { chatInput }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2133,31 +2170,31 @@ final_score: number | null }
  */
 export type CandidateStatus = "pending" | "confirmed" | "rejected"
 /**
- * 聊天请求输入。
+ * 聊天请求输入（旧版格式）
  */
 export type ChatInput = { 
 /**
- * 用户消息内容。
+ * 用户消息内容
  */
 message: string; 
 /**
- * AI 角色标识（homeroom/grading/communication/ops）。
+ * AI 角色标识（homeroom/grading/communication/ops）
  */
 agent_role: string; 
 /**
- * 是否启用 Agentic Search 自动检索上下文。
+ * 是否启用 Agentic Search 自动检索上下文
  */
 use_agentic_search: boolean | null }
 /**
- * 聊天响应输出。
+ * 聊天响应输出
  */
 export type ChatResponse = { 
 /**
- * AI 回复内容。
+ * AI 回复内容
  */
 content: string; 
 /**
- * 使用的模型名称。
+ * 使用的模型名称
  */
 model: string }
 /**
@@ -2497,6 +2534,14 @@ file_path: string | null;
  */
 subject: string | null }
 /**
+ * 非流式执行请求输入
+ */
+export type ExecuteInput = { 
+/**
+ * 执行请求
+ */
+request: ExecutionRequest }
+/**
  * 执行技能输入参数。
  */
 export type ExecuteSkillInput = { 
@@ -2508,6 +2553,82 @@ skill_name: string;
  * JSON 格式的技能输入参数。
  */
 input: JsonValue }
+/**
+ * 执行附件
+ */
+export type ExecutionAttachment = { 
+/**
+ * 文件路径
+ */
+path: string; 
+/**
+ * 媒体类型（MIME type）
+ */
+media_type: string | null; 
+/**
+ * 显示名称
+ */
+display_name: string | null }
+/**
+ * 执行入口点枚举
+ */
+export type ExecutionEntrypoint = "chat" | "grading" | "communication" | "search"
+/**
+ * 执行请求输入
+ */
+export type ExecutionRequest = { 
+/**
+ * 会话ID（流式续聊时必填；新会话可为空）
+ */
+session_id: string | null; 
+/**
+ * 执行入口点
+ */
+entrypoint: ExecutionEntrypoint; 
+/**
+ * Agent Profile ID
+ */
+agent_profile_id: string; 
+/**
+ * 用户输入内容
+ */
+user_input: string; 
+/**
+ * 附件列表
+ */
+attachments: ExecutionAttachment[]; 
+/**
+ * 是否启用 Agentic Search 自动检索
+ */
+use_agentic_search: boolean; 
+/**
+ * 流式模式
+ */
+stream_mode: StreamMode; 
+/**
+ * 元数据JSON（可选，仅允许对象类型）
+ */
+metadata_json: JsonValue | null }
+/**
+ * 执行结果输出
+ */
+export type ExecutionResult = { 
+/**
+ * 生成的内容
+ */
+content: string; 
+/**
+ * 使用的模型ID
+ */
+model_id: string; 
+/**
+ * 会话ID
+ */
+session_id: string; 
+/**
+ * 消息ID
+ */
+message_id: string }
 /**
  * 导出批改结果输入。
  */
@@ -3388,6 +3509,22 @@ total_size_display: string;
  * 归档目录总数。
  */
 archive_count: number }
+/**
+ * 流式执行请求输入
+ */
+export type StreamExecutionInput = { 
+/**
+ * 执行请求
+ */
+request: ExecutionRequest; 
+/**
+ * 前端事件通道名称（默认为 "execution-stream"）
+ */
+event_channel: string | null }
+/**
+ * 流式模式枚举
+ */
+export type StreamMode = "streaming" | "non_streaming"
 export type Student = { id: string; student_no: string; name: string; gender: string | null; class_id: string; meta_json: string | null; folder_path: string; is_deleted: number; created_at: string; updated_at: string }
 /**
  * 学生 360 度全景视图聚合结构

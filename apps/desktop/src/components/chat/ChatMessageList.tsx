@@ -4,7 +4,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
-import { ChatMessage as ChatMessageType } from '@/hooks/useChatStream';
+import type { ChatMessageItem as ChatMessageType } from './types';
 
 export interface ChatMessageListProps {
   messages: ChatMessageType[];

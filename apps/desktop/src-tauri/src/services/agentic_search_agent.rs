@@ -88,6 +88,26 @@ impl AgenticSearchAgentBuilder {
             )
             .await
     }
+
+    /// 执行运行时阶段检索（供统一编排链使用）
+    pub async fn execute_search_stage(
+        &self,
+        pool: &SqlitePool,
+        workspace_path: &Path,
+        query: &str,
+    ) -> Result<crate::services::agentic_search::SearchStageResult, AppError> {
+        self.orchestrator
+            .search_stage(
+                pool,
+                workspace_path,
+                AgenticSearchInput {
+                    query: query.to_string(),
+                    session_id: None,
+                    force_refresh: None,
+                },
+            )
+            .await
+    }
 }
 
 impl Default for AgenticSearchAgentBuilder {

@@ -32,6 +32,14 @@ pub struct AgenticSearchOrchestrator {
     cache: Arc<Mutex<HashMap<String, SearchCacheEntry>>>,
 }
 
+/// 运行时检索阶段结果
+#[derive(Debug, Clone)]
+pub struct SearchStageResult {
+    pub evidence: Vec<EvidenceItem>,
+    pub search_summary_json: String,
+    pub reasoning_summary: String,
+}
+
 impl AgenticSearchOrchestrator {
     /// 创建新的编排器
     pub fn new() -> Self {
@@ -87,6 +95,57 @@ impl AgenticSearchOrchestrator {
         self.cache_result(&input, &result).await;
 
         Ok(result)
+    }
+
+    /// 以运行时阶段方式执行检索
+    pub async fn search_stage(
+        &self,
+        pool: &SqlitePool,
+        workspace_path: &Path,
+        input: AgenticSearchInput,
+    ) -> Result<SearchStageResult, AppError> {
+        let result = self.search(pool, workspace_path, input).await?;
+        let evidence = result
+            .evidence_sources
+            .iter()
+            .map(|source| EvidenceItem {
+                content: source.full_content.clone(),
+                source_table: source.source_type.description().to_string(),
+                source_id: source.source_id.clone(),
+                student_id: String::new(),
+                class_id: None,
+                created_at: source
+                    .created_at
+                    .clone()
+                    .unwrap_or_else(|| Utc::now().to_rfc3339()),
+                score: f64::from(source.relevance_score),
+                file_path: None,
+                subject: None,
+            })
+            .collect::<Vec<EvidenceItem>>();
+
+        let search_summary_json = serde_json::json!({
+            "conclusion": result.conclusion,
+            "confidence_score": result.confidence_score,
+            "risk_warnings": result.risk_warnings,
+            "source_count": result.evidence_sources.len()
+        })
+        .to_string();
+
+        let reasoning_summary = if result.evidence_sources.is_empty() {
+            String::from("未检索到证据，保持空摘要")
+        } else {
+            format!(
+                "共检索到 {} 条证据，已完成去重排序",
+                result.evidence_sources.len()
+            )
+        };
+
+        Ok(SearchStageResult {
+            evidence,
+            search_summary_json,
+            reasoning_summary,
+        })
     }
 
     /// 从缓存获取结果

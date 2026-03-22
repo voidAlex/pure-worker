@@ -5,7 +5,7 @@
 import React from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChatMessage as ChatMessageType } from '@/hooks/useChatStream';
+import type { ChatMessageItem as ChatMessageType } from './types';
 
 export interface ChatMessageProps {
   message: ChatMessageType;

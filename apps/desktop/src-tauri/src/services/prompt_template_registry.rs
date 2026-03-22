@@ -15,6 +15,28 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+pub const ACTIVE_RUNTIME_TEMPLATE_NAMES: [&str; 6] = [
+    "activity_announcement",
+    "chat_homeroom_multimodal",
+    "chat_homeroom_text",
+    "grading_multimodal_json",
+    "parent_communication",
+    "semester_comment",
+];
+
+pub fn runtime_template_name(profile_id: &str, use_multimodal: bool) -> Option<&'static str> {
+    match (profile_id, use_multimodal) {
+        ("chat.homeroom", true) => Some("chat_homeroom_multimodal"),
+        ("chat.homeroom", false) => Some("chat_homeroom_text"),
+        ("chat.grading", _) => Some("grading_multimodal_json"),
+        ("chat.communication", _) => Some("parent_communication"),
+        ("generation.parent_communication", _) => Some("parent_communication"),
+        ("generation.semester_comment", _) => Some("semester_comment"),
+        ("generation.activity_announcement", _) => Some("activity_announcement"),
+        _ => None,
+    }
+}
+
 /// 任务类型枚举
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -561,7 +583,7 @@ pub fn render_multimodal_template(
     }
 }
 
-fn render_content_items(
+pub fn render_content_items(
     items: &[ContentItem],
     variables: &HashMap<String, String>,
 ) -> Result<Vec<ContentItem>, AppError> {
@@ -583,7 +605,7 @@ fn render_content_items(
         .collect()
 }
 
-fn render_text(text: &str, variables: &HashMap<String, String>) -> Result<String, AppError> {
+pub fn render_text(text: &str, variables: &HashMap<String, String>) -> Result<String, AppError> {
     let if_block_regex = Regex::new(r"(?s)\{\{#if\s+([a-zA-Z0-9_]+)\s*\}\}(.*?)\{\{/if\}\}")
         .map_err(|error| AppError::Config(format!("条件块解析规则初始化失败：{error}")))?;
 

@@ -28,6 +28,12 @@ pub struct ExecutionStageOutput {
     pub emitted_events: Vec<SessionEvent>,
     /// 当前阶段新增证据
     pub appended_evidence: Vec<String>,
+    /// 当前阶段产出的搜索摘要
+    pub search_summary_json: Option<String>,
+    /// 当前阶段产出的推理摘要
+    pub reasoning_summary: Option<String>,
+    /// 当前阶段产出的工具调用摘要
+    pub tool_calls_summary_json: Option<String>,
 }
 
 /// 统一执行阶段 trait

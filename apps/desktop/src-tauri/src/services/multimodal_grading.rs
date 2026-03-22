@@ -7,15 +7,19 @@
 //! 4) 当多模态能力不可用时自动降级到 OCR + 规则判分路径。
 
 use chrono::Utc;
-use rig::completion::Prompt;
 use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::assignment_grading::AssignmentOcrResult;
+use crate::models::execution::{ExecutionEntrypoint, ExecutionRequest, StreamMode};
+use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegistry;
+use crate::services::ai_orchestration::execution_orchestrator::ExecutionOrchestratorBuilder;
+use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
 use crate::services::audit::AuditService;
 use crate::services::llm_provider::LlmProviderService;
+use crate::services::tool_registry::get_registry;
 
 pub struct MultimodalGradingService;
 
@@ -63,26 +67,6 @@ impl MultimodalGradingService {
             eprintln!("[审计日志] 记录多模态批改尝试审计失败：{e}");
         }
 
-        let config = match LlmProviderService::get_active_config(pool).await {
-            Ok(config) => config,
-            Err(AppError::NotFound(_)) => {
-                return Err(AppError::ExternalService(
-                    "多模态 LLM 尚未配置，请在系统设置中配置 AI 模型".into(),
-                ));
-            }
-            Err(error) => return Err(error),
-        };
-        let client = LlmProviderService::create_client(&config)?;
-
-        let system_prompt = String::from(
-            "你是一个专业的作业批改助手。请根据提供的标准答案和评分规则，对学生的作答进行评分。\
-             请采用 ReAct 工作方式：先识别题目与证据，再按规则逐项判断并自检一致性。\
-             你必须只返回 JSON 数组，不要输出任何额外说明或 Markdown 代码块。\
-             返回格式固定为：\
-             [{\"question_no\":\"1\",\"score\":8.0,\"feedback\":\"...\"}]。\
-             score 必须是数字，feedback 必须是中文自然语言。",
-        );
-
         let mut user_prompt_sections = vec![
             format!("asset_id: {asset_id}"),
             format!("job_id: {job_id}"),
@@ -97,14 +81,20 @@ impl MultimodalGradingService {
         user_prompt_sections.push(String::from(
             "请确保 question_no 与作答题号对应；若无法判断题号，请使用原始题号文本。",
         ));
-        let user_prompt = user_prompt_sections.join("\n");
-
-        let agent =
-            LlmProviderService::create_agent(&client, &config.default_model, &system_prompt, 0.3);
-        let response: String = agent
-            .prompt(&user_prompt)
-            .await
-            .map_err(|e| AppError::ExternalService(format!("LLM 批改调用失败：{e}")))?;
+        let response = Self::execute_runtime_grading(
+            pool,
+            serde_json::json!({
+                "assignment_type": "作业批改",
+                "grading_criteria": scoring_rules_json.unwrap_or("请根据标准答案评分"),
+                "rubric_details": answer_key_json.unwrap_or(""),
+                "student_name": asset_id,
+                "subject": "通用",
+                "asset_id": asset_id,
+                "job_id": job_id,
+                "raw_request": user_prompt_sections.join("\n")
+            }),
+        )
+        .await?;
 
         let grading_items: Vec<serde_json::Value> = serde_json::from_str(&response)
             .map_err(|e| AppError::ExternalService(format!("LLM 批改结果解析失败：{e}")))?;
@@ -187,6 +177,34 @@ impl MultimodalGradingService {
         .map_err(|e| AppError::Database(format!("查询 LLM 批改结果失败：{e}")))?;
 
         Ok(updated_rows)
+    }
+
+    async fn execute_runtime_grading(
+        pool: &SqlitePool,
+        metadata_json: serde_json::Value,
+    ) -> Result<String, AppError> {
+        let event_bus = SessionEventBus::new();
+        let profile_registry = AgentProfileRegistry::new_default();
+        let orchestrator = ExecutionOrchestratorBuilder::new(pool)
+            .with_profile_registry(&profile_registry)
+            .with_event_bus(&event_bus)
+            .with_tool_registry(get_registry())
+            .build()?;
+
+        let result = orchestrator
+            .execute(&ExecutionRequest {
+                session_id: None,
+                entrypoint: ExecutionEntrypoint::Grading,
+                agent_profile_id: String::from("chat.grading"),
+                user_input: String::from("请输出逐题评分 JSON"),
+                attachments: vec![],
+                use_agentic_search: false,
+                stream_mode: StreamMode::NonStreaming,
+                metadata_json: Some(metadata_json),
+            })
+            .await?;
+
+        Ok(result.content)
     }
 
     /// 融合 OCR 与 LLM 判分结果，并对冲突或低置信度样本打标。
