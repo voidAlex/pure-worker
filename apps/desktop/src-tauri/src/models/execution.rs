@@ -8,6 +8,7 @@ use sqlx::FromRow;
 
 /// 执行入口点枚举
 #[derive(Debug, Clone, Serialize, Deserialize, Type, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum ExecutionEntrypoint {
     Chat,
@@ -18,6 +19,7 @@ pub enum ExecutionEntrypoint {
 
 /// 流式模式枚举
 #[derive(Debug, Clone, Serialize, Deserialize, Type, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum StreamMode {
     Streaming,
@@ -26,6 +28,7 @@ pub enum StreamMode {
 
 /// 执行状态枚举
 #[derive(Debug, Clone, Serialize, Deserialize, Type, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum ExecutionStatus {
     Completed,
