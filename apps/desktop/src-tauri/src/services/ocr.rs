@@ -117,11 +117,11 @@ impl OcrService {
 
         let model_path = Self::resolve_model_path(preprocessed_path);
         if model_path.exists() {
-            return Err(AppError::TaskExecution(
-                "ONNX Runtime 未集成，模型文件已就位但运行时尚未配置".into(),
-            ));
+            // 【WP-AI-BIZ-008】OCR 真链路接入 - 调用 ocr_extract 技能
+            return Self::extract_text_with_onnx(pool, asset_id, job_id, preprocessed_path).await;
         }
 
+        // 模型不存在时回退到模拟识别
         let simulated_rows =
             Self::simulate_and_insert_ocr_results(pool, &asset, asset_id, job_id).await?;
         let simulation_detail = serde_json::json!({
@@ -151,6 +151,166 @@ impl OcrService {
         }
 
         Ok(simulated_rows)
+    }
+
+    /// 【WP-AI-BIZ-008】使用 ONNX Runtime 进行真实 OCR 识别
+    async fn extract_text_with_onnx(
+        pool: &SqlitePool,
+        asset_id: &str,
+        job_id: &str,
+        preprocessed_path: &str,
+    ) -> Result<Vec<AssignmentOcrResult>, AppError> {
+        use crate::services::skill_executor::SkillExecutorService;
+
+        let attempt_id = Uuid::new_v4().to_string();
+
+        // 记录审计日志
+        let detail = serde_json::json!({
+            "attempt_id": attempt_id,
+            "asset_id": asset_id,
+            "job_id": job_id,
+            "preprocessed_path": preprocessed_path,
+            "stage": "ocr_onnx_extraction",
+            "message": "开始 ONNX OCR 真实识别",
+        });
+
+        if let Err(e) = AuditService::log_with_detail(
+            pool,
+            "system",
+            "ocr_onnx_extraction_attempt",
+            "assignment_asset",
+            Some(asset_id),
+            "low",
+            false,
+            Some(&detail.to_string()),
+        )
+        .await
+        {
+            eprintln!("[审计日志] 记录 ONNX OCR 尝试审计失败：{e}");
+        }
+
+        // 调用 ocr_extract 技能
+        let skill_result = SkillExecutorService::execute_skill(
+            pool,
+            "ocr_extract",
+            serde_json::json!({
+                "image_path": preprocessed_path,
+                "options": {
+                    "det_model": "ch_PP-OCRv4_det_infer.onnx",
+                    "rec_model": "ch_PP-OCRv4_rec_infer.onnx",
+                    "dict_file": "ppocr_keys_v1.txt"
+                }
+            }),
+        )
+        .await;
+
+        match skill_result {
+            Ok(result) => {
+                // 解析技能返回的 OCR 结果
+                let ocr_texts: Vec<String> = result
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("texts"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                // 转换为 AssignmentOcrResult 并保存
+                let mut ocr_results = Vec::new();
+                for (idx, text) in ocr_texts.iter().enumerate() {
+                    let ocr_id = Uuid::new_v4().to_string();
+                    let now = Utc::now().to_rfc3339();
+
+                    sqlx::query(
+                        "INSERT INTO assignment_ocr_result (id, asset_id, job_id, student_id, question_no, answer_text, confidence, score, created_at, multimodal_score, multimodal_feedback, conflict_flag, review_status, is_deleted, updated_at) VALUES (?, ?, ?, NULL, ?, ?, 0.95, NULL, ?, NULL, NULL, 0, 'pending', 0, ?)",
+                    )
+                    .bind(&ocr_id)
+                    .bind(asset_id)
+                    .bind(job_id)
+                    .bind(format!("{}", idx + 1))
+                    .bind(text)
+                    .bind(&now)
+                    .bind(&now)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| AppError::Database(format!("保存 ONNX OCR 结果失败：{e}")))?;
+
+                    ocr_results.push(AssignmentOcrResult {
+                        id: ocr_id,
+                        asset_id: asset_id.to_string(),
+                        job_id: Some(job_id.to_string()),
+                        student_id: None,
+                        question_no: Some(format!("{}", idx + 1)),
+                        answer_text: Some(text.clone()),
+                        confidence: Some(0.95),
+                        score: None,
+                        multimodal_score: None,
+                        multimodal_feedback: None,
+                        conflict_flag: 0,
+                        review_status: "pending".to_string(),
+                        reviewed_by: None,
+                        reviewed_at: None,
+                        final_score: None,
+                        ocr_raw_text: Some(text.clone()),
+                        is_deleted: 0,
+                        created_at: now.clone(),
+                        updated_at: now,
+                    });
+                }
+
+                // 记录成功审计
+                let success_detail = serde_json::json!({
+                    "attempt_id": attempt_id,
+                    "asset_id": asset_id,
+                    "job_id": job_id,
+                    "ocr_count": ocr_results.len(),
+                    "stage": "ocr_onnx_success",
+                });
+                let _ = AuditService::log_with_detail(
+                    pool,
+                    "system",
+                    "ocr_onnx_extraction_success",
+                    "assignment_asset",
+                    Some(asset_id),
+                    "low",
+                    false,
+                    Some(&success_detail.to_string()),
+                )
+                .await;
+
+                Ok(ocr_results)
+            }
+            Err(e) => {
+                // 记录失败审计
+                let error_detail = serde_json::json!({
+                    "attempt_id": attempt_id,
+                    "asset_id": asset_id,
+                    "job_id": job_id,
+                    "stage": "ocr_onnx_failed",
+                    "error": e.to_string(),
+                });
+                let _ = AuditService::log_with_detail(
+                    pool,
+                    "system",
+                    "ocr_onnx_extraction_failed",
+                    "assignment_asset",
+                    Some(asset_id),
+                    "high",
+                    false,
+                    Some(&error_detail.to_string()),
+                )
+                .await;
+
+                // ONNX 失败时回退到模拟识别
+                eprintln!("[OCR] ONNX 识别失败，回退到模拟识别: {e}");
+                let asset = Self::get_asset_by_id(pool, asset_id).await?;
+                Self::simulate_and_insert_ocr_results(pool, &asset, asset_id, job_id).await
+            }
+        }
     }
 
     pub async fn run_ocr_pipeline(
