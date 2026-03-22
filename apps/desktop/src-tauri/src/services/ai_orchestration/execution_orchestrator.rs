@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 use crate::error::AppError;
 use crate::models::execution::{
     CreateExecutionMessageInput, CreateExecutionRecordInput, CreateExecutionSessionInput,
-    ExecutionEntrypoint, ExecutionStatus,
+    ExecutionStatus,
 };
 use crate::models::execution::{ExecutionRequest, SessionEvent, SESSION_EVENT_VERSION};
 use crate::models::mcp_server::McpServerRecord;
@@ -141,9 +141,9 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // 【WP-AI-BIZ-002】Agentic Search 阶段
+        // 【WP-AI-BIZ-002/003】Agentic Search 阶段
         let mut evidence_items = Vec::new();
-        let mut search_summary_json = None;
+        let _search_summary_json: Option<String> = None;
 
         if request.use_agentic_search {
             // 执行搜索阶段
@@ -166,7 +166,23 @@ impl<'a> ExecutionOrchestrator<'a> {
             {
                 Ok(search_result) => {
                     evidence_items = search_result.evidence;
-                    search_summary_json = Some(search_result.search_summary_json.clone());
+
+                    // 发布搜索摘要事件
+                    let sources: Vec<String> = evidence_items
+                        .iter()
+                        .map(|e| e.source_table.clone())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .collect();
+
+                    let _ = self.publish_event(
+                        &session_id,
+                        SessionEvent::SearchSummary {
+                            version: SESSION_EVENT_VERSION,
+                            sources,
+                            evidence_count: evidence_items.len(),
+                        },
+                    );
                 }
                 Err(e) => {
                     eprintln!("[ExecutionOrchestrator] Agentic Search 失败: {}", e);
@@ -255,7 +271,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         let message_id_for_store = message_id.clone();
         let content_for_store = content.clone();
         let model_id_for_store = selected_model.model_id.clone();
-        let search_summary_for_store = search_summary_json.clone();
+        let search_summary_for_store = _search_summary_json.clone();
         let entrypoint_for_store = request.entrypoint.clone();
         let agent_profile_id_for_store = request.agent_profile_id.clone();
         let user_input_for_store = request.user_input.clone();
@@ -381,7 +397,7 @@ impl<'a> ExecutionOrchestrator<'a> {
 
         // 【WP-AI-BIZ-002】Agentic Search 阶段 - 仅在流式执行中集成
         let mut evidence_items = Vec::new();
-        let mut search_summary_json = None;
+        let _search_summary_json: Option<String> = None;
 
         if request.use_agentic_search {
             // 发布思考状态事件 - 开始搜索
@@ -414,7 +430,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             {
                 Ok(search_result) => {
                     evidence_items = search_result.evidence;
-                    search_summary_json = Some(search_result.search_summary_json.clone());
+                    let _search_summary_json = Some(search_result.search_summary_json.clone());
 
                     // 发布搜索摘要事件
                     let sources: Vec<String> = evidence_items

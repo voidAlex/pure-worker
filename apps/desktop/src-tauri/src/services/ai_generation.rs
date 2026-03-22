@@ -552,19 +552,22 @@ impl AiGenerationService {
             .build()?;
 
         let result = orchestrator
-            .execute(&ExecutionRequest {
-                session_id: None,
-                entrypoint: input.entrypoint,
-                agent_profile_id: String::from(profile_id),
-                user_input: input.user_input,
-                attachments: vec![],
-                use_agentic_search: false,
-                stream_mode: StreamMode::NonStreaming,
-                metadata_json: Some(input.metadata_json),
-            })
+            .execute(
+                &ExecutionRequest {
+                    session_id: None,
+                    entrypoint: input.entrypoint,
+                    agent_profile_id: String::from(profile_id),
+                    user_input: input.user_input,
+                    attachments: vec![],
+                    use_agentic_search: false,
+                    stream_mode: StreamMode::NonStreaming,
+                    metadata_json: Some(input.metadata_json),
+                },
+                None,
+            )
             .await?;
 
-        Ok(result.content)
+        Ok(result.1.content)
     }
 }
 
