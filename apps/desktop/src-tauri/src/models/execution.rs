@@ -98,7 +98,7 @@ pub struct ExecutionAttachment {
 }
 
 /// 执行请求输入
-#[derive(Debug, Deserialize, Type)]
+#[derive(Debug, Clone, Deserialize, Type)]
 pub struct ExecutionRequest {
     /// 会话ID（流式续聊时必填；新会话可为空）
     pub session_id: Option<String>,

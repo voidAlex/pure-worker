@@ -16,6 +16,7 @@ use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegis
 use crate::services::ai_orchestration::execution_request_factory::ExecutionRequestFactory;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
 use crate::services::ai_orchestration::ExecutionOrchestratorBuilder;
+use crate::services::runtime_paths;
 use crate::services::tool_registry::get_registry;
 
 /// 流式执行请求输入
@@ -65,6 +66,9 @@ pub enum StreamExecutionEvent {
     /// 推理摘要
     #[serde(rename = "Reasoning")]
     Reasoning { summary: String },
+    /// 执行摘要
+    #[serde(rename = "ExecutionSummary")]
+    ExecutionSummary { status: String, used_model: String },
     /// 内容片段
     #[serde(rename = "Chunk")]
     Chunk { content: String },
@@ -80,12 +84,16 @@ pub enum StreamExecutionEvent {
 #[tauri::command]
 #[specta::specta]
 pub async fn execute(
+    app: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
     input: ExecuteInput,
 ) -> Result<ExecutionResult, AppError> {
     if input.request.user_input.trim().is_empty() {
         return Err(AppError::InvalidInput(String::from("输入内容不能为空")));
     }
+
+    // 获取工作区路径
+    let workspace_path = runtime_paths::resolve_workspace_path(&app)?;
 
     // 创建事件总线
     let event_bus = SessionEventBus::new();
@@ -101,6 +109,7 @@ pub async fn execute(
         .with_profile_registry(&profile_registry)
         .with_event_bus(&event_bus)
         .with_tool_registry(tool_registry)
+        .with_workspace_path(workspace_path)
         .build()?;
 
     // 生成会话ID和消息ID
@@ -138,6 +147,9 @@ pub async fn execute_stream(
         .event_channel
         .unwrap_or_else(|| "execution-stream".to_string());
 
+    // 获取工作区路径
+    let workspace_path = runtime_paths::resolve_workspace_path(&app)?;
+
     // 创建事件总线
     let event_bus = SessionEventBus::new();
 
@@ -152,6 +164,7 @@ pub async fn execute_stream(
         .with_profile_registry(&profile_registry)
         .with_event_bus(&event_bus)
         .with_tool_registry(tool_registry)
+        .with_workspace_path(workspace_path)
         .build()?;
 
     // 生成会话ID
@@ -223,6 +236,15 @@ pub async fn execute_stream(
             Ok(SessionEvent::Start { message_id, .. }) => {
                 // 开始事件已在上面发送
                 let _ = message_id;
+            }
+            Ok(SessionEvent::ExecutionSummary {
+                status, used_model, ..
+            }) => {
+                // 转发执行摘要事件到前端
+                let _ = app.emit(
+                    &event_channel,
+                    StreamExecutionEvent::ExecutionSummary { status, used_model },
+                );
             }
             Err(e) => {
                 let error_msg = e.to_string();

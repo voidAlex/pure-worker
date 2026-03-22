@@ -16,6 +16,9 @@ use crate::models::assignment_grading::{AssignmentAsset, AssignmentOcrResult};
 use crate::models::execution::{ExecutionRequest, SessionEvent, SESSION_EVENT_VERSION};
 use crate::models::mcp_server::McpServerRecord;
 use crate::services::ai_orchestration::agent_profile_registry::AgentProfileRegistry;
+use crate::services::ai_orchestration::agentic_search_stage::AgenticSearchStage;
+use crate::services::ai_orchestration::execution_stage::{ExecutionStage, ExecutionStageContext};
+use crate::services::ai_orchestration::execution_store::ExecutionStoreService;
 use crate::services::ai_orchestration::model_routing::{ModelRoutingService, RoutingCapability};
 use crate::services::ai_orchestration::prompt_assembler::PromptAssemblerService;
 use crate::services::ai_orchestration::session_event_bus::SessionEventBus;
@@ -134,6 +137,7 @@ pub struct ExecutionOrchestrator<'a> {
     event_bus: &'a SessionEventBus,
     tool_registry: &'a ToolRegistry,
     mcp_servers: HashMap<String, McpServerRecord>,
+    workspace_path: PathBuf,
 }
 
 impl<'a> ExecutionOrchestrator<'a> {
@@ -143,6 +147,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         profile_registry: &'a dyn AgentProfileResolver,
         event_bus: &'a SessionEventBus,
         tool_registry: &'a ToolRegistry,
+        workspace_path: PathBuf,
     ) -> Self {
         Self {
             pool,
@@ -150,6 +155,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             event_bus,
             tool_registry,
             mcp_servers: HashMap::new(),
+            workspace_path,
         }
     }
 
@@ -175,7 +181,49 @@ impl<'a> ExecutionOrchestrator<'a> {
             .get_profile(&request.agent_profile_id)
             .map_err(|e| e.to_app_error())?;
 
-        // 2. 路由选择模型
+        // 2. 创建 ExecutionStore 会话和消息记录
+        let teacher_id = self.get_current_teacher_id().await?;
+        let session = ExecutionStoreService::create_session(
+            self.pool,
+            crate::models::execution::CreateExecutionSessionInput {
+                teacher_id,
+                title: Some(request.user_input.clone()),
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+            },
+        )
+        .await?;
+
+        let message = ExecutionStoreService::create_message(
+            self.pool,
+            crate::models::execution::CreateExecutionMessageInput {
+                session_id: session.id.clone(),
+                role: "user".to_string(),
+                content: request.user_input.clone(),
+                tool_name: None,
+            },
+        )
+        .await?;
+
+        // 创建执行记录（初始状态为进行中）
+        let record = ExecutionStoreService::create_record(
+            self.pool,
+            crate::models::execution::CreateExecutionRecordInput {
+                session_id: session.id.clone(),
+                execution_message_id: message.id.clone(),
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+                model_id: String::new(), // 将在路由后填充
+                status: crate::models::execution::ExecutionStatus::Completed,
+                reasoning_summary: None,
+                search_summary_json: None,
+                tool_calls_summary_json: None,
+                metadata_json: request.metadata_json.clone(),
+            },
+        )
+        .await?;
+
+        // 3. 路由选择模型
         let config = LlmProviderService::get_active_config(self.pool).await?;
         let model_selection = self.determine_model_selection(request, &profile);
         let selected_model = ModelRoutingService::select_model(
@@ -186,7 +234,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         )
         .map_err(|e| e.to_app_error())?;
 
-        // 3. 构建工具视图
+        // 4. 构建工具视图
         let tool_view = ToolExposureService::build_session_tool_view(
             &profile,
             self.tool_registry,
@@ -200,7 +248,44 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // 4. 组装提示词
+        // 5. 执行 Agentic Search（如果启用）
+        let mut evidence = vec![];
+        let mut search_summary_json = None;
+        let mut reasoning_summary = None;
+
+        if profile.requires_agentic_search || request.use_agentic_search {
+            // 创建搜索阶段上下文
+            let mut stage_context = ExecutionStageContext {
+                request: request.clone(),
+                model_id: selected_model.model_id.clone(),
+                session_id: session_id.clone(),
+                evidence: vec![],
+            };
+
+            // 创建并执行 AgenticSearchStage
+            let stage = AgenticSearchStage::new(self.pool.clone(), &self.workspace_path);
+
+            match stage.run(&mut stage_context).await {
+                Ok(output) => {
+                    evidence = output.appended_evidence.clone();
+                    search_summary_json = output.search_summary_json.clone();
+                    reasoning_summary = output.reasoning_summary.clone();
+
+                    // 发射搜索阶段事件
+                    for event in &output.emitted_events {
+                        if let Err(e) = self.publish_event(&session_id, event.clone()) {
+                            eprintln!("发射搜索事件失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Agentic Search 阶段失败: {}", e);
+                    // 搜索失败不中断执行，继续无证据模式
+                }
+            }
+        }
+
+        // 6. 组装提示词（使用搜索得到的证据）
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
         let assembled = assembler
@@ -208,12 +293,12 @@ impl<'a> ExecutionOrchestrator<'a> {
                 request,
                 &profile,
                 &selected_model,
-                &[], // evidence - will be filled by agentic search if enabled
+                &evidence, // 传递从搜索阶段获得的证据
                 &tool_summary,
             )
             .map_err(|e| e.to_app_error())?;
 
-        // 5. 发布开始事件
+        // 7. 发布开始事件
         let message_id = uuid::Uuid::new_v4().to_string();
         self.publish_event(
             &session_id,
@@ -223,7 +308,7 @@ impl<'a> ExecutionOrchestrator<'a> {
             },
         )?;
 
-        // 6. 创建 Provider Adapter 并调用
+        // 8. 创建 Provider Adapter 并调用
         let provider_config = LlmProviderService::create_provider_config(&config)?;
         let adapter = AdapterFactory::create(&provider_config);
 
@@ -258,27 +343,80 @@ impl<'a> ExecutionOrchestrator<'a> {
             )
         };
 
-        // 7. 调用模型
+        // 9. 调用模型
         let content = adapter
             .chat(&selected_model.model_id, messages, tools)
-            .await?;
+            .await;
 
-        // 8. 发布完成事件
-        self.publish_event(
-            &session_id,
-            SessionEvent::Complete {
-                version: SESSION_EVENT_VERSION,
-            },
-        )?;
+        match content {
+            Ok(content) => {
+                // 10. 更新执行记录为成功
+                let _ = ExecutionStoreService::finalize_success(
+                    self.pool,
+                    crate::models::execution::UpdateExecutionRecordInput {
+                        id: record.id.clone(),
+                        status: Some(crate::models::execution::ExecutionStatus::Completed),
+                        reasoning_summary: reasoning_summary.clone(),
+                        search_summary_json: search_summary_json.clone(),
+                        tool_calls_summary_json: None,
+                        error_message: None,
+                    },
+                )
+                .await;
 
-        Ok(ExecutionArtifacts {
-            content,
-            model_id: selected_model.model_id,
-            reasoning_summary: None,
-            search_summary_json: None,
-            tool_calls_summary_json: None,
-            grading_result: None,
-        })
+                // 11. 发布执行摘要和完成事件
+                self.publish_event(
+                    &session_id,
+                    SessionEvent::ExecutionSummary {
+                        version: SESSION_EVENT_VERSION,
+                        status: "completed".to_string(),
+                        used_model: selected_model.model_id.clone(),
+                    },
+                )?;
+
+                self.publish_event(
+                    &session_id,
+                    SessionEvent::Complete {
+                        version: SESSION_EVENT_VERSION,
+                    },
+                )?;
+
+                Ok(ExecutionArtifacts {
+                    content,
+                    model_id: selected_model.model_id,
+                    reasoning_summary,
+                    search_summary_json,
+                    tool_calls_summary_json: None,
+                    grading_result: None,
+                })
+            }
+            Err(e) => {
+                // 记录失败
+                let _ = ExecutionStoreService::record_failure(
+                    self.pool,
+                    crate::models::execution::UpdateExecutionRecordInput {
+                        id: record.id.clone(),
+                        status: Some(crate::models::execution::ExecutionStatus::Failed),
+                        reasoning_summary,
+                        search_summary_json,
+                        tool_calls_summary_json: None,
+                        error_message: Some(e.to_string()),
+                    },
+                )
+                .await;
+
+                // 发布错误事件
+                self.publish_event(
+                    &session_id,
+                    SessionEvent::Error {
+                        version: SESSION_EVENT_VERSION,
+                        message: e.to_string(),
+                    },
+                )?;
+
+                Err(e)
+            }
+        }
     }
 
     /// 执行流式请求，返回事件流
@@ -298,7 +436,49 @@ impl<'a> ExecutionOrchestrator<'a> {
             .get_profile(&request.agent_profile_id)
             .map_err(|e| e.to_app_error())?;
 
-        // 2. 路由选择模型
+        // 2. 创建 ExecutionStore 会话和消息记录
+        let teacher_id = self.get_current_teacher_id().await?;
+        let session = ExecutionStoreService::create_session(
+            self.pool,
+            crate::models::execution::CreateExecutionSessionInput {
+                teacher_id,
+                title: Some(request.user_input.clone()),
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+            },
+        )
+        .await?;
+
+        let message = ExecutionStoreService::create_message(
+            self.pool,
+            crate::models::execution::CreateExecutionMessageInput {
+                session_id: session.id.clone(),
+                role: "user".to_string(),
+                content: request.user_input.clone(),
+                tool_name: None,
+            },
+        )
+        .await?;
+
+        // 创建执行记录
+        let record = ExecutionStoreService::create_record(
+            self.pool,
+            crate::models::execution::CreateExecutionRecordInput {
+                session_id: session.id.clone(),
+                execution_message_id: message.id.clone(),
+                entrypoint: request.entrypoint.clone(),
+                agent_profile_id: request.agent_profile_id.clone(),
+                model_id: String::new(),
+                status: crate::models::execution::ExecutionStatus::Completed,
+                reasoning_summary: None,
+                search_summary_json: None,
+                tool_calls_summary_json: None,
+                metadata_json: request.metadata_json.clone(),
+            },
+        )
+        .await?;
+
+        // 3. 路由选择模型
         let config = LlmProviderService::get_active_config(self.pool).await?;
         let model_selection = self.determine_model_selection(request, &profile);
         let selected_model = ModelRoutingService::select_model(
@@ -309,7 +489,7 @@ impl<'a> ExecutionOrchestrator<'a> {
         )
         .map_err(|e| e.to_app_error())?;
 
-        // 3. 构建工具视图
+        // 4. 构建工具视图
         let tool_view = ToolExposureService::build_session_tool_view(
             &profile,
             self.tool_registry,
@@ -323,20 +503,43 @@ impl<'a> ExecutionOrchestrator<'a> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // 4. 组装提示词
+        // 5. 执行 Agentic Search（如果启用）
+        let mut evidence = vec![];
+        let mut search_summary_json = None;
+        let mut reasoning_summary = None;
+        let mut search_events: Vec<SessionEvent> = vec![];
+
+        if profile.requires_agentic_search || request.use_agentic_search {
+            let mut stage_context = ExecutionStageContext {
+                request: request.clone(),
+                model_id: selected_model.model_id.clone(),
+                session_id: session_id.clone(),
+                evidence: vec![],
+            };
+
+            let stage = AgenticSearchStage::new(self.pool.clone(), &self.workspace_path);
+
+            match stage.run(&mut stage_context).await {
+                Ok(output) => {
+                    evidence = output.appended_evidence.clone();
+                    search_summary_json = output.search_summary_json.clone();
+                    reasoning_summary = output.reasoning_summary.clone();
+                    search_events = output.emitted_events.clone();
+                }
+                Err(e) => {
+                    eprintln!("Agentic Search 阶段失败: {}", e);
+                }
+            }
+        }
+
+        // 6. 组装提示词（使用搜索得到的证据）
         let templates_dir = runtime_templates_dir();
         let assembler = PromptAssemblerService::new(templates_dir);
         let assembled = assembler
-            .assemble(
-                request,
-                &profile,
-                &selected_model,
-                &[], // evidence
-                &tool_summary,
-            )
+            .assemble(request, &profile, &selected_model, &evidence, &tool_summary)
             .map_err(|e| e.to_app_error())?;
 
-        // 5. 创建 Provider Adapter
+        // 7. 创建 Provider Adapter
         let provider_config = LlmProviderService::create_provider_config(&config)?;
         let adapter = AdapterFactory::create(&provider_config);
 
@@ -371,19 +574,33 @@ impl<'a> ExecutionOrchestrator<'a> {
             )
         };
 
-        // 6. 获取流式响应
+        // 8. 获取流式响应
         let stream = adapter
             .chat_stream(&selected_model.model_id, messages, tools)
             .await?;
 
-        // 7. 转换为 SessionEvent 流
+        // 9. 转换为 SessionEvent 流（包含存储和事件发射）
         let message_id = uuid::Uuid::new_v4().to_string();
-        let event_stream = self.create_event_stream(session_id, message_id, stream);
+        let model_id = selected_model.model_id.clone();
+        let pool = self.pool.clone();
+        let record_id = record.id.clone();
+        let event_stream = self.create_event_stream_with_store(
+            session_id,
+            message_id,
+            stream,
+            search_events,
+            model_id,
+            pool,
+            record_id,
+            search_summary_json,
+            reasoning_summary,
+        );
 
         Ok(Box::pin(event_stream))
     }
 
     /// 创建事件流，将 provider 的字符流转换为 SessionEvent 流
+    #[allow(dead_code)]
     fn create_event_stream(
         &self,
         _session_id: String,
@@ -412,6 +629,96 @@ impl<'a> ExecutionOrchestrator<'a> {
         });
 
         start_stream.chain(content_stream).chain(complete_stream)
+    }
+
+    /// 创建带存储的事件流，将 provider 的字符流转换为 SessionEvent 流
+    /// 包含 ExecutionStore 更新和 ExecutionSummary 事件发射
+    #[allow(clippy::too_many_arguments)]
+    fn create_event_stream_with_store(
+        &self,
+        _session_id: String,
+        message_id: String,
+        provider_stream: impl Stream<Item = Result<String, AppError>> + Send + 'static,
+        search_events: Vec<SessionEvent>,
+        model_id: String,
+        pool: SqlitePool,
+        record_id: String,
+        search_summary_json: Option<String>,
+        reasoning_summary: Option<String>,
+    ) -> impl Stream<Item = Result<SessionEvent, AppError>> + Send + '_ {
+        let start_event = SessionEvent::Start {
+            version: SESSION_EVENT_VERSION,
+            message_id,
+        };
+
+        // 发射开始事件
+        let start_stream = futures::stream::once(async move { Ok(start_event) });
+
+        // 发射搜索阶段事件
+        let search_stream = futures::stream::iter(search_events.into_iter().map(Ok));
+
+        // 处理 provider 流
+        let pool_clone = pool.clone();
+        let record_id_clone = record_id.clone();
+        let model_id_clone = model_id.clone();
+        let content_stream = provider_stream.map(move |result| match result {
+            Ok(content) => Ok(SessionEvent::Chunk {
+                version: SESSION_EVENT_VERSION,
+                content,
+            }),
+            Err(e) => Err(e),
+        });
+
+        // 完成流，包含 ExecutionSummary 和存储更新
+        let complete_stream = futures::stream::once(async move {
+            // 更新执行记录为成功
+            let _ = ExecutionStoreService::finalize_success(
+                &pool_clone,
+                crate::models::execution::UpdateExecutionRecordInput {
+                    id: record_id_clone,
+                    status: Some(crate::models::execution::ExecutionStatus::Completed),
+                    reasoning_summary,
+                    search_summary_json,
+                    tool_calls_summary_json: None,
+                    error_message: None,
+                },
+            )
+            .await;
+
+            // 发射 ExecutionSummary 事件
+            Ok(SessionEvent::ExecutionSummary {
+                version: SESSION_EVENT_VERSION,
+                status: "completed".to_string(),
+                used_model: model_id_clone,
+            })
+        });
+
+        // 最终完成事件
+        let final_complete = futures::stream::once(async move {
+            Ok(SessionEvent::Complete {
+                version: SESSION_EVENT_VERSION,
+            })
+        });
+
+        start_stream
+            .chain(search_stream)
+            .chain(content_stream)
+            .chain(complete_stream)
+            .chain(final_complete)
+    }
+
+    /// 获取当前教师ID
+    async fn get_current_teacher_id(&self) -> Result<String, AppError> {
+        let teacher_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM teacher_profile WHERE is_deleted = 0 LIMIT 1")
+                .fetch_optional(self.pool)
+                .await?;
+
+        teacher_id.ok_or_else(|| {
+            AppError::NotFound(String::from(
+                "请先完成教师信息初始化。如果您已完成初始化向导，请尝试重启应用。",
+            ))
+        })
     }
 
     /// 确定模型选择类型
@@ -591,6 +898,7 @@ pub struct ExecutionOrchestratorBuilder<'a> {
     event_bus: Option<&'a SessionEventBus>,
     tool_registry: Option<&'a ToolRegistry>,
     mcp_servers: HashMap<String, McpServerRecord>,
+    workspace_path: Option<PathBuf>,
 }
 
 impl<'a> ExecutionOrchestratorBuilder<'a> {
@@ -602,6 +910,7 @@ impl<'a> ExecutionOrchestratorBuilder<'a> {
             event_bus: None,
             tool_registry: None,
             mcp_servers: HashMap::new(),
+            workspace_path: None,
         }
     }
 
@@ -629,6 +938,12 @@ impl<'a> ExecutionOrchestratorBuilder<'a> {
         self
     }
 
+    /// 设置工作区路径
+    pub fn with_workspace_path(mut self, path: PathBuf) -> Self {
+        self.workspace_path = Some(path);
+        self
+    }
+
     /// 构建执行编排器
     pub fn build(self) -> Result<ExecutionOrchestrator<'a>, AppError> {
         let profile_registry = self
@@ -640,6 +955,9 @@ impl<'a> ExecutionOrchestratorBuilder<'a> {
         let tool_registry = self
             .tool_registry
             .ok_or_else(|| AppError::InvalidInput(String::from("未提供工具注册表")))?;
+        let workspace_path = self
+            .workspace_path
+            .ok_or_else(|| AppError::InvalidInput(String::from("未提供工作区路径")))?;
 
         Ok(ExecutionOrchestrator {
             pool: self.pool,
@@ -647,6 +965,7 @@ impl<'a> ExecutionOrchestratorBuilder<'a> {
             event_bus,
             tool_registry,
             mcp_servers: self.mcp_servers,
+            workspace_path,
         })
     }
 }
@@ -675,6 +994,7 @@ pub async fn run_grading_pipeline(
         .with_profile_registry(&profile_registry)
         .with_event_bus(&event_bus)
         .with_tool_registry(get_registry())
+        .with_workspace_path(config.workspace_path.clone())
         .build()?;
 
     orchestrator
