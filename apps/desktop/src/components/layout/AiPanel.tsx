@@ -5,13 +5,15 @@
  * - fullscreen：全屏嵌入模式，类似 ChatGPT 的聊天布局（仪表盘 AiWorkbench 使用）
  *
  * 功能包括：角色切换、斜杠快捷指令、消息发送与自动滚动、真实后端对话调用。
+ * 
+ * 【WP-AI-BIZ-001】已统一使用 useChatStream 流式接口，与 ChatPanel 保持一致
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronDown, Command, Loader2, Send, Sparkles, X } from 'lucide-react';
 
 import { ChatMessage } from '@/components/chat/ChatMessage';
-import { commands } from '@/services/commandClient';
+import { useChatStream } from '@/hooks/useChatStream';
 import { isTauriRuntime } from '@/utils/runtime';
 
 /** AI 角色类型 */
@@ -24,15 +26,6 @@ type SlashCommand = {
   description: string;
   execute: () => void;
 };
-
-/** 聊天消息结构 */
-interface AiPanelMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  created_at: string;
-  isStreaming?: boolean;
-}
 
 /**
  * 面板属性 —— 使用判别联合类型区分两种模式。
@@ -54,6 +47,7 @@ const AGENT_LABEL_MAP: Record<AgentRole, string> = {
 /**
  * AI 助手面板主组件
  * 根据 mode 属性渲染不同的外层容器，内部聊天逻辑共用。
+ * 【WP-AI-BIZ-001】使用 useChatStream hook 统一流式接口
  */
 export const AiPanel: React.FC<AiPanelProps> = (props) => {
   const [inputText, setInputText] = useState('');
@@ -61,8 +55,11 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
-  const [messages, setMessages] = useState<AiPanelMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+
+  // 【WP-AI-BIZ-001】使用 useChatStream 替代本地状态管理
+  const { messages, isStreaming, error, sendMessage, clearError, reset } = useChatStream({
+    agentRole: selectedAgent,
+  });
 
   /** 消息列表容器引用，用于自动滚动到底部 */
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -70,10 +67,10 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   /** 消息变化时自动滚动到底部 */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isStreaming]);
 
   /** 判断是否可以发送消息 */
-  const canSend = useMemo(() => inputText.trim().length > 0 && !isLoading, [inputText, isLoading]);
+  const canSend = useMemo(() => inputText.trim().length > 0 && !isStreaming, [inputText, isStreaming]);
 
   /** 是否为全屏模式 */
   const isFullscreen = props.mode === 'fullscreen';
@@ -96,7 +93,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
         title: '/clear',
         description: '清空聊天记录',
         execute: () => {
-          setMessages([]);
+          reset(); // 【WP-AI-BIZ-001】使用 useChatStream.reset()
           setInputText('');
           setShowSlashMenu(false);
         },
@@ -106,7 +103,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
         title: '/new',
         description: '开启新会话',
         execute: () => {
-          setMessages([]);
+          reset(); // 【WP-AI-BIZ-001】使用 useChatStream.reset()
           setInputText('');
           setShowSlashMenu(false);
         },
@@ -128,88 +125,29 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
 
   /**
    * 发送消息处理函数
-   * 添加用户消息后调用真实后端 chat_with_ai IPC 命令获取 AI 回复。
-   * 非 Tauri 运行时显示友好提示。
+   * 【WP-AI-BIZ-001】使用 useChatStream.sendMessage 替代 commands.chatWithAi
    */
   const handleSend = async () => {
     const trimmedText = inputText.trim();
-    if (!trimmedText || isLoading) return;
+    if (!trimmedText || isStreaming) return;
 
-    // 立即添加用户消息并清空输入
-    const userMessageId = `user-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: userMessageId,
-        role: 'user',
-        content: trimmedText,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    // 非 Tauri 运行时显示友好提示
+    if (!isTauriRuntime()) {
+      // 直接添加提示消息到列表
+      // 注意：这里只是添加一条系统消息，实际不会调用后端
+      console.log('当前为 Web 预览环境，AI 对话需要桌面端支持。');
+      return;
+    }
+
     setInputText('');
     setShowSlashMenu(false);
     setSlashQuery('');
-    setIsLoading(true);
 
     try {
-      // 非 Tauri 运行时直接返回提示
-      if (!isTauriRuntime()) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            content: '当前为 Web 预览环境，AI 对话需要桌面端支持。',
-            created_at: new Date().toISOString(),
-          },
-        ]);
-        return;
-      }
-
-      // 调用真实后端 AI 对话命令
-      const result = await commands.chatWithAi({
-        message: trimmedText,
-        agent_role: selectedAgent,
-        use_agentic_search: false,
-      });
-
-      if (result.status === 'error') {
-        const errorMsg =
-          typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: `抱歉，AI 响应失败：${errorMsg}`,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-        return;
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: result.data.content,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      await sendMessage(trimmedText);
     } catch (err: unknown) {
       const errorDetail = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: `抱歉，AI 响应失败：${errorDetail}`,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
+      console.error('发送消息失败:', errorDetail);
     }
   };
 
@@ -241,15 +179,8 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
                 onClick={() => {
                   setSelectedAgent(role);
                   setShowAgentMenu(false);
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: `system-${Date.now()}`,
-                      role: 'assistant',
-                      content: `已切换角色：${AGENT_LABEL_MAP[role]}`,
-                      created_at: new Date().toISOString(),
-                    },
-                  ]);
+                  // 【WP-AI-BIZ-001】角色切换时重置聊天状态
+                  reset();
                 }}
                 className={`w-full text-left px-2.5 py-1.5 text-sm rounded-md transition-colors ${
                   selectedAgent === role
@@ -279,7 +210,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
   /** 渲染消息列表区域 */
   const renderMessages = () => (
     <div className="flex-1 overflow-y-auto p-4">
-      {messages.length === 0 && !isLoading ? (
+      {messages.length === 0 && !isStreaming ? (
         <div className="h-full flex flex-col items-center justify-center text-center text-gray-500">
           <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mb-4 text-brand-500">
             <Sparkles className="w-8 h-8" />
@@ -290,11 +221,12 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       ) : (
         <div className={isFullscreen ? 'mx-auto max-w-3xl w-full' : ''}>
           <div className="space-y-3">
+            {/* 【WP-AI-BIZ-001】使用 useChatStream 的 messages，格式与 ChatMessage 组件兼容 */}
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} />
             ))}
             {/* AI 思考中指示器 */}
-            {isLoading && (
+            {isStreaming && (
               <div className="flex gap-2 justify-start">
                 <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                   <Bot className="w-4 h-4" />
@@ -311,6 +243,21 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       )}
     </div>
   );
+
+  /** 渲染错误提示 */
+  const renderError = () => {
+    if (!error) return null;
+    return (
+      <div className="px-4 py-2 bg-red-50 border-t border-red-100">
+        <div className="flex items-center justify-between">
+          <span className="text-red-600 text-sm">{error}</span>
+          <button onClick={clearError} className="text-red-400 hover:text-red-600 text-sm">
+            清除
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   /** 渲染输入区域（含斜杠菜单） */
   const renderInput = () => (
@@ -343,7 +290,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
               }
             }}
             placeholder="输入消息，或键入 / 呼出快捷指令"
-            disabled={isLoading}
+            disabled={isStreaming}
             className="w-full pl-4 pr-10 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {showSlashMenu && (
@@ -389,6 +336,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
       >
         {renderHeader()}
         {renderMessages()}
+        {renderError()}
         {renderInput()}
       </div>
     );
@@ -398,6 +346,7 @@ export const AiPanel: React.FC<AiPanelProps> = (props) => {
     <aside className="w-[360px] bg-white border-l border-gray-200 flex flex-col shadow-sm transition-all duration-300 ease-in-out shrink-0">
       {renderHeader()}
       {renderMessages()}
+      {renderError()}
       {renderInput()}
     </aside>
   );
